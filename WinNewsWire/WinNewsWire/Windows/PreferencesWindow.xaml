@@ -157,6 +157,55 @@
                         </Grid>
                     </Border>
 
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0" Glyph="&#xE790;" Style="{StaticResource OptionIconStyle}" />
+                            <TextBlock Grid.Column="1" Text="Article theme" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                                <ComboBox x:Name="ThemeCombo" MinWidth="160"
+                                          SelectionChanged="ThemeCombo_SelectionChanged" />
+                                <Button x:Name="OpenThemesFolderButton" Click="OpenThemesFolder_Click"
+                                        ToolTipService.ToolTip="Open Themes folder in Explorer">
+                                    <FontIcon Glyph="&#xE838;" FontSize="14" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Notifications -->
+                    <TextBlock Text="Notifications" Style="{StaticResource SectionHeadingStyle}"
+                               Margin="2,12,0,4" />
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0" Glyph="&#xEA8F;" Style="{StaticResource OptionIconStyle}" />
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                           Text="Show toasts for new articles" />
+                                <ToggleSwitch Grid.Column="2" x:Name="NotificationsEnabledToggle"
+                                              MinWidth="0" Margin="0"
+                                              Toggled="NotificationsEnabled_Changed" />
+                            </Grid>
+                            <TextBlock TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="Per-feed notification toggles live in each feed's right-click menu in the sidebar. Toast delivery also depends on Windows notification permissions for this app." />
+                            <HyperlinkButton x:Name="OpenNotificationSettingsLink"
+                                             Content="Open Windows notification settings…"
+                                             Click="OpenNotificationSettings_Click"
+                                             Padding="0" />
+                        </StackPanel>
+                    </Border>
+
                     <!-- Advanced -->
                     <TextBlock Text="Advanced" Style="{StaticResource SectionHeadingStyle}"
                                Margin="2,12,0,4" />

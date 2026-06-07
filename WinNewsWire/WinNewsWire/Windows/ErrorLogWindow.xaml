@@ -10,11 +10,28 @@
     <Grid Padding="16" RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <TextBlock Grid.Row="0" Text="Error Log" Style="{StaticResource SubtitleTextBlockStyle}" />
-        <ListView Grid.Row="1" x:Name="EntriesList" SelectionMode="Single">
+
+        <!-- Search box mirrors Mac NetNewsWire's ErrorLogWindowController find bar -->
+        <Grid Grid.Row="1" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <AutoSuggestBox Grid.Column="0" x:Name="SearchBox"
+                            PlaceholderText="Search errors..."
+                            QueryIcon="Find"
+                            TextChanged="SearchBox_TextChanged" />
+            <TextBlock Grid.Column="1" x:Name="ResultsCount"
+                       VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+
+        <ListView Grid.Row="2" x:Name="EntriesList" SelectionMode="Single">
             <ListView.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Padding="8" Spacing="2">
@@ -25,7 +42,9 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Content="Copy All" Click="CopyAll_Click"
+                    ToolTipService.ToolTip="Copy all visible entries to the clipboard" />
             <Button Content="Refresh" Click="Refresh_Click" />
             <Button Content="Clear" Click="Clear_Click" />
             <Button Content="Close" Click="Close_Click" Style="{StaticResource AccentButtonStyle}" />

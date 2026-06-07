@@ -38,7 +38,9 @@ public static class ArticleSorter
 
 public sealed record SortableArticle(Article Article, string SortableName) : ISortableArticle
 {
-    public DateTime SortableDate => Article.DatePublished ?? Article.DateModified ?? DateTime.MinValue;
+    // Use the same logical date the Mac sort uses: published → modified → arrived.
+    public DateTime SortableDate
+        => Article.DatePublished ?? Article.DateModified ?? Article.Status.DateArrived;
     public string SortableArticleID => Article.ArticleID;
     public string SortableFeedID => Article.FeedID;
 }

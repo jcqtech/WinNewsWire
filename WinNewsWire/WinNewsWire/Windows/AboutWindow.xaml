@@ -7,14 +7,73 @@
     mc:Ignorable="mc"
     Title="About WinNewsWire">
     <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
-    <StackPanel Padding="32" Spacing="12" HorizontalAlignment="Center">
-        <Image Source="ms-appx:///Assets/wnw.png" Width="64" Height="64" HorizontalAlignment="Center" />
-        <TextBlock Text="WinNewsWire" Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
-        <TextBlock x:Name="VersionText" HorizontalAlignment="Center"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        <TextBlock HorizontalAlignment="Center" TextAlignment="Center" MaxWidth="360" TextWrapping="Wrap"
-                   Text="A Windows port of NetNewsWire. Based on open source code by Ranchero Software and the NetNewsWire contributors." />
-        <HyperlinkButton NavigateUri="https://winnewswire.com/" Content="winnewswire.com" HorizontalAlignment="Center" />
-        <Button Content="Close" Click="Close_Click" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" />
-    </StackPanel>
+    <Grid Padding="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: icon, name, version, link -->
+        <StackPanel Grid.Row="0" Padding="32,24,32,16" Spacing="8" HorizontalAlignment="Center">
+            <Image Source="ms-appx:///Assets/wnw.png" Width="64" Height="64" HorizontalAlignment="Center" />
+            <TextBlock Text="WinNewsWire" Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
+            <TextBlock x:Name="VersionText" HorizontalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock HorizontalAlignment="Center" TextAlignment="Center" MaxWidth="380" TextWrapping="Wrap"
+                       Text="A Windows port of NetNewsWire — the open-source RSS reader." />
+            <HyperlinkButton NavigateUri="https://winnewswire.com/" Content="winnewswire.com" HorizontalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Scrollable credits panel mirrors Mac NetNewsWire's About > Credits screen -->
+        <Border Grid.Row="1" Margin="32,0,32,8" CornerRadius="6"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <ScrollViewer Padding="16,12" VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Credits" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="NetNewsWire" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock TextWrapping="Wrap"
+                                   Text="Created by Brent Simmons and the NetNewsWire contributors. Copyright © Ranchero Software, LLC. Licensed under the MIT License." />
+                        <HyperlinkButton NavigateUri="https://netnewswire.com/" Content="netnewswire.com" Padding="0" />
+                        <HyperlinkButton NavigateUri="https://github.com/Ranchero-Software/NetNewsWire" Content="github.com/Ranchero-Software/NetNewsWire" Padding="0" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="WinNewsWire" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock TextWrapping="Wrap"
+                                   Text="Native Windows port built with WinUI 3 and .NET. Source available under the same MIT License as NetNewsWire." />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Third-party libraries" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock TextWrapping="Wrap">
+                            <Run Text="HtmlAgilityPack — HTML parsing (MIT)" />
+                            <LineBreak />
+                            <Run Text="Markdig — Markdown rendering (BSD-2-Clause)" />
+                            <LineBreak />
+                            <Run Text="Microsoft.Data.Sqlite — database engine (MIT)" />
+                            <LineBreak />
+                            <Run Text="CommunityToolkit.Mvvm — MVVM helpers (MIT)" />
+                            <LineBreak />
+                            <Run Text="SmartReader — reader-mode extractor (Apache 2.0)" />
+                            <LineBreak />
+                            <Run Text="Windows App SDK + WinUI 3 — UI framework (MIT)" />
+                        </TextBlock>
+                    </StackPanel>
+
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Many thanks to everyone who contributes to NetNewsWire and to the broader open-source feed reader ecosystem." />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <Button Grid.Row="2" Content="Close" Click="Close_Click"
+                Margin="0,4,32,24"
+                HorizontalAlignment="Right" Style="{StaticResource AccentButtonStyle}" />
+    </Grid>
 </Window>

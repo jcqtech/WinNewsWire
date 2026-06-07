@@ -24,8 +24,11 @@ public static class ArticleRenderer
         var title = article?.Title is null ? "" : WebUtility.HtmlEncode(article.Title);
         var author = article?.Authors?.FirstOrDefault()?.Name ?? "";
         var date = ArticleStringFormatter.DateString(article?.DatePublished);
-        var body = extracted?.Content ?? article?.ContentHtml ?? article?.ContentText ?? "";
+        var rawBody = extracted?.Content ?? article?.ContentHtml ?? article?.ContentText ?? "";
         var baseUrl = article?.RawLink ?? "";
+        // Per-site mojibake cleanup before the body lands in the WebView. Mirrors
+        // NetNewsWire's `DetailWebViewController.filterHTMLIfNeeded` step.
+        var body = ArticleRenderingSpecialCases.FilterHtmlIfNeeded(baseUrl, rawBody);
 
         var sb = new StringBuilder(theme.TemplateHtml);
         sb.Replace("[[[title]]]", title);

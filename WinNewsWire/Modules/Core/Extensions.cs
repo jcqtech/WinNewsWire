@@ -36,6 +36,105 @@ public static class StringExtensions
         return sb.ToString().Trim();
     }
 
+    /// <summary>
+    /// Port of <c>String.trimmingWhitespace</c>. Trims leading and trailing
+    /// whitespace (matches Swift's <c>.whitespacesAndNewlines</c>) without
+    /// touching interior whitespace.
+    /// </summary>
+    public static string TrimmingWhitespace(this string s) => s.Trim();
+
+    /// <summary>
+    /// Port of <c>String.stripping(prefix:caseSensitive:)</c>. Returns
+    /// <paramref name="s"/> unchanged when it doesn't start with
+    /// <paramref name="prefix"/>; otherwise drops the first occurrence.
+    /// </summary>
+    public static string StrippingPrefix(this string s, string prefix, bool caseSensitive = false)
+    {
+        var cmp = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        return s.StartsWith(prefix, cmp) ? s[prefix.Length..] : s;
+    }
+
+    /// <summary>
+    /// Port of <c>String.stripping(suffix:caseSensitive:)</c>.
+    /// </summary>
+    public static string StrippingSuffix(this string s, string suffix, bool caseSensitive = false)
+    {
+        var cmp = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        return s.EndsWith(suffix, cmp) ? s[..^suffix.Length] : s;
+    }
+
+    /// <summary>
+    /// Port of <c>String.escapingSpecialXMLCharacters</c>. Escapes the five
+    /// XML special characters (<![CDATA[<, >, &, ", ']]>).
+    /// </summary>
+    public static string EscapingSpecialXmlCharacters(this string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        foreach (var c in s)
+        {
+            switch (c)
+            {
+                case '&': sb.Append("&amp;"); break;
+                case '<': sb.Append("&lt;"); break;
+                case '>': sb.Append("&gt;"); break;
+                case '"': sb.Append("&quot;"); break;
+                case '\'': sb.Append("&apos;"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Port of <c>String.strippingHTTPOrHTTPSScheme</c>. Strips a leading
+    /// <c>http://</c> or <c>https://</c>; other schemes pass through.
+    /// </summary>
+    public static string StrippingHttpOrHttpsScheme(this string s)
+    {
+        if (s.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return s[8..];
+        if (s.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) return s[7..];
+        return s;
+    }
+
+    /// <summary>
+    /// Port of <c>String.normalizedURL</c>. Strips <c>feed:</c>, <c>feeds:</c>,
+    /// <c>feed://</c>, <c>feeds://</c> wrappers; defaults to <c>http://</c> for
+    /// <c>feed:</c> (insecure default) and <c>https://</c> for <c>feeds:</c>
+    /// (secure default) when no scheme follows.
+    /// </summary>
+    public static string NormalizedUrl(this string s)
+    {
+        var input = s;
+        bool secure = false;
+
+        // Order matters: check 'feeds' first because 'feed' is a prefix.
+        if (input.StartsWith("feeds:", StringComparison.OrdinalIgnoreCase))
+        {
+            secure = true;
+            input = input["feeds:".Length..];
+        }
+        else if (input.StartsWith("feed:", StringComparison.OrdinalIgnoreCase))
+        {
+            input = input["feed:".Length..];
+        }
+        else
+        {
+            return s;
+        }
+
+        // Strip optional leading // after feed:/feeds:.
+        if (input.StartsWith("//", StringComparison.Ordinal)) input = input[2..];
+
+        // If the remainder already has its own scheme, return that scheme directly.
+        if (input.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || input.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return input;
+
+        // Add trailing slash if missing (matches Swift's normalization).
+        if (!input.Contains('/')) input += "/";
+        return (secure ? "https://" : "http://") + input;
+    }
+
     public static string StripHtml(this string s) => StripHtml(s, maxCharacters: null);
 
     /// <summary>
@@ -67,6 +166,7 @@ public static class StringExtensions
         bool lastWasSpace = false;
         int level = 0;
         int added = 0;
+        bool sawNonWhitespace = false;
 
         foreach (var c in preflight)
         {
@@ -76,6 +176,10 @@ public static class StringExtensions
 
             if (c == ' ' || c == '\r' || c == '\t' || c == '\n')
             {
+                // Skip leading whitespace entirely so it doesn't burn through the
+                // maxCharacters budget. After we've seen at least one real
+                // character, collapse runs of whitespace into a single space.
+                if (!sawNonWhitespace) continue;
                 if (lastWasSpace) continue;
                 lastWasSpace = true;
                 sb.Append(' ');
@@ -83,6 +187,7 @@ public static class StringExtensions
             else
             {
                 lastWasSpace = false;
+                sawNonWhitespace = true;
                 sb.Append(c);
             }
 

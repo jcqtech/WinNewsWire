@@ -86,6 +86,10 @@ public sealed class NewArticleNotifier : IDisposable
     {
         if (sender is not Account.Account account) return;
 
+        // Honor the app-wide toggle (Preferences > Notifications). When disabled,
+        // every per-feed flag is treated as off so the user has a single switch.
+        if (!WinNewsWire.Core.AppDefaults.Shared.NotificationsEnabled) return;
+
         // Build a feedID -> Feed lookup so we can consult per-feed settings without
         // re-flattening the account on every article.
         var feeds = account.FlattenedFeeds().ToDictionary(f => f.FeedID);

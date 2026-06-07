@@ -52,6 +52,15 @@ public sealed class Account : IDisplayNameProvider, IDisposable
         NewArticlesDownloaded?.Invoke(this, new NewArticlesEventArgs(newArticles));
     }
 
+    /// <summary>
+    /// For local accounts, the OPML mirror file at
+    /// <c>%LocalAppData%/WinNewsWire/Accounts/&lt;id&gt;/Subscriptions.opml</c>.
+    /// Re-exported whenever the account's feed/folder structure changes so
+    /// users can hand the file to other readers or import it elsewhere.
+    /// Null for remote accounts (their state lives on the server).
+    /// </summary>
+    public OpmlFile? OpmlFile { get; }
+
     public Account(string accountID, AccountType type, string name, IAccountDelegate @delegate)
     {
         AccountID = accountID;
@@ -62,6 +71,14 @@ public sealed class Account : IDisplayNameProvider, IDisposable
         Directory.CreateDirectory(AccountDirectory);
         Database = new ArticlesDatabaseStore(Path.Combine(AccountDirectory, "DB.sqlite3"), accountID);
         LoadFromDisk();
+
+        // Wire the OPML mirror file for local accounts. The OpmlFile's ctor
+        // subscribes to AccountStructureChanged so every add/remove/rename
+        // also rewrites Subscriptions.opml — matches Mac NetNewsWire.
+        if (type == AccountType.OnMyMac)
+        {
+            OpmlFile = new OpmlFile(Path.Combine(AccountDirectory, "Subscriptions.opml"), this);
+        }
     }
 
     public string NameForDisplay => Name;
@@ -76,6 +93,89 @@ public sealed class Account : IDisplayNameProvider, IDisposable
     public Feed? ExistingFeedWithUrl(string url)
         => FlattenedFeeds().FirstOrDefault(f => string.Equals(f.Url, url, StringComparison.OrdinalIgnoreCase));
 
+    public Folder? ExistingFolderWithName(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        return Folders.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Materializes a parsed OPML outline tree into this account's
+    /// feeds + folders. Existing feeds (matched by URL) and folders (matched
+    /// by name) are preserved; new items are added; nothing is deleted.
+    /// Runs inside <see cref="PerformBatchUpdate"/> so consumers see a single
+    /// structure-change notification.
+    /// </summary>
+    /// <remarks>
+    /// Items are run through <c>OPMLNormalizer</c> first so duplicate URLs
+    /// are dropped and unnamed folders are flattened — matches the
+    /// <c>BatchUpdate.shared.perform { account.loadOPMLItems(...) }</c> flow
+    /// in NetNewsWire's macOS app.
+    /// </remarks>
+    public void LoadOpmlItems(IReadOnlyList<Parsers.OpmlItem> items)
+    {
+        var normalized = OPMLNormalizer.Normalize(items);
+        PerformBatchUpdate(() =>
+        {
+            foreach (var item in normalized)
+                AddOpmlItem(item, parentFolder: null);
+        });
+    }
+
+    private void AddOpmlItem(Parsers.OpmlItem item, Folder? parentFolder)
+    {
+        // Feed entries (have a feedSpecifier).
+        if (item.FeedSpecifier is { } feedSpec)
+        {
+            var feedUrl = feedSpec.FeedUrl;
+            if (string.IsNullOrWhiteSpace(feedUrl)) return;
+
+            if (ExistingFeedWithUrl(feedUrl) is { } existing)
+            {
+                // Re-parent existing feed if the OPML places it in a folder
+                // we don't currently associate it with. Matches the Mac app's
+                // "import preserves prior subscription" behaviour.
+                if (parentFolder is not null && !parentFolder.Feeds.Contains(existing))
+                    MoveFeed(existing, parentFolder);
+                return;
+            }
+
+            var feed = new Feed(AccountID, feedUrl, feedUrl)
+            {
+                Name = feedSpec.Title,
+                HomePageUrl = feedSpec.HomePageUrl,
+            };
+            if (parentFolder is null) TopLevelFeeds.Add(feed);
+            else parentFolder.Feeds.Add(feed);
+            return;
+        }
+
+        // Folder entries (named outline with children).
+        if (item.IsFolder)
+        {
+            // OPMLNormalizer flattens to one level — children of named folders
+            // always promote to the named folder, not a sub-sub-folder.
+            var folderName = item.Title;
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                // Should not happen post-normalization, but be defensive.
+                foreach (var child in item.Children)
+                    AddOpmlItem(child, parentFolder);
+                return;
+            }
+
+            var folder = ExistingFolderWithName(folderName);
+            if (folder is null)
+            {
+                folder = new Folder(AccountID, folderName, Folders.Count + 1);
+                Folders.Add(folder);
+            }
+
+            foreach (var child in item.Children)
+                AddOpmlItem(child, folder);
+        }
+    }
+
     public Feed AddFeed(string url, string? name = null, Folder? folder = null)
     {
         if (ExistingFeedWithUrl(url) is { } existing) return existing;
@@ -83,8 +183,7 @@ public sealed class Account : IDisplayNameProvider, IDisposable
         var feed = new Feed(AccountID, feedID, url) { Name = name };
         if (folder is null) TopLevelFeeds.Add(feed);
         else folder.Feeds.Add(feed);
-        SaveToDisk();
-        AccountStructureChanged?.Invoke(this, EventArgs.Empty);
+        SaveAndNotifyStructure();
         return feed;
     }
 
@@ -92,8 +191,7 @@ public sealed class Account : IDisplayNameProvider, IDisposable
     {
         var folder = new Folder(AccountID, name, Folders.Count + 1);
         Folders.Add(folder);
-        SaveToDisk();
-        AccountStructureChanged?.Invoke(this, EventArgs.Empty);
+        SaveAndNotifyStructure();
         return folder;
     }
 
@@ -101,28 +199,26 @@ public sealed class Account : IDisplayNameProvider, IDisposable
     {
         bool removed = TopLevelFeeds.Remove(feed);
         foreach (var folder in Folders) removed |= folder.Feeds.Remove(feed);
-        if (removed) { SaveToDisk(); AccountStructureChanged?.Invoke(this, EventArgs.Empty); }
+        if (removed) SaveAndNotifyStructure();
         return removed;
     }
 
     public void RestoreFeed(Feed feed, Folder? folder = null)
     {
         if (folder is null) TopLevelFeeds.Add(feed); else folder.Feeds.Add(feed);
-        SaveToDisk();
-        AccountStructureChanged?.Invoke(this, EventArgs.Empty);
+        SaveAndNotifyStructure();
     }
 
     public void RestoreFolder(Folder folder)
     {
         Folders.Add(folder);
-        SaveToDisk();
-        AccountStructureChanged?.Invoke(this, EventArgs.Empty);
+        SaveAndNotifyStructure();
     }
 
     public bool RemoveFolder(Folder folder)
     {
         var removed = Folders.Remove(folder);
-        if (removed) { SaveToDisk(); AccountStructureChanged?.Invoke(this, EventArgs.Empty); }
+        if (removed) SaveAndNotifyStructure();
         return removed;
     }
 
@@ -136,20 +232,50 @@ public sealed class Account : IDisplayNameProvider, IDisposable
         if (!removed) return false;
         if (destination is null) TopLevelFeeds.Add(feed);
         else destination.Feeds.Add(feed);
-        SaveToDisk();
-        AccountStructureChanged?.Invoke(this, EventArgs.Empty);
+        SaveAndNotifyStructure();
         return true;
     }
 
     public async Task<Feed?> CreateFeedAsync(string urlOrSite, string? name = null, Folder? folder = null, CancellationToken ct = default)
     {
         var feed = await Delegate.CreateFeedAsync(this, urlOrSite, name, folder, ct);
-        if (feed is not null) { SaveToDisk(); AccountStructureChanged?.Invoke(this, EventArgs.Empty); }
+        if (feed is not null) SaveAndNotifyStructure();
         return feed;
     }
 
     public Task RefreshAllAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
         => Delegate.RefreshAllAsync(this, progress, ct);
+
+    /// <summary>
+    /// Runs <paramref name="action"/> with disk-save and structure-change
+    /// notifications suppressed; flushes a single save + event at the end.
+    /// Mirrors NetNewsWire's <c>BatchUpdate</c> + <c>account.loadOPMLItems(...)</c>
+    /// pattern used during OPML import or any bulk add/remove session.
+    /// </summary>
+    public void PerformBatchUpdate(Action action)
+    {
+        bool wasInBatch = _batchDepth > 0;
+        _batchDepth++;
+        try { action(); }
+        finally
+        {
+            _batchDepth--;
+            if (_batchDepth == 0 && !wasInBatch)
+            {
+                SaveToDisk();
+                AccountStructureChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    private int _batchDepth;
+
+    private void SaveAndNotifyStructure()
+    {
+        if (_batchDepth > 0) return;
+        SaveToDisk();
+        AccountStructureChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public Task<HashSet<Articles.Article>> FetchUnreadAsync(int? limit = null)
         => Database.FetchUnreadArticlesAsync(FlattenedFeeds().Select(f => f.FeedID), limit);

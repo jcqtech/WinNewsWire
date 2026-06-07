@@ -184,7 +184,11 @@ public partial class MainViewModel : ObservableObject
         var author = WebUtility.HtmlEncode(extracted.Author ?? item.Author ?? string.Empty);
         var when = extracted.DatePublished ?? item.PublishedDate.ToString("MMMM d, yyyy");
         var link = WebUtility.HtmlEncode(extracted.Url ?? item.Link);
-        var body = extracted.Content ?? string.Empty;
+        // Apply per-site mojibake fixes to the reader-mode body too. The
+        // extractor pulls bytes straight from the publisher so the same
+        // garbled-quote cleanup the WebView pass uses is appropriate here.
+        var body = WinNewsWire.AppShared.ArticleRendering.ArticleRenderingSpecialCases
+            .FilterHtmlIfNeeded(extracted.Url ?? item.Link, extracted.Content ?? string.Empty);
         var baseHref = ResolveBaseHref(item, extracted.Url);
         var baseTag = string.IsNullOrEmpty(baseHref)
             ? string.Empty
@@ -835,6 +839,12 @@ a {{ color:#0066cc; }}
     private static string BuildArticleHtml(FeedItem item)
     {
         var content = !string.IsNullOrEmpty(item.Content) ? item.Content : item.Summary;
+        // Per-site mojibake cleanup (e.g. theverge.com). Wired through the
+        // shared ArticleRenderingSpecialCases helper so both BuildArticleHtml
+        // and BuildReaderHtml apply the same transforms as Mac NetNewsWire.
+        if (!string.IsNullOrEmpty(content))
+            content = WinNewsWire.AppShared.ArticleRendering.ArticleRenderingSpecialCases
+                .FilterHtmlIfNeeded(item.Link, content);
         // If the feed supplies only a short summary (many mainstream feeds truncate
         // <description> to a teaser), fall back to any lead image so the user isn't
         // staring at a blank pane. Full content + images render via the WebView below.

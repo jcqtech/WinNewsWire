@@ -230,8 +230,15 @@
                 <MenuFlyoutItem Text="About WinNewsWire" AccessKey="A" Click="About_Click" />
                 <MenuFlyoutItem Text="Send Feedback…" AccessKey="F" Click="Feedback_Click" />
                 <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="WinNewsWire Help" AccessKey="H" Click="Menu_HelpHome" />
                 <MenuFlyoutItem Text="WinNewsWire Website" AccessKey="W" Click="Menu_Website" />
                 <MenuFlyoutItem Text="Release Notes" AccessKey="R" Click="Menu_ReleaseNotes" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="GitHub Repository" AccessKey="G" Click="Menu_GithubRepo" />
+                <MenuFlyoutItem Text="Report a Bug…" AccessKey="B" Click="Menu_BugTracker" />
+                <MenuFlyoutItem Text="Community Forum" AccessKey="C" Click="Menu_Discourse" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="Privacy Policy" AccessKey="P" Click="Menu_PrivacyPolicy" />
             </MenuBarItem>
         </MenuBar>
 

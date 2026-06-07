@@ -294,10 +294,25 @@ public sealed partial class MainWindow : Window
     }
 
     private void Menu_Website(object sender, RoutedEventArgs e)
-        => _ = Windows.System.Launcher.LaunchUriAsync(new System.Uri("https://winnewswire.com"));
+        => _ = Windows.System.Launcher.LaunchUriAsync(new System.Uri(AppShared.HelpUrl.Website));
 
     private void Menu_ReleaseNotes(object sender, RoutedEventArgs e)
-        => _ = Windows.System.Launcher.LaunchUriAsync(new System.Uri("https://winnewswire.com/releasenotes/"));
+        => _ = Windows.System.Launcher.LaunchUriAsync(new System.Uri(AppShared.HelpUrl.ReleaseNotes));
+
+    private void Menu_HelpHome(object sender, RoutedEventArgs e)
+        => _ = Windows.System.Launcher.LaunchUriAsync(new System.Uri(AppShared.HelpUrl.HelpHome));
+
+    private void Menu_GithubRepo(object sender, RoutedEventArgs e)
+        => _ = Windows.System.Launcher.LaunchUriAsync(new System.Uri(AppShared.HelpUrl.GithubRepo));
+
+    private void Menu_BugTracker(object sender, RoutedEventArgs e)
+        => _ = Windows.System.Launcher.LaunchUriAsync(new System.Uri(AppShared.HelpUrl.BugTracker));
+
+    private void Menu_Discourse(object sender, RoutedEventArgs e)
+        => _ = Windows.System.Launcher.LaunchUriAsync(new System.Uri(AppShared.HelpUrl.Discourse));
+
+    private void Menu_PrivacyPolicy(object sender, RoutedEventArgs e)
+        => _ = Windows.System.Launcher.LaunchUriAsync(new System.Uri(AppShared.HelpUrl.PrivacyPolicy));
 
     // --- Theme submenu population + menu toggle sync ---
 

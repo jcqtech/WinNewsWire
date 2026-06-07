@@ -24,25 +24,17 @@ public static class OpmlCommands
         var bytes = await Windows.Storage.FileIO.ReadBufferAsync(file);
         var data = new byte[bytes.Length];
         using (var reader = Windows.Storage.Streams.DataReader.FromBuffer(bytes)) reader.ReadBytes(data);
-        var text = System.Text.Encoding.UTF8.GetString(data);
-        var doc = OpmlParser.Parse(new ParserData(file.Path, data));
+        OpmlDocument doc;
+        try { doc = OpmlParser.Parse(new ParserData(file.Path, data)); }
+        catch (FeedParserException) { return; }
         var account = AppService.Shared.Accounts.DefaultAccount;
         if (account is null) return;
-        ImportRecursive(account, doc, folder: null);
-    }
-
-    private static void ImportRecursive(Account.Account account, OpmlItem item, Folder? folder)
-    {
-        foreach (var c in item.Children)
-        {
-            if (c.FeedSpecifier is { } spec)
-                account.AddFeed(spec.FeedUrl, spec.Title, folder);
-            else if (c.IsFolder && !string.IsNullOrWhiteSpace(c.Title))
-            {
-                var sub = folder ?? account.AddFolder(c.Title!);
-                ImportRecursive(account, c, sub);
-            }
-        }
+        // Batch the import so the sidebar/timeline see a single structural-
+        // change event instead of one per feed, matching the Mac app's
+        // BatchUpdate.shared.perform { account.loadOPMLItems(...) } path.
+        // LoadOpmlItems internally uses PerformBatchUpdate and re-uses
+        // existing feeds/folders rather than duplicating them.
+        account.LoadOpmlItems(doc.Children);
     }
 
     public static async Task ExportAsync(IntPtr ownerHwnd)
@@ -71,9 +63,11 @@ public static class OpmlCommands
         var opml = await WinNewsWire.AppShared.Importers.Nnw3Importer.ConvertToOpmlAsync(file.Path);
         if (opml is null) return;
         var bytes = System.Text.Encoding.UTF8.GetBytes(opml);
-        var doc = OpmlParser.Parse(new ParserData(file.Path, bytes));
+        OpmlDocument doc;
+        try { doc = OpmlParser.Parse(new ParserData(file.Path, bytes)); }
+        catch (FeedParserException) { return; }
         var account = AppService.Shared.Accounts.DefaultAccount;
         if (account is null) return;
-        ImportRecursive(account, doc, folder: null);
+        account.LoadOpmlItems(doc.Children);
     }
 }

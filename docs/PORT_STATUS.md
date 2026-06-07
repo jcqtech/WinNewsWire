@@ -41,6 +41,66 @@ scripting, widget, and crash reporter, which are out-of-scope per the user.
 
 ---
 
+## A.0 Most recent feature-parity pass (this session)
+
+Added in this session beyond the baseline below:
+
+**Account module**
+- ✅ `OPMLFile` — auto-export `Subscriptions.opml` mirror per local account; loads OPML
+  via `Account.LoadOpmlItems(...)` inside `PerformBatchUpdate(...)` for a single
+  structural-change event per import. Replaces the previous per-item AddFeed loop.
+- ✅ `Account.PerformBatchUpdate(Action)` — coalesces SaveToDisk/AccountStructureChanged
+  during bulk imports.
+- ✅ `AccountBehaviors` — per-account-type capability flags (no-root-folder,
+  no-multi-folder, no-OPML, no-rename, etc.) matching the Swift enum.
+- ✅ `Account.ExistingFolderWithName(name)` + folder re-use on OPML import.
+- ✅ `OpmlParser` now throws `FeedParserException` when the root element isn't
+  `<opml>` (parity with Swift `testNotOPML`).
+
+**AppShared module**
+- ✅ `ArticleRenderingSpecialCases` — per-site HTML cleanup (Verge mojibake fixes);
+  wired into both `ArticleRenderer` and the WinUI `BuildArticleHtml`/`BuildReaderHtml`.
+- ✅ `ArticleUtilities` — `PreferredLink`, `Body`, `LogicalDatePublished`, `Byline`
+  extension methods.
+- ✅ `HelpUrl` — central help/support URL constants (HelpHome, ReleaseNotes,
+  GithubRepo, BugTracker, Discourse, PrivacyPolicy, etc.).
+
+**Core module**
+- ✅ `MacroProcessor` — template macro substitution helper (used by article renderer).
+- ✅ `StripHtml` upgrade — full Swift parity (script/style block removal, max chars,
+  whitespace collapse).
+- ✅ `StringExtensions.NormalizedUrl`, `StrippingHttpOrHttpsScheme`, `StrippingPrefix`,
+  `StrippingSuffix`, `EscapingSpecialXmlCharacters`, `TrimmingWhitespace` — ports of
+  the Swift String helpers used by FeedFinder/OPML import.
+- ✅ `AppDefaults.NotificationsEnabled` — app-wide toggle honoured by
+  `NewArticleNotifier`.
+
+**Web module**
+- ✅ `WebExtensions.UrlQueryString(dict)` + `EscapedHtml(string)` — query-string
+  encoding + HTML escaping used by remote-account API callers.
+
+**UI improvements**
+- ✅ `ErrorLogWindow` gains in-window search/filter, results count, and
+  Copy All button.
+- ✅ `AboutWindow` gains a scrollable Credits panel listing NetNewsWire authors,
+  third-party libraries, and license info.
+- ✅ `PreferencesWindow` gains an Article Theme picker (+ Open Themes Folder),
+  Notifications section (toggle + Windows Settings deep link).
+- ✅ Help menu gains WinNewsWire Help, GitHub Repository, Report a Bug,
+  Community Forum, Privacy Policy entries.
+
+**Test suite parity**
+- ✅ +3 parser tests: `Markdown1`, `Markdown2`, `NotOpml`.
+- ✅ HtmlLink count assertion added.
+- ✅ +2 ArticleSorter tests: GroupByFeed ascending/descending (9 articles each).
+- ✅ +9 StripHtmlTests, +9 StringExtensionTests, +7 MacroProcessorTests in Core.
+- ✅ +5 WebExtensionsTests in Web.
+- ✅ +8 ArticleRenderingSpecialCasesTests + 7 OpmlFileTests + 11 ArticleUtilitiesTests
+  in AppShared.
+- ✅ Test totals: 228 → 295 (+67) all passing.
+
+---
+
 ## A.1 Current test-suite totals
 
 Per-project `dotnet test <csproj> --nologo` runs at the time of this
@@ -48,14 +108,14 @@ write-up:
 
 | Test project | Passing |
 |---|---:|
-| `Tests/Parsers.Tests` | 126 |
-| `Tests/Core.Tests` | 4 |
-| `Tests/AppShared.Tests` | 17 |
-| `Tests/Web.Tests` | 31 |
+| `Tests/Parsers.Tests` | 129 |
+| `Tests/Core.Tests` | 31 |
+| `Tests/AppShared.Tests` | 51 |
+| `Tests/Web.Tests` | 36 |
 | `Tests/RemoteAccounts.Tests` | 23 |
-| `Tests/ArticlesDatabase.Tests` | 18 |
+| `Tests/ArticlesDatabase.Tests` | 19 |
 | `Tests/ErrorLog.Tests` | 6 |
-| **Total** | **225** |
+| **Total** | **295** |
 
 `dotnet test WinNewsWire.sln` still fails up-front with
 `MSB5004: The solution file has two projects named "WinNewsWire"` — the

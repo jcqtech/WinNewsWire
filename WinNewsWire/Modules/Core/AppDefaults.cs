@@ -208,6 +208,16 @@ public sealed class AppDefaults
         set => Set(Key.ShowDebugMenu, value);
     }
 
+    /// <summary>Global toast-notification toggle. When false, the
+    /// <c>NewArticleNotifier</c> suppresses every notification regardless of
+    /// the per-feed flag. Default is true so a fresh install behaves like
+    /// Mac NetNewsWire (notifications opted-in per feed via context menu).</summary>
+    public bool NotificationsEnabled
+    {
+        get => Get("notificationsEnabled", true);
+        set => Set("notificationsEnabled", value);
+    }
+
     public DateTime? FirstRunDate
     {
         get => Get<DateTime?>(Key.FirstRunDate);

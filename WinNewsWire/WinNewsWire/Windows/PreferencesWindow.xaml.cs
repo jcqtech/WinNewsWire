@@ -38,11 +38,74 @@ public sealed partial class PreferencesWindow : Window
         GroupByFeedToggle.IsOn = AppDefaults.Shared.TimelineGroupByFeed;
         OpenBackgroundToggle.IsOn = AppDefaults.Shared.OpenInBrowserInBackground;
 
+        // Theme picker — pulls the list from the same ArticleThemesManager the View
+        // menu uses, so swapping themes here updates every render path immediately.
+        PopulateThemeCombo();
+
+        // Notifications toggle reflects the app-wide default; the per-feed flag
+        // still lives in the sidebar context menu.
+        NotificationsEnabledToggle.IsOn = AppDefaults.Shared.NotificationsEnabled;
+
         ReaderModeDefaultToggle.IsOn = AppDefaults.Shared.ReaderModeDefault;
         JavascriptToggle.IsOn = AppDefaults.Shared.ArticleContentJavascriptEnabled;
         DebugMenuToggle.IsOn = AppDefaults.Shared.ShowDebugMenu;
 
         ReloadAccounts();
+    }
+
+    private void PopulateThemeCombo()
+    {
+        ThemeCombo.Items.Clear();
+        var themeMgr = WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared;
+        foreach (var theme in themeMgr.Themes)
+            ThemeCombo.Items.Add(new ComboBoxItem { Content = theme.Name, Tag = theme.Name });
+        var current = themeMgr.CurrentTheme.Name;
+        for (int i = 0; i < ThemeCombo.Items.Count; i++)
+        {
+            if (ThemeCombo.Items[i] is ComboBoxItem cbi && (cbi.Tag as string) == current)
+            {
+                ThemeCombo.SelectedIndex = i;
+                break;
+            }
+        }
+        if (ThemeCombo.SelectedIndex < 0 && ThemeCombo.Items.Count > 0)
+            ThemeCombo.SelectedIndex = 0;
+    }
+
+    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loaded || ThemeCombo.SelectedItem is not ComboBoxItem cbi) return;
+        if (cbi.Tag is string name)
+            WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared.SelectByName(name);
+    }
+
+    private void OpenThemesFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var path = WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared.FolderPath;
+        try { System.IO.Directory.CreateDirectory(path); } catch { }
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+        catch { }
+    }
+
+    private void NotificationsEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded) return;
+        AppDefaults.Shared.NotificationsEnabled = NotificationsEnabledToggle.IsOn;
+    }
+
+    private void OpenNotificationSettings_Click(object sender, RoutedEventArgs e)
+    {
+        // Deep link to Windows' per-app notification settings. Falls back to the
+        // top-level page if the app-scoped one isn't available on this build.
+        try { _ = Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:notifications")); }
+        catch { }
     }
 
     public sealed record AccountRow(Account.Account Account)
