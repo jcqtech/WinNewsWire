@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinNewsWire.Account</RootNamespace>
+    <AssemblyName>WinNewsWire.Account</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Parsers\Parsers.csproj" />
+    <ProjectReference Include="..\Web\Web.csproj" />
+    <ProjectReference Include="..\Articles\Articles.csproj" />
+    <ProjectReference Include="..\ArticlesDatabase\ArticlesDatabase.csproj" />
+    <ProjectReference Include="..\SyncDatabase\SyncDatabase.csproj" />
+    <ProjectReference Include="..\FeedFinder\FeedFinder.csproj" />
+  </ItemGroup>
+</Project>

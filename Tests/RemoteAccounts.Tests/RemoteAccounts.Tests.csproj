@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\WinNewsWire\Modules\Account\Account.csproj" />
+    <ProjectReference Include="..\..\WinNewsWire\Modules\Feedbin\Feedbin.csproj" />
+    <ProjectReference Include="..\..\WinNewsWire\Modules\NewsBlur\NewsBlur.csproj" />
+    <ProjectReference Include="..\..\WinNewsWire\Modules\ReaderAPI\ReaderAPI.csproj" />
+    <ProjectReference Include="..\..\WinNewsWire\Modules\Feedly\Feedly.csproj" />
+    <ProjectReference Include="..\..\WinNewsWire\Modules\Secrets\Secrets.csproj" />
+  </ItemGroup>
+</Project>

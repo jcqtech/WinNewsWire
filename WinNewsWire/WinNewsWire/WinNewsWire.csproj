@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>WinNewsWire</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\wnw.ico</ApplicationIcon>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <NoWarn>MVVMTK0045</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\Keyboard\*.plist" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\wnw.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\wnw.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\wnw-flat.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\wnw-flat.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
+    <PackageReference Include="System.ServiceModel.Syndication" Version="9.0.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Core\Core.csproj" />
+    <ProjectReference Include="..\Modules\Parsers\Parsers.csproj" />
+    <ProjectReference Include="..\Modules\Web\Web.csproj" />
+    <ProjectReference Include="..\Modules\Articles\Articles.csproj" />
+    <ProjectReference Include="..\Modules\ArticlesDatabase\ArticlesDatabase.csproj" />
+    <ProjectReference Include="..\Modules\SyncDatabase\SyncDatabase.csproj" />
+    <ProjectReference Include="..\Modules\FeedFinder\FeedFinder.csproj" />
+    <ProjectReference Include="..\Modules\Tree\Tree.csproj" />
+    <ProjectReference Include="..\Modules\Account\Account.csproj" />
+    <ProjectReference Include="..\Modules\AppShared\AppShared.csproj" />
+    <ProjectReference Include="..\Modules\ErrorLog\ErrorLog.csproj" />
+    <ProjectReference Include="..\Modules\Secrets\Secrets.csproj" />
+    <ProjectReference Include="..\Modules\Feedbin\Feedbin.csproj" />
+    <ProjectReference Include="..\Modules\NewsBlur\NewsBlur.csproj" />
+    <ProjectReference Include="..\Modules\ReaderAPI\ReaderAPI.csproj" />
+    <ProjectReference Include="..\Modules\Feedly\Feedly.csproj" />
+  </ItemGroup>
+
+    <!-- Publish Properties -->
+  <PropertyGroup>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
+    <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
+    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+  </PropertyGroup>
+</Project>

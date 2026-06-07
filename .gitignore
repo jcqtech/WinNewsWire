@@ -1,0 +1,9 @@
+# Visual Studio / .NET build artifacts and user-specific files
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.assets.cache
+*.csproj.FileListAbsolute.txt
+TestResults/

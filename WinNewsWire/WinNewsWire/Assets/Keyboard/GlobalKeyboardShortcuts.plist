@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>title</key>
+		<string>Scroll or Go to Next Unread</string>
+		<key>key</key>
+		<string>[space]</string>
+		<key>action</key>
+		<string>scrollOrGoToNextUnread:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Scroll or Go to Next Unread</string>
+		<key>key</key>
+		<string>[space]</string>
+		<key>shiftModifier</key>
+		<true/>
+		<key>action</key>
+		<string>scrollUp:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Go to Previous Unread</string>
+		<key>key</key>
+		<string>-</string>
+		<key>action</key>
+		<string>goToPreviousUnread:</string>
+	</dict>
+	<dict>
+		<key>key</key>
+		<string>[uparrow]</string>
+		<key>shiftModifier</key>
+		<true/>
+		<key>action</key>
+		<string>goToPreviousUnread:</string>
+	</dict>
+	<dict>
+		<key>key</key>
+		<string>+</string>
+		<key>action</key>
+		<string>nextUnread:</string>
+	</dict>
+	<dict>
+		<key>key</key>
+		<string>+</string>
+		<key>shiftModifier</key>
+		<true/>
+		<key>action</key>
+		<string>nextUnread:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Next Unread</string>
+		<key>key</key>
+		<string>n</string>
+		<key>action</key>
+		<string>nextUnread:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Mark Read</string>
+		<key>key</key>
+		<string>r</string>
+		<key>action</key>
+		<string>toggleRead:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Mark All as Read</string>
+		<key>key</key>
+		<string>k</string>
+		<key>action</key>
+		<string>markAllAsRead:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Mark Unread and Go To Next Unread</string>
+		<key>key</key>
+		<string>m</string>
+		<key>action</key>
+		<string>markUnreadAndGoToNextUnread:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Mark All as Read in Timeline and Go To Next Unread</string>
+		<key>key</key>
+		<string>l</string>
+		<key>action</key>
+		<string>markAllAsReadAndGoToNextUnread:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Mark Older as Read</string>
+		<key>key</key>
+		<string>o</string>
+		<key>action</key>
+		<string>markOlderArticlesAsRead:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Mark Unread</string>
+		<key>key</key>
+		<string>u</string>
+		<key>action</key>
+		<string>toggleRead:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Open in Browser</string>
+		<key>key</key>
+		<string>b</string>
+		<key>action</key>
+		<string>openInBrowser:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Open In App Browser</string>
+		<key>key</key>
+		<string>[return]</string>
+		<key>action</key>
+		<string>openInAppBrowser:</string>
+	</dict>
+	<dict>
+		<key>key</key>
+		<string>[enter]</string>
+		<key>action</key>
+		<string>openInBrowser:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Go to Previous Feed</string>
+		<key>key</key>
+		<string>a</string>
+		<key>action</key>
+		<string>goToPreviousSubscription:</string>
+	</dict>
+	<dict>
+		<key>title</key>
+		<string>Go to Next Feed</string>
+		<key>key</key>
+		<string>z</string>
+		<key>action</key>
+		<string>goToNextSubscription:</string>
+	</dict>
+	<dict>
+		<key>key</key>
+		<string>s</string>
+		<key>action</key>
+		<string>toggleStarred:</string>
+	</dict>
+	<dict>
+		<key>key</key>
+		<string>[enter]</string>
+		<key>shiftModifier</key>
+		<true/>
+		<key>action</key>
+		<string>openInBrowserUsingOppositeOfSettings:</string>
+	</dict>
+	<dict>
+		<key>key</key>
+		<string>[return]</string>
+		<key>shiftModifier</key>
+		<true/>
+		<key>action</key>
+		<string>openInBrowserUsingOppositeOfSettings:</string>
+	</dict>
+	<dict>
+		<key>key</key>
+		<string>B</string>
+		<key>shiftModifier</key>
+		<true/>
+		<key>action</key>
+		<string>openInBrowserUsingOppositeOfSettings:</string>
+	</dict>
+</array>
+</plist>
