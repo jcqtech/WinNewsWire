@@ -7,55 +7,334 @@
     mc:Ignorable="mc"
     Title="Keyboard Shortcuts">
     <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
-    <ScrollViewer Padding="24">
-        <StackPanel Spacing="8" MinWidth="420">
-            <TextBlock Text="Keyboard Shortcuts" Style="{StaticResource TitleTextBlockStyle}" />
-            <TextBlock Text="Navigation" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
-            <Grid ColumnSpacing="24" RowSpacing="4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="J / Down" FontWeight="SemiBold" />
-                <TextBlock Grid.Column="1" Text="Next article" />
-                <TextBlock Grid.Row="1" Text="K / Up" FontWeight="SemiBold" />
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="Previous article" />
-                <TextBlock Grid.Row="2" Text="Space" FontWeight="SemiBold" />
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="Scroll article / next unread" />
-                <TextBlock Grid.Row="3" Text="Enter" FontWeight="SemiBold" />
-                <TextBlock Grid.Row="3" Grid.Column="1" Text="Open in browser" />
-            </Grid>
-            <TextBlock Text="Article Actions" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
-            <Grid ColumnSpacing="24" RowSpacing="4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="R" FontWeight="SemiBold" />
-                <TextBlock Grid.Column="1" Text="Toggle read" />
-                <TextBlock Grid.Row="1" Text="L / S" FontWeight="SemiBold" />
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="Toggle starred" />
-                <TextBlock Grid.Row="2" Text="Ctrl+M" FontWeight="SemiBold" />
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="Mark all as read" />
-                <TextBlock Grid.Row="3" Text="Ctrl+R" FontWeight="SemiBold" />
-                <TextBlock Grid.Row="3" Grid.Column="1" Text="Refresh all feeds" />
-                <TextBlock Grid.Row="4" Text="Ctrl+," FontWeight="SemiBold" />
-                <TextBlock Grid.Row="4" Grid.Column="1" Text="Preferences" />
-            </Grid>
-            <Button Content="Close" Click="Close_Click" HorizontalAlignment="Right" Margin="0,16,0,0" Style="{StaticResource AccentButtonStyle}" />
+
+    <Grid>
+        <Grid.Resources>
+            <!-- "Keycap" chip: rounded, hairline border, slight tinted bg, mono-ish font. -->
+            <Style x:Key="KeycapStyle" TargetType="Border">
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlElevationBorderBrush}" />
+                <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
+                <Setter Property="Padding" Value="6,1" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="MinWidth" Value="22" />
+            </Style>
+            <Style x:Key="KeycapTextStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="FontFamily" Value="Consolas, Segoe UI, sans-serif" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="FontSize" Value="11.5" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Style>
+            <Style x:Key="SectionHeaderStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Margin" Value="0,0,0,6" />
+            </Style>
+            <Style x:Key="DescTextStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource BodyTextBlockStyle}">
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+            <Style x:Key="SeparatorTextStyle" TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Margin" Value="2,0" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+                <Setter Property="FontSize" Value="11" />
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Padding="20,16,20,8" Spacing="2">
+            <TextBlock Text="Keyboard Shortcuts" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock Text="Get around faster with the keyboard."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
-    </ScrollViewer>
+
+        <!-- Scrollable card list -->
+        <ScrollViewer Grid.Row="1" Padding="20,4,20,8"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollMode="Disabled">
+            <StackPanel Spacing="10">
+
+                <!-- Navigation -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="14,12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Navigation" Style="{StaticResource SectionHeaderStyle}" />
+                        <Grid ColumnSpacing="12" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="J" Style="{StaticResource KeycapTextStyle}" /></Border>
+                                <TextBlock Text="or" Style="{StaticResource SeparatorTextStyle}" />
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+↓" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Next article" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="K" Style="{StaticResource KeycapTextStyle}" /></Border>
+                                <TextBlock Text="or" Style="{StaticResource SeparatorTextStyle}" />
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+↑" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Previous article" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Space" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Scroll article / next unread" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+Shift+B" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="Toggle sidebar" Style="{StaticResource DescTextStyle}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Article actions -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="14,12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Article actions" Style="{StaticResource SectionHeaderStyle}" />
+                        <Grid ColumnSpacing="12" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="M" Style="{StaticResource KeycapTextStyle}" /></Border>
+                                <TextBlock Text="or" Style="{StaticResource SeparatorTextStyle}" />
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="U" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Toggle read / unread" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="S" Style="{StaticResource KeycapTextStyle}" /></Border>
+                                <TextBlock Text="or" Style="{StaticResource SeparatorTextStyle}" />
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="L" Style="{StaticResource KeycapTextStyle}" /></Border>
+                                <TextBlock Text="or" Style="{StaticResource SeparatorTextStyle}" />
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+L" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Toggle starred" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+K" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Mark all as read" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+B" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="Open in browser" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+Shift+W" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Text="Toggle reader view" Style="{StaticResource DescTextStyle}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Feeds -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="14,12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Feeds" Style="{StaticResource SectionHeaderStyle}" />
+                        <Grid ColumnSpacing="12" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+N" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="New feed" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+Shift+N" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="New folder" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="R" Style="{StaticResource KeycapTextStyle}" /></Border>
+                                <TextBlock Text="or" Style="{StaticResource SeparatorTextStyle}" />
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+R" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Refresh all feeds" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+I" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="Get info (Inspector)" Style="{StaticResource DescTextStyle}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Window & app -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="14,12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Window &amp; app" Style="{StaticResource SectionHeaderStyle}" />
+                        <Grid ColumnSpacing="12" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+F" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Focus search" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+M" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Minimize window" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+W" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Close window" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+Q" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="Quit WinNewsWire" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Alt" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Text="Reveal menu bar mnemonics" Style="{StaticResource DescTextStyle}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Editing -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="14,12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Editing" Style="{StaticResource SectionHeaderStyle}" />
+                        <Grid ColumnSpacing="12" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+Z" Style="{StaticResource KeycapTextStyle}" /></Border>
+                                <TextBlock Text="/" Style="{StaticResource SeparatorTextStyle}" />
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+Shift+Z" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Undo / redo" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+X / C / V" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Cut / copy / paste" Style="{StaticResource DescTextStyle}" />
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="4">
+                                <Border Style="{StaticResource KeycapStyle}">
+                                    <TextBlock Text="Ctrl+A" Style="{StaticResource KeycapTextStyle}" /></Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Select all (in text fields)" Style="{StaticResource DescTextStyle}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer -->
+        <Grid Grid.Row="2" Padding="20,8,20,16" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" VerticalAlignment="Center"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="Some shortcuts require focus on the article list." />
+            <Button Grid.Column="1" Content="Close" Click="Close_Click"
+                    Style="{StaticResource AccentButtonStyle}" />
+        </Grid>
+    </Grid>
 </Window>
