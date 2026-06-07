@@ -747,6 +747,7 @@ public sealed partial class MainContent : UserControl
         stack.Children.Add(accountCombo);
         dialog.Content = stack;
 
+        AppWindows.WindowThemeHelper.Apply(dialog);
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(nameBox.Text)
             && ((ComboBoxItem)accountCombo.SelectedItem!).Tag is WinNewsWire.Account.Account account)
@@ -1067,6 +1068,7 @@ public sealed partial class MainContent : UserControl
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
+        AppWindows.WindowThemeHelper.Apply(confirm);
         if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
 
         switch (item.Tag)

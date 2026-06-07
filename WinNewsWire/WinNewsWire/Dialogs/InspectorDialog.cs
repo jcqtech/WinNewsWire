@@ -8,6 +8,7 @@ using WinNewsWire.Account;
 using WinNewsWire.AppRuntime;
 using WinNewsWire.AppShared.SmartFeeds;
 using WinNewsWire.Models;
+using WinNewsWire.AppWindows;
 
 namespace WinNewsWire.Dialogs;
 
@@ -59,6 +60,7 @@ public static class InspectorDialog
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = root,
         };
+        WindowThemeHelper.Apply(dialog);
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary)
         {
@@ -91,6 +93,7 @@ public static class InspectorDialog
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = root,
         };
+        WindowThemeHelper.Apply(dialog);
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary)
         {
@@ -115,6 +118,7 @@ public static class InspectorDialog
             CloseButtonText = "Close",
             XamlRoot = root,
         };
+        WindowThemeHelper.Apply(dialog);
         await dialog.ShowAsync();
     }
 
@@ -140,6 +144,7 @@ public static class InspectorDialog
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = root,
         };
+        WindowThemeHelper.Apply(dialog);
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(nameBox.Text))
         {
@@ -162,6 +167,7 @@ public static class InspectorDialog
             CloseButtonText = "Close",
             XamlRoot = root,
         };
+        WindowThemeHelper.Apply(dialog);
         return dialog.ShowAsync().AsTask();
     }
 

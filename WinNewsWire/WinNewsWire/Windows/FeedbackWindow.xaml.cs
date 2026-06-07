@@ -39,6 +39,7 @@ public sealed partial class FeedbackWindow : Window
     {
         InitializeComponent();
         WindowIconHelper.ApplyFlatIcon(this);
+        WindowThemeHelper.Attach(this);
         ResizeToContent();
 
         _screenshot = screenshot;

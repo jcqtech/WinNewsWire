@@ -10,6 +10,7 @@ public sealed partial class AboutWindow : Window
     {
         InitializeComponent();
         WindowIconHelper.ApplyFlatIcon(this);
+        WindowThemeHelper.Attach(this);
         ResizeToContent();
         var ver = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
         VersionText.Text = $"Version {ver}";

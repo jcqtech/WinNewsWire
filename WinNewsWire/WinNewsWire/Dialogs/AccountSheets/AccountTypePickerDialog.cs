@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using WinNewsWire.Account;
+using WinNewsWire.AppWindows;
 
 namespace WinNewsWire.Dialogs.AccountSheets;
 
@@ -61,6 +62,7 @@ public static class AccountTypePickerDialog
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = root,
         };
+        WindowThemeHelper.Apply(dialog);
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
         if (list.SelectedItem is not ListViewItem lvi || lvi.Tag is not AccountOption choice) return null;
 

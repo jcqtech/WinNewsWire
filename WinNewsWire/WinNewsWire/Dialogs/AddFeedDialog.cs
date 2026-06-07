@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using WinNewsWire.Account;
 using WinNewsWire.AppRuntime;
 using WinNewsWire.ViewModels;
+using WinNewsWire.AppWindows;
 
 namespace WinNewsWire.Dialogs;
 
@@ -68,6 +69,8 @@ public static class AddFeedDialog
         stack.Children.Add(new TextBlock { Text = "Folder:" });
         stack.Children.Add(folderCombo);
         dialog.Content = stack;
+
+        WindowThemeHelper.Apply(dialog);
 
         var result = await dialog.ShowAsync();
         if (result != ContentDialogResult.Primary) return null;

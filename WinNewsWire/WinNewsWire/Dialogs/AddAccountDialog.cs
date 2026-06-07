@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using WinNewsWire.Account;
 using WinNewsWire.AppRuntime;
 using WinNewsWire.Secrets;
+using WinNewsWire.AppWindows;
 
 namespace WinNewsWire.Dialogs;
 
@@ -86,6 +87,7 @@ public static class AddAccountDialog
 
         while (true)
         {
+            WindowThemeHelper.Apply(dialog);
             var result = await dialog.ShowAsync();
             if (result != ContentDialogResult.Primary) return null;
 

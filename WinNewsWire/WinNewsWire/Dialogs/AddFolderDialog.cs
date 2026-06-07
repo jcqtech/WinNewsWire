@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Controls;
 using WinNewsWire.Account;
 using WinNewsWire.AppRuntime;
+using WinNewsWire.AppWindows;
 
 namespace WinNewsWire.Dialogs;
 
@@ -33,6 +34,8 @@ public static class AddFolderDialog
             Content = stack,
         };
 
+        WindowThemeHelper.Apply(dialog);
+
         var result = await dialog.ShowAsync();
         if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(nameBox.Text)) return null;
         if (accountCombo.SelectedItem is not ComboBoxItem item || item.Tag is not Account.Account acct) return null;
@@ -55,6 +58,7 @@ public static class RenameDialog
             XamlRoot = root,
             Content = nameBox,
         };
+        WindowThemeHelper.Apply(dialog);
         var result = await dialog.ShowAsync();
         if (result != ContentDialogResult.Primary) return null;
         return string.IsNullOrWhiteSpace(nameBox.Text) ? null : nameBox.Text.Trim();

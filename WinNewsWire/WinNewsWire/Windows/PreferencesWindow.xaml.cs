@@ -19,6 +19,7 @@ public sealed partial class PreferencesWindow : Window
     {
         InitializeComponent();
         WindowIconHelper.ApplyFlatIcon(this);
+        WindowThemeHelper.Attach(this);
         PopulateCombos();
         _loaded = true;
     }

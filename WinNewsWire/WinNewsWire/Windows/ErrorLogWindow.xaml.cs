@@ -26,6 +26,7 @@ public sealed partial class ErrorLogWindow : Window
     {
         InitializeComponent();
         WindowIconHelper.ApplyFlatIcon(this);
+        WindowThemeHelper.Attach(this);
         _ = ReloadAsync();
     }
 

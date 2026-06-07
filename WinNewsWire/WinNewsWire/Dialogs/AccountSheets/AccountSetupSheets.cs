@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using WinNewsWire.Account;
 using WinNewsWire.AppRuntime;
 using WinNewsWire.Secrets;
+using WinNewsWire.AppWindows;
 
 namespace WinNewsWire.Dialogs.AccountSheets;
 
@@ -54,6 +55,7 @@ public static class AddLocalAccountSheet
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = root,
         };
+        WindowThemeHelper.Apply(dialog);
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
         var displayName = string.IsNullOrWhiteSpace(name.Text) ? "On My PC" : name.Text.Trim();
         return AppService.Shared.Accounts.CreateRemoteAccount(AccountType.OnMyMac, displayName, new LocalAccountDelegate());
@@ -81,6 +83,7 @@ public static class AddFeedbinAccountSheet
         };
         while (true)
         {
+            WindowThemeHelper.Apply(dialog);
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
             var creds = new Credentials(CredentialsType.Basic, user.Text.Trim(), pass.Password);
             var del = new Feedbin.FeedbinAccountDelegate(creds);
@@ -117,6 +120,7 @@ public static class AddNewsBlurAccountSheet
         };
         while (true)
         {
+            WindowThemeHelper.Apply(dialog);
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
             var caller = new NewsBlur.NewsBlurAPICaller();
             string? sessionId;
@@ -170,6 +174,7 @@ public static class AddFeedlyAccountSheet
         };
         while (true)
         {
+            WindowThemeHelper.Apply(dialog);
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
             var displayName = string.IsNullOrWhiteSpace(name.Text) ? "Feedly" : name.Text.Trim();
 
@@ -222,6 +227,7 @@ public static class AddReaderApiAccountSheet
         };
         while (true)
         {
+            WindowThemeHelper.Apply(dialog);
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
             var hostText = host?.Text?.Trim();
             var caller = new ReaderAPI.ReaderAPICaller(variant, string.IsNullOrEmpty(hostText) ? null : hostText);

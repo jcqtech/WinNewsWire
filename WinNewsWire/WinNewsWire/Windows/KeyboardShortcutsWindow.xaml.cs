@@ -26,6 +26,7 @@ public sealed partial class KeyboardShortcutsWindow : Window
     {
         InitializeComponent();
         WindowIconHelper.ApplyFlatIcon(this);
+        WindowThemeHelper.Attach(this);
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(_hwnd);
