@@ -201,6 +201,14 @@ public sealed partial class MainContent : UserControl
                 "https://winnewswire.local/*", CoreWebView2WebResourceContext.All);
             ContentWebView.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
 
+            // When the WebView2 has focus it eats every keystroke; the
+            // UserControl-level KeyboardAccelerators never fire. Inject a tiny
+            // shim that listens for known j/k/r/m/s/l/u/space/Ctrl-combos at
+            // document scope and proxies them back via WebMessage so they
+            // continue to work while the reading pane is focused.
+            await ContentWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(KeyboardForwarderScript);
+            ContentWebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+
             _webViewReady = true;
 
             if (!string.IsNullOrEmpty(ViewModel.ArticleHtml))
@@ -209,6 +217,130 @@ public sealed partial class MainContent : UserControl
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"WebView2 init error: {ex.Message}");
+        }
+    }
+
+    /// <summary>JavaScript injected into every article document so single-key
+    /// shortcuts (j/k/r/m/s/l/u/space) and Ctrl-combos still work when the
+    /// WebView2 has focus. The script suppresses the default browser action
+    /// for the keys it claims and posts a JSON message back to the host.</summary>
+    private const string KeyboardForwarderScript = @"
+(function () {
+    if (window.__wnwShortcutsInstalled) return;
+    window.__wnwShortcutsInstalled = true;
+    document.addEventListener('keydown', function (e) {
+        // Skip when the user is typing in an input/textarea/contenteditable so
+        // articles with comment boxes or search inputs keep working normally.
+        var t = e.target;
+        if (t) {
+            var tag = (t.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            if (t.isContentEditable) return;
+        }
+        var key = (e.key || '').toLowerCase();
+        var ctrl = e.ctrlKey || e.metaKey;
+        var shift = e.shiftKey;
+        var alt = e.altKey;
+        var cmd = null;
+        if (!ctrl && !alt && !shift) {
+            switch (key) {
+                case 'j': cmd = 'next'; break;
+                case 'k': cmd = 'prev'; break;
+                case 'r': cmd = 'refresh'; break;
+                case 'm': case 'u': cmd = 'markRead'; break;
+                case 's': case 'l': cmd = 'toggleStar'; break;
+                case ' ': cmd = 'nextUnread'; break;
+            }
+        } else if (ctrl && !alt && !shift) {
+            switch (key) {
+                case 'arrowdown': cmd = 'next'; break;
+                case 'arrowup':   cmd = 'prev'; break;
+                case 'r': cmd = 'refresh'; break;
+                case 'k': cmd = 'markAllRead'; break;
+                case 'i': cmd = 'inspector'; break;
+                case 'n': cmd = 'newFeed'; break;
+                case 'l': cmd = 'toggleStar'; break;
+                case 'b': cmd = 'openBrowser'; break;
+            }
+        } else if (ctrl && shift && !alt) {
+            switch (key) {
+                case 'b': cmd = 'toggleSidebar'; break;
+                case 'w': cmd = 'toggleReaderMode'; break;
+                case 'n': cmd = 'newFolder'; break;
+            }
+        }
+        if (cmd) {
+            e.preventDefault();
+            e.stopPropagation();
+            try { window.chrome.webview.postMessage(JSON.stringify({ type: 'shortcut', cmd: cmd })); }
+            catch (_) { /* webview bridge unavailable; nothing to forward to */ }
+        }
+    }, true);
+})();
+";
+
+    /// <summary>Routes shortcut commands forwarded by the in-page JS shim
+    /// (<see cref="KeyboardForwarderScript"/>) to the same view-model commands
+    /// the UserControl-level KeyboardAccelerators invoke when the rest of the
+    /// app has focus.</summary>
+    private void OnWebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        try
+        {
+            string? raw = null;
+            try { raw = args.TryGetWebMessageAsString(); }
+            catch { raw = args.WebMessageAsJson; }
+            if (string.IsNullOrEmpty(raw)) return;
+
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return;
+            if (!root.TryGetProperty("type", out var type) || type.GetString() != "shortcut") return;
+            if (!root.TryGetProperty("cmd", out var cmdEl)) return;
+
+            var cmd = cmdEl.GetString();
+            DispatchWebViewShortcut(cmd);
+        }
+        catch
+        {
+            // Malformed payload — ignore. The shim should always send valid JSON,
+            // but a misbehaving page script could call postMessage too.
+        }
+    }
+
+    private async void DispatchWebViewShortcut(string? cmd)
+    {
+        try
+        {
+            switch (cmd)
+            {
+                case "next":             ViewModel.NextArticleCommand.Execute(null); break;
+                case "prev":             ViewModel.PreviousArticleCommand.Execute(null); break;
+                case "refresh":
+                    await ViewModel.ReloadFeedsCommand.ExecuteAsync(null);
+                    BuildSidebarUI();
+                    break;
+                case "markRead":         await ViewModel.MarkSelectedReadCommand.ExecuteAsync(null); break;
+                case "toggleStar":       await ViewModel.ToggleStarredCommand.ExecuteAsync(null); break;
+                case "markAllRead":
+                    await ViewModel.MarkAllReadCommand.ExecuteAsync(null);
+                    ViewModel.BuildSidebar();
+                    BuildSidebarUI();
+                    break;
+                case "inspector":
+                    await WinNewsWire.Dialogs.InspectorDialog.ShowAsync(XamlRoot, ViewModel.SelectedSidebarItem);
+                    break;
+                case "newFeed":          await NewFeedAsync(); break;
+                case "newFolder":        await NewFolderAsync(); break;
+                case "toggleSidebar":    ViewModel.ToggleSidebarCommand.Execute(null); break;
+                case "toggleReaderMode": ViewModel.ToggleReaderModeCommand.Execute(null); break;
+                case "nextUnread":       SelectNextUnread(); break;
+                case "openBrowser":      OpenSelectedInBrowser(); break;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"WebView shortcut '{cmd}' failed: {ex.Message}");
         }
     }
 
