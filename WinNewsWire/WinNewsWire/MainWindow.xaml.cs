@@ -372,6 +372,66 @@ public sealed partial class MainWindow : Window
                 WinNewsWire.Core.AppDefaults.Appearance.Dark => ElementTheme.Dark,
                 _ => ElementTheme.Default,
             };
+
+            // ActualTheme only resolves once the element is in the tree, so we
+            // listen for changes to recolor caption buttons whenever Windows'
+            // system theme flips (relevant when AppearanceMode == System).
+            if (!_actualThemeChangedHooked)
+            {
+                root.ActualThemeChanged += (_, _) => ApplyCaptionButtonColors();
+                _actualThemeChangedHooked = true;
+            }
+        }
+        ApplyCaptionButtonColors();
+    }
+
+    private bool _actualThemeChangedHooked;
+
+    /// <summary>
+    /// Paint the min/max/close caption glyphs so they contrast against the
+    /// Mica backdrop. When the app uses dark mode but Windows itself is set
+    /// to light (or vice versa), the framework's default caption colors come
+    /// from the system theme and can disappear into the backdrop — this
+    /// pushes explicit colors based on the effective app theme instead.
+    /// </summary>
+    private void ApplyCaptionButtonColors()
+    {
+        if (_appWindow?.TitleBar is null) return;
+
+        bool isDark;
+        var mode = WinNewsWire.Core.AppDefaults.Shared.AppearanceMode;
+        if (mode == WinNewsWire.Core.AppDefaults.Appearance.Dark) isDark = true;
+        else if (mode == WinNewsWire.Core.AppDefaults.Appearance.Light) isDark = false;
+        else if (Content is FrameworkElement fe && fe.ActualTheme != ElementTheme.Default)
+            isDark = fe.ActualTheme == ElementTheme.Dark;
+        else
+            isDark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+
+        var titleBar = _appWindow.TitleBar;
+        // Keep button cells transparent so the Mica backdrop continues to
+        // show through (matches the look of every other WinUI app).
+        titleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+
+        if (isDark)
+        {
+            var fg = Microsoft.UI.Colors.White;
+            titleBar.ButtonForegroundColor = fg;
+            titleBar.ButtonHoverForegroundColor = fg;
+            titleBar.ButtonPressedForegroundColor = fg;
+            titleBar.ButtonInactiveForegroundColor = Microsoft.UI.ColorHelper.FromArgb(0x9A, 0xFF, 0xFF, 0xFF);
+            titleBar.ButtonHoverBackgroundColor   = Microsoft.UI.ColorHelper.FromArgb(0x22, 0xFF, 0xFF, 0xFF);
+            titleBar.ButtonPressedBackgroundColor = Microsoft.UI.ColorHelper.FromArgb(0x44, 0xFF, 0xFF, 0xFF);
+        }
+        else
+        {
+            var fg = Microsoft.UI.Colors.Black;
+            titleBar.ButtonForegroundColor = fg;
+            titleBar.ButtonHoverForegroundColor = fg;
+            titleBar.ButtonPressedForegroundColor = fg;
+            titleBar.ButtonInactiveForegroundColor = Microsoft.UI.ColorHelper.FromArgb(0x9A, 0x00, 0x00, 0x00);
+            titleBar.ButtonHoverBackgroundColor   = Microsoft.UI.ColorHelper.FromArgb(0x18, 0x00, 0x00, 0x00);
+            titleBar.ButtonPressedBackgroundColor = Microsoft.UI.ColorHelper.FromArgb(0x30, 0x00, 0x00, 0x00);
         }
     }
 
