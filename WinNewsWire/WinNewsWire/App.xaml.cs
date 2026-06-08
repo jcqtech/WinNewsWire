@@ -122,17 +122,7 @@ namespace WinNewsWire
             try
             {
                 _window = new MainWindow();
-                _window.Closed += (_, __) =>
-                {
-                    // Close the WebView2 before tearing down AppService / the
-                    // UI thread to avoid a winrt::hresult_error (0x8007139F)
-                    // raised by the CoreWebView2 during process shutdown.
-                    try { (_window as MainWindow)?.ShutdownContent(); }
-                    catch (Exception ex) { LogException("MainContent.Shutdown", ex); }
-
-                    try { WinNewsWire.AppRuntime.AppService.Shared.Stop(); }
-                    catch (Exception ex) { LogException("AppService.Stop", ex); }
-                };
+                _window.Closed += MainWindow_Closed;
                 _window.Activate();
             }
             catch (Exception ex)
@@ -140,6 +130,44 @@ namespace WinNewsWire
                 LogException("OnLaunched", ex);
                 throw;
             }
+        }
+
+        private bool _shuttingDown;
+
+        /// <summary>
+        /// When the main window closes we must (a) tear down any pop-up
+        /// windows that are still open, (b) stop the AppService timers
+        /// before XAML tries to dispatch a callback onto an unrooted
+        /// window, and (c) explicitly Exit the application — otherwise
+        /// secondary windows can keep the message loop alive while their
+        /// dependencies (timers, notifier, WebView2) are already torn down,
+        /// which surfaces as a non-zero process exit code.
+        /// </summary>
+        private void MainWindow_Closed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
+        {
+            if (_shuttingDown) return;
+            _shuttingDown = true;
+
+            // Close the WebView2 before tearing down AppService / the
+            // UI thread to avoid a winrt::hresult_error (0x8007139F)
+            // raised by the CoreWebView2 during process shutdown.
+            try { (_window as MainWindow)?.ShutdownContent(); }
+            catch (Exception ex) { LogException("MainContent.Shutdown", ex); }
+
+            // Close any About / Preferences / ErrorLog / Feedback /
+            // KeyboardShortcuts windows the user left open so they don't
+            // keep the process alive (or crash) after AppService is gone.
+            try { WinNewsWire.AppWindows.WindowThemeHelper.CloseAllSecondaryWindows(); }
+            catch (Exception ex) { LogException("CloseAllSecondaryWindows", ex); }
+
+            try { WinNewsWire.AppRuntime.AppService.Shared.Stop(); }
+            catch (Exception ex) { LogException("AppService.Stop", ex); }
+
+            // Force exit so the runtime doesn't sit waiting for any
+            // straggling popup or background coroutine that referenced
+            // resources we just disposed.
+            try { Exit(); }
+            catch (Exception ex) { LogException("Application.Exit", ex); }
         }
     }
 }
