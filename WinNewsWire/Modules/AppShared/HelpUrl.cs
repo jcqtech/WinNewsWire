@@ -17,12 +17,10 @@ public static class HelpUrl
 {
     public const string HelpHome      = "https://winnewswire.com/help/";
     public const string Website       = "https://winnewswire.com/";
-    public const string ReleaseNotes  = "https://winnewswire.com/releasenotes/";
-    public const string HowToSupport  = "https://winnewswire.com/support/";
+    public const string ReleaseNotes  = "https://github.com/jcqtech/WinNewsWire/releases/";
+    public const string HowToSupport  = "https://github.com/jcqtech/WinNewsWire";
     public const string GithubRepo    = "https://github.com/jcqtech/WinNewsWire";
     public const string BugTracker    = "https://github.com/jcqtech/WinNewsWire/issues";
-    public const string Discourse     = "https://winnewswire.com/community/";
-    public const string Technotes     = "https://winnewswire.com/docs/";
     public const string PrivacyPolicy = "https://winnewswire.com/privacy/";
 }
 

@@ -236,7 +236,6 @@
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem Text="GitHub Repository" AccessKey="G" Click="Menu_GithubRepo" />
                 <MenuFlyoutItem Text="Report a Bug…" AccessKey="B" Click="Menu_BugTracker" />
-                <MenuFlyoutItem Text="Community Forum" AccessKey="C" Click="Menu_Discourse" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem Text="Privacy Policy" AccessKey="P" Click="Menu_PrivacyPolicy" />
             </MenuBarItem>
