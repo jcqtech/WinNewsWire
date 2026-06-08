@@ -194,7 +194,7 @@ public partial class MainViewModel : ObservableObject
             ? string.Empty
             : $"<base href='{WebUtility.HtmlEncode(baseHref)}' />";
         var bodyPx = ArticleBodyFontSizePx();
-        return $@"<!DOCTYPE html><html><head><meta charset='utf-8'/>
+        return $@"<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'/>
 {baseTag}
 <meta name='viewport' content='width=device-width, initial-scale=1'/>
 <style>
@@ -202,10 +202,14 @@ public partial class MainViewModel : ObservableObject
 body {{ font-family: 'Segoe UI Variable','Segoe UI',serif; font-size:{bodyPx}px; line-height:1.7;
        max-width:720px; margin:0 auto; padding:24px 32px; }}
 h1 {{ font-size:2em; font-weight:700; line-height:1.25; margin:0.4em 0 0.5em; }}
-.meta {{ color:#888; font-size:0.875em; margin-bottom:1.6em; }}
+.meta {{ color:#555; font-size:0.875em; margin-bottom:1.6em; }}
 img {{ max-width:100%; height:auto; border-radius:8px; margin:1em 0; }}
-a {{ color:#0066cc; }}
-@media (prefers-color-scheme: dark) {{ body {{ color:#e0e0e0; }} a {{ color:#6cb6ff; }} }}
+a {{ color:#0050a8; }}
+@media (prefers-color-scheme: dark) {{
+  body {{ color:#e0e0e0; }}
+  a {{ color:#7cc1ff; }}
+  .meta {{ color:#b0b0b0; }}
+}}
 </style></head><body>
 <h1>{title}</h1>
 <div class='meta'>{author}{(string.IsNullOrEmpty(author) || string.IsNullOrEmpty(when) ? "" : " &middot; ")}{WebUtility.HtmlEncode(when)}{(string.IsNullOrEmpty(link) ? "" : $" &middot; <a href='{link}'>Open in browser</a>")}</div>
@@ -860,24 +864,30 @@ a {{ color:#0066cc; }}
             : $"<base href='{WebUtility.HtmlEncode(baseHref)}' />";
         var bodyPx = ArticleBodyFontSizePx();
         return $@"<!DOCTYPE html>
-<html><head><meta charset='utf-8' />
+<html lang='en'><head><meta charset='utf-8' />
 {baseTag}
 <meta name='viewport' content='width=device-width, initial-scale=1' />
 <style>
 :root {{ color-scheme: light dark; }}
 body {{ font-family: 'Segoe UI Variable','Segoe UI',sans-serif; font-size:{bodyPx}px; line-height:1.6; max-width:800px;
        margin:0 auto; padding:24px 32px; color:#1a1a1a; background:transparent; }}
-@media (prefers-color-scheme: dark) {{ body {{ color:#e0e0e0; }} a {{ color:#6cb6ff; }} }}
-.feed-info {{ font-size:0.8125em; color:#666; margin-bottom:4px; }}
+.feed-info {{ font-size:0.8125em; color:#4a4a4a; margin-bottom:4px; }}
 h1 {{ font-size:1.75em; font-weight:700; line-height:1.3; margin:0.5em 0 0.4em; }}
-.meta {{ font-size:0.8125em; color:#888; margin-bottom:1.5em; }}
+.meta {{ font-size:0.8125em; color:#555; margin-bottom:1.5em; }}
 img {{ max-width:100%; height:auto; border-radius:8px; margin:1em 0; }}
-a {{ color:#0066cc; }}
-blockquote {{ border-left:3px solid #ddd; margin:1em 0; padding:0.5em 1em; color:#555; }}
+a {{ color:#0050a8; }}
+blockquote {{ border-left:3px solid #c0c0c0; margin:1em 0; padding:0.5em 1em; color:#3a3a3a; }}
 pre,code {{ font-family:'Cascadia Code','Consolas',monospace; font-size:0.875em;
             background:#f5f5f5; border-radius:4px; }}
-@media (prefers-color-scheme: dark) {{ pre,code {{ background:#2a2a2a; }} }}
 pre {{ padding:1em; overflow-x:auto; }} code {{ padding:0.125em 0.375em; }}
+@media (prefers-color-scheme: dark) {{
+  body {{ color:#e0e0e0; }}
+  a {{ color:#7cc1ff; }}
+  .feed-info {{ color:#b8b8b8; }}
+  .meta {{ color:#b0b0b0; }}
+  blockquote {{ border-left-color:#5a5a5a; color:#cccccc; }}
+  pre,code {{ background:#2a2a2a; }}
+}}
 </style></head><body>
 <div class='feed-info'>{WebUtility.HtmlEncode(item.FeedTitle)}{(string.IsNullOrEmpty(item.Author) ? "" : $" &middot; {WebUtility.HtmlEncode(item.Author)}")}</div>
 <h1>{WebUtility.HtmlEncode(item.Title)}</h1>

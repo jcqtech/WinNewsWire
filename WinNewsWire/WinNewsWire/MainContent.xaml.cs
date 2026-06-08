@@ -43,6 +43,28 @@ public sealed partial class MainContent : UserControl
         // sidebar actions. Ctrl-modified accelerators stay live so standard
         // text-editing shortcuts (Ctrl+A/C/V/X/Z) keep working in the field.
         Loaded += MainContent_Loaded;
+
+        // App-wide guard: whenever any text-input control (TextBox, PasswordBox,
+        // AutoSuggestBox, RichEditBox) gains focus, suspend the unmodified
+        // KeyboardAccelerators on this UserControl so typing letters doesn't
+        // trigger sidebar/article actions. Restore the moment focus moves to a
+        // non-text control. Catches the title-bar search box, dialog inputs,
+        // and the feedback window inputs in addition to the inline rename box.
+        Microsoft.UI.Xaml.Input.FocusManager.GotFocus += FocusManager_GotFocus;
+        Microsoft.UI.Xaml.Input.FocusManager.LostFocus += FocusManager_LostFocus;
+    }
+
+    private static bool IsTextInputControl(object? element)
+        => element is TextBox or PasswordBox or AutoSuggestBox or RichEditBox;
+
+    private void FocusManager_GotFocus(object? sender, Microsoft.UI.Xaml.Input.FocusManagerGotFocusEventArgs e)
+    {
+        if (IsTextInputControl(e.NewFocusedElement)) SuspendSingleKeyAccelerators();
+    }
+
+    private void FocusManager_LostFocus(object? sender, Microsoft.UI.Xaml.Input.FocusManagerLostFocusEventArgs e)
+    {
+        if (IsTextInputControl(e.OldFocusedElement)) ResumeSingleKeyAccelerators();
     }
 
     /// <summary>Keyboard accelerators that were enabled before the inline-rename
@@ -92,6 +114,9 @@ public sealed partial class MainContent : UserControl
             ArticleListView.RightTapped += ArticleListView_RightTapped;
             SidebarContextMenu.Closed += SidebarContextMenu_Closed;
             ArticleContextMenu.Closed += ArticleContextMenu_Closed;
+            // Initialize state-dependent toolbar labels.
+            UpdateStarButtonIcon();
+            UpdateReaderModeButtonLabel();
             await ViewModel.InitializeAsync();
             BuildSidebarUI();
             ApplyUnifiedLayout();
@@ -130,6 +155,13 @@ public sealed partial class MainContent : UserControl
             // are about to be (or already) torn down. Otherwise we get a
             // RO_E_CLOSED (0x80000013) thrown on the UI thread during exit.
             try { ViewModel.PropertyChanged -= ViewModel_PropertyChanged; } catch { }
+            // FocusManager.GotFocus/LostFocus are static events; subscribing
+            // pins this MainContent instance for the lifetime of the static
+            // FocusManager. On window close those handlers can still fire
+            // against a torn-down XAML tree, producing an AccessViolation
+            // inside Microsoft.ui.xaml.dll. Unsubscribe defensively.
+            try { Microsoft.UI.Xaml.Input.FocusManager.GotFocus -= FocusManager_GotFocus; } catch { }
+            try { Microsoft.UI.Xaml.Input.FocusManager.LostFocus -= FocusManager_LostFocus; } catch { }
             ContentWebView?.Close();
         }
         catch (Exception ex)
@@ -443,7 +475,22 @@ public sealed partial class MainContent : UserControl
 
     private void UpdateStarButtonIcon()
     {
-        StarButtonIcon.Glyph = ViewModel.SelectedArticle?.IsStarred == true ? "\uE735" : "\uE734";
+        bool starred = ViewModel.SelectedArticle?.IsStarred == true;
+        StarButtonIcon.Glyph = starred ? "\uE735" : "\uE734";
+        // Keep tooltip + AutomationProperties.Name in sync with state so screen
+        // readers announce the current action (not the original static label).
+        var label = starred ? "Unstar article" : "Star article";
+        ToolTipService.SetToolTip(StarButton, label);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(StarButton, label);
+    }
+
+    private void UpdateReaderModeButtonLabel()
+    {
+        bool on = ViewModel.IsReaderMode;
+        var label = on ? "Exit reader view (Ctrl+Shift+W)" : "Reader view (Ctrl+Shift+W)";
+        var name = on ? "Exit reader view" : "Reader view";
+        ToolTipService.SetToolTip(ReaderModeToggle, label);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ReaderModeToggle, name);
     }
 
     private void SelectedArticle_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -506,6 +553,10 @@ public sealed partial class MainContent : UserControl
         else if (e.PropertyName == nameof(ViewModel.IsUnifiedLayout))
         {
             DispatcherQueue.TryEnqueue(ApplyUnifiedLayout);
+        }
+        else if (e.PropertyName == nameof(ViewModel.IsReaderMode))
+        {
+            DispatcherQueue.TryEnqueue(() => { if (!_shuttingDown) UpdateReaderModeButtonLabel(); });
         }
     }
 
@@ -820,6 +871,49 @@ public sealed partial class MainContent : UserControl
     {
         if (!_isSidebarDragging && !_isArticleDragging)
             ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.Arrow);
+    }
+
+    private const double KeyboardSplitterStepPx = 8;
+
+    private void SidebarSplitter_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (!ResizeColumnWithKey(SidebarColumn, e.Key)) return;
+        e.Handled = true;
+        _lastSidebarWidth = SidebarColumn.ActualWidth;
+    }
+
+    private void ArticleSplitter_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (!ResizeColumnWithKey(ArticleListColumn, e.Key)) return;
+        e.Handled = true;
+        _lastArticleListWidth = ArticleListColumn.ActualWidth;
+    }
+
+    /// <summary>Keyboard-driven column resize. Left/Right move 8 px per press;
+    /// Shift+Arrow moves 32 px for faster traversal; Home/End jump to min/max.
+    /// Returns true if the keystroke was consumed.</summary>
+    private static bool ResizeColumnWithKey(ColumnDefinition col, Windows.System.VirtualKey key)
+    {
+        var current = col.ActualWidth > 0 ? col.ActualWidth : col.Width.Value;
+        double next = current;
+        bool shift = (Microsoft.UI.Input.InputKeyboardSource
+            .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
+            & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+        double step = shift ? KeyboardSplitterStepPx * 4 : KeyboardSplitterStepPx;
+
+        switch (key)
+        {
+            case Windows.System.VirtualKey.Left: next = current - step; break;
+            case Windows.System.VirtualKey.Right: next = current + step; break;
+            case Windows.System.VirtualKey.Home: next = col.MinWidth; break;
+            case Windows.System.VirtualKey.End: next = col.MaxWidth > 0 ? col.MaxWidth : current; break;
+            default: return false;
+        }
+
+        var max = col.MaxWidth > 0 ? col.MaxWidth : double.MaxValue;
+        next = Math.Clamp(next, col.MinWidth, max);
+        col.Width = new GridLength(next);
+        return true;
     }
 
     // --- Event handlers ---

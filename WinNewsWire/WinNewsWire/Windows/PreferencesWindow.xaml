@@ -170,8 +170,10 @@
                                 <ComboBox x:Name="ThemeCombo" MinWidth="160"
                                           SelectionChanged="ThemeCombo_SelectionChanged" />
                                 <Button x:Name="OpenThemesFolderButton" Click="OpenThemesFolder_Click"
-                                        ToolTipService.ToolTip="Open Themes folder in Explorer">
-                                    <FontIcon Glyph="&#xE838;" FontSize="14" />
+                                        ToolTipService.ToolTip="Open Themes folder in Explorer"
+                                        AutomationProperties.Name="Open Themes folder in Explorer">
+                                    <FontIcon Glyph="&#xE838;" FontSize="14"
+                                              AutomationProperties.AccessibilityView="Raw" />
                                 </Button>
                             </StackPanel>
                         </Grid>

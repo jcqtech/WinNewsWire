@@ -8,15 +8,15 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="b55c4825-1745-48c4-8717-4985ae8c1e23"
-    Publisher="CN=qinjo"
-    Version="1.0.0.0" />
+    Name="JCQTechnology.WinNewsWire"
+    Publisher="CN=698DCB35-1354-4E65-A101-0687CBE1D6D6"
+    Version="1.0.1.0" />
 
   <mp:PhoneIdentity PhoneProductId="b55c4825-1745-48c4-8717-4985ae8c1e23" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
     <DisplayName>WinNewsWire</DisplayName>
-    <PublisherDisplayName>qinjo</PublisherDisplayName>
+    <PublisherDisplayName>JCQ Technology</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
 

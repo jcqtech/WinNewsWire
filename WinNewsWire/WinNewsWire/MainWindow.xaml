@@ -29,7 +29,8 @@
 
             <StackPanel x:Name="TitlePanel" Grid.Column="0" Orientation="Horizontal"
                         VerticalAlignment="Center" Spacing="12" Margin="0,0,16,0">
-                <Image Source="ms-appx:///Assets/wnw-flat.png" Width="16" Height="16" VerticalAlignment="Center" />
+                <Image Source="ms-appx:///Assets/wnw-flat.png" Width="16" Height="16" VerticalAlignment="Center"
+                       AutomationProperties.AccessibilityView="Raw" />
                 <TextBlock Text="WinNewsWire" Style="{StaticResource CaptionTextBlockStyle}"
                            FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
@@ -40,6 +41,7 @@
                             MaxWidth="480"
                             HorizontalAlignment="Stretch"
                             VerticalAlignment="Center"
+                            AutomationProperties.Name="Search articles"
                             TextChanged="TitleBarSearchBox_TextChanged"
                             QuerySubmitted="TitleBarSearchBox_QuerySubmitted" />
         </Grid>

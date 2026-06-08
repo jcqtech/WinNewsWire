@@ -187,10 +187,64 @@ public sealed partial class MainWindow : Window
         => AppRuntime.AppService.Shared.Undo.Undo();
     private void Menu_Redo(object sender, RoutedEventArgs e)
         => AppRuntime.AppService.Shared.Undo.Redo();
-    private void Menu_Cut(object sender, RoutedEventArgs e) { }
-    private void Menu_Copy(object sender, RoutedEventArgs e) { }
-    private void Menu_Paste(object sender, RoutedEventArgs e) { }
-    private void Menu_SelectAll(object sender, RoutedEventArgs e) { }
+    private void Menu_Cut(object sender, RoutedEventArgs e) => RouteClipboardCommand(ClipboardCmd.Cut);
+    private void Menu_Copy(object sender, RoutedEventArgs e) => RouteClipboardCommand(ClipboardCmd.Copy);
+    private void Menu_Paste(object sender, RoutedEventArgs e) => RouteClipboardCommand(ClipboardCmd.Paste);
+    private void Menu_SelectAll(object sender, RoutedEventArgs e) => RouteClipboardCommand(ClipboardCmd.SelectAll);
+
+    private enum ClipboardCmd { Cut, Copy, Paste, SelectAll }
+
+    /// <summary>Route the Edit-menu clipboard command to whichever text-bearing control
+    /// currently has focus. WinUI doesn't promote these commands automatically the way
+    /// WPF's <c>ApplicationCommands.Cut</c> does, so we walk to the focused element and
+    /// invoke the appropriate method directly. Falls back to a no-op when focus is on a
+    /// non-text control (so the menu item still works as a discoverability hook).</summary>
+    private void RouteClipboardCommand(ClipboardCmd cmd)
+    {
+        if (Content is not FrameworkElement root) return;
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root.XamlRoot);
+        switch (focused)
+        {
+            case TextBox tb:
+                switch (cmd)
+                {
+                    case ClipboardCmd.Cut: tb.CutSelectionToClipboard(); break;
+                    case ClipboardCmd.Copy: tb.CopySelectionToClipboard(); break;
+                    case ClipboardCmd.Paste: tb.PasteFromClipboard(); break;
+                    case ClipboardCmd.SelectAll: tb.SelectAll(); break;
+                }
+                break;
+            case RichEditBox reb:
+                switch (cmd)
+                {
+                    case ClipboardCmd.Cut: reb.Document.Selection.Cut(); break;
+                    case ClipboardCmd.Copy: reb.Document.Selection.Copy(); break;
+                    case ClipboardCmd.Paste: reb.Document.Selection.Paste(0); break;
+                    case ClipboardCmd.SelectAll:
+                        reb.Document.Selection.SetRange(0, int.MaxValue); break;
+                }
+                break;
+            case PasswordBox pb:
+                if (cmd == ClipboardCmd.Paste) pb.PasteFromClipboard();
+                break;
+            case AutoSuggestBox asb:
+                // AutoSuggestBox wraps an inner TextBox; the focused element when
+                // typing is the TextBox itself so the TextBox arm above usually
+                // handles it. If somehow the ASB is the focused element, fall back.
+                if (cmd == ClipboardCmd.SelectAll)
+                    asb.Text = asb.Text; // no-op; selection lives on inner TextBox
+                break;
+            case WebView2 wv:
+                // Forward to the WebView2's underlying webpage so reader-view text
+                // selection can be copied. ExecuteScriptAsync is fire-and-forget.
+                if (cmd == ClipboardCmd.Copy)
+                    _ = wv.ExecuteScriptAsync("document.execCommand('copy')");
+                else if (cmd == ClipboardCmd.SelectAll)
+                    _ = wv.ExecuteScriptAsync("document.execCommand('selectAll')");
+                break;
+        }
+    }
+
     private void Menu_Find(object sender, RoutedEventArgs e) => TitleBarSearchBox.Focus(FocusState.Programmatic);
 
     private void Menu_ToggleUnified(object sender, RoutedEventArgs e)

@@ -45,7 +45,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppShared.Tests", "Tests\Ap
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Web.Tests", "Tests\Web.Tests\Web.Tests.csproj", "{C492D212-9D26-4237-A1E5-2B6E3BFE0A42}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Modules", "Modules", "{CA253913-39DE-BFD0-C9A3-4B7EC6FBDF17}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Sources", "Sources", "{CA253913-39DE-BFD0-C9A3-4B7EC6FBDF17}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Markdown", "WinNewsWire\Modules\Markdown\Markdown.csproj", "{08241DBF-7D16-4357-AB7E-A088C593A5E2}"
 EndProject

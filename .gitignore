@@ -7,3 +7,16 @@
 *.assets.cache
 *.csproj.FileListAbsolute.txt
 TestResults/
+
+# MSIX/Windows packaging output (debug, test and store export artifacts)
+**/AppPackages/
+**/BundleArtifacts/
+*.appx
+*.appxbundle
+*.appxsym
+*.appxupload
+*.msix
+*.msixbundle
+*.msixupload
+*.cer
+*.pfx

@@ -25,13 +25,17 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ToggleButton x:Name="ThumbsUpButton" Click="ThumbsUp_Click"
                                   MinWidth="64" MinHeight="48"
-                                  ToolTipService.ToolTip="I liked it">
-                        <FontIcon Glyph="&#xE19E;" FontSize="20" />
+                                  ToolTipService.ToolTip="I liked it"
+                                  AutomationProperties.Name="Thumbs up — I liked it">
+                        <FontIcon Glyph="&#xE19E;" FontSize="20"
+                                  AutomationProperties.AccessibilityView="Raw" />
                     </ToggleButton>
                     <ToggleButton x:Name="ThumbsDownButton" Click="ThumbsDown_Click"
                                   MinWidth="64" MinHeight="48"
-                                  ToolTipService.ToolTip="It needs work">
-                        <FontIcon Glyph="&#xE19F;" FontSize="20" />
+                                  ToolTipService.ToolTip="It needs work"
+                                  AutomationProperties.Name="Thumbs down — needs work">
+                        <FontIcon Glyph="&#xE19F;" FontSize="20"
+                                  AutomationProperties.AccessibilityView="Raw" />
                     </ToggleButton>
                 </StackPanel>
 

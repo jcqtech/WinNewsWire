@@ -27,6 +27,7 @@ public sealed partial class KeyboardShortcutsWindow : Window
         InitializeComponent();
         WindowIconHelper.ApplyFlatIcon(this);
         WindowThemeHelper.Attach(this);
+        PopulateSections();
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(_hwnd);
@@ -55,6 +56,77 @@ public sealed partial class KeyboardShortcutsWindow : Window
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>Build the shortcut card list from <see cref="Helpers.KeyboardShortcutCatalog"/>.
+    /// Each section becomes a card with a header and one row per shortcut. The
+    /// styles (KeycapStyle, KeycapTextStyle, etc.) are defined in
+    /// <c>KeyboardShortcutsWindow.xaml</c> and looked up by key.</summary>
+    private void PopulateSections()
+    {
+        var keycapStyle = (Microsoft.UI.Xaml.Style)((Microsoft.UI.Xaml.Controls.Grid)Content).Resources["KeycapStyle"];
+        var keycapTextStyle = (Microsoft.UI.Xaml.Style)((Microsoft.UI.Xaml.Controls.Grid)Content).Resources["KeycapTextStyle"];
+        var sectionHeaderStyle = (Microsoft.UI.Xaml.Style)((Microsoft.UI.Xaml.Controls.Grid)Content).Resources["SectionHeaderStyle"];
+        var descStyle = (Microsoft.UI.Xaml.Style)((Microsoft.UI.Xaml.Controls.Grid)Content).Resources["DescTextStyle"];
+        var cardBg = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+        var cardStroke = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["CardStrokeColorDefaultBrush"];
+
+        foreach (var section in Helpers.KeyboardShortcutCatalog.All)
+        {
+            var card = new Microsoft.UI.Xaml.Controls.Border
+            {
+                Background = cardBg,
+                BorderBrush = cardStroke,
+                BorderThickness = new Microsoft.UI.Xaml.Thickness(1),
+                CornerRadius = new Microsoft.UI.Xaml.CornerRadius(6),
+                Padding = new Microsoft.UI.Xaml.Thickness(14, 12, 14, 12),
+            };
+
+            var cardStack = new Microsoft.UI.Xaml.Controls.StackPanel { Spacing = 6 };
+            cardStack.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock
+            {
+                Text = section.Title,
+                Style = sectionHeaderStyle,
+            });
+
+            var rowGrid = new Microsoft.UI.Xaml.Controls.Grid { ColumnSpacing = 12, RowSpacing = 6 };
+            rowGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition
+            { Width = new Microsoft.UI.Xaml.GridLength(180) });
+            rowGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition
+            { Width = new Microsoft.UI.Xaml.GridLength(1, Microsoft.UI.Xaml.GridUnitType.Star) });
+
+            for (int i = 0; i < section.Shortcuts.Count; i++)
+            {
+                rowGrid.RowDefinitions.Add(new Microsoft.UI.Xaml.Controls.RowDefinition
+                { Height = Microsoft.UI.Xaml.GridLength.Auto });
+
+                var keycap = new Microsoft.UI.Xaml.Controls.Border
+                {
+                    Style = keycapStyle,
+                    Child = new Microsoft.UI.Xaml.Controls.TextBlock
+                    {
+                        Text = section.Shortcuts[i].KeyCombo,
+                        Style = keycapTextStyle,
+                    }
+                };
+                Microsoft.UI.Xaml.Controls.Grid.SetRow(keycap, i);
+                Microsoft.UI.Xaml.Controls.Grid.SetColumn(keycap, 0);
+                rowGrid.Children.Add(keycap);
+
+                var desc = new Microsoft.UI.Xaml.Controls.TextBlock
+                {
+                    Text = section.Shortcuts[i].Description,
+                    Style = descStyle,
+                };
+                Microsoft.UI.Xaml.Controls.Grid.SetRow(desc, i);
+                Microsoft.UI.Xaml.Controls.Grid.SetColumn(desc, 1);
+                rowGrid.Children.Add(desc);
+            }
+
+            cardStack.Children.Add(rowGrid);
+            card.Child = cardStack;
+            SectionsHost.Children.Add(card);
+        }
+    }
 
     // --- Win32 plumbing for size constraints ---
 
