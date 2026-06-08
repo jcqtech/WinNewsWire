@@ -1,11 +1,11 @@
 namespace WinNewsWire.AppShared;
 
 /// <summary>
-/// Port of NetNewsWire's <c>HelpURL</c>. Centralizes the help/support URLs
-/// the menu bar, About box, and right-click menus link out to. WinNewsWire
-/// reuses NetNewsWire's hosted help pages because the Windows port shares the
-/// same feed-reader concepts; later we can override individual URLs when a
-/// Windows-specific help page exists.
+/// Centralizes the help/support URLs the menu bar, About box, and right-click
+/// menus link out to. Originally a 1:1 port of NetNewsWire's <c>HelpURL</c>
+/// constants, but the WinNewsWire pages are now the canonical destination so
+/// users land on Windows-specific docs and the WinNewsWire GitHub repo
+/// (jcqtech/WinNewsWire) rather than the upstream Mac project.
 /// </summary>
 /// <remarks>
 /// This module targets <c>net8.0</c> (no WinUI dependency) so the URLs are
@@ -15,14 +15,15 @@ namespace WinNewsWire.AppShared;
 /// </remarks>
 public static class HelpUrl
 {
-    public const string HelpHome      = "https://netnewswire.com/help/";
-    public const string Website       = "https://netnewswire.com/";
-    public const string ReleaseNotes  = "https://github.com/Ranchero-Software/NetNewsWire/releases/";
-    public const string HowToSupport  = "https://github.com/Ranchero-Software/NetNewsWire/blob/main/Technotes/HowToSupportNetNewsWire.markdown";
-    public const string GithubRepo    = "https://github.com/Ranchero-Software/NetNewsWire";
-    public const string BugTracker    = "https://github.com/Ranchero-Software/NetNewsWire/issues";
-    public const string Discourse     = "https://discourse.netnewswire.com/";
-    public const string Technotes     = "https://github.com/Ranchero-Software/NetNewsWire/tree/main/Technotes";
-    public const string PrivacyPolicy = "https://netnewswire.com/privacypolicy.html";
+    public const string HelpHome      = "https://winnewswire.com/help/";
+    public const string Website       = "https://winnewswire.com/";
+    public const string ReleaseNotes  = "https://winnewswire.com/releasenotes/";
+    public const string HowToSupport  = "https://winnewswire.com/support/";
+    public const string GithubRepo    = "https://github.com/jcqtech/WinNewsWire";
+    public const string BugTracker    = "https://github.com/jcqtech/WinNewsWire/issues";
+    public const string Discourse     = "https://winnewswire.com/community/";
+    public const string Technotes     = "https://winnewswire.com/docs/";
+    public const string PrivacyPolicy = "https://winnewswire.com/privacy/";
 }
+
 
