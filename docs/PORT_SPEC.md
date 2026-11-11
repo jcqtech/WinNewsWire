@@ -1,6 +1,11 @@
-# WinNewsWire port of NetNewsWire (Mac) — full specification
+# Historical WinNewsWire port specification
 
-This document is the authoritative spec for porting NetNewsWire's **Mac** app to Windows
+> This is the specification from an earlier porting pass. Its paths, dependency
+> inventory, and scope exclusions are historical, not the current requirements or
+> completion status. See `PARITY.md`, `PORT_STATUS.md`, and `TEST_AUDIT.md` for the
+> revision-pinned comparison, current architecture, and remaining work.
+
+This document recorded an earlier plan for porting NetNewsWire's **Mac** app to Windows
 (C# + WinUI 3). It records:
 
 - How each NetNewsWire subsystem works and what its public surface is

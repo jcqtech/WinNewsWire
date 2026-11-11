@@ -1,0 +1,23 @@
+{
+  "solution": {
+    "path": "WinNewsWire.sln",
+    "projects": [
+      "Modules\\Account\\Tests\\Account.Tests\\Account.Tests.csproj",
+      "Modules\\ActivityLog\\Tests\\ActivityLog.Tests\\ActivityLog.Tests.csproj",
+      "Modules\\Articles\\Tests\\Articles.Tests\\Articles.Tests.csproj",
+      "Tests\\WinNewsWire.Tests\\WinNewsWire.Tests.csproj",
+      "Modules\\ArticlesDatabase\\Tests\\ArticlesDatabase.Tests\\ArticlesDatabase.Tests.csproj",
+      "Modules\\Core\\Tests\\Core.Tests\\Core.Tests.csproj",
+      "Modules\\Database\\Tests\\Database.Tests\\Database.Tests.csproj",
+      "Modules\\ErrorLog\\Tests\\ErrorLog.Tests\\ErrorLog.Tests.csproj",
+      "Modules\\FeedFinder\\Tests\\FeedFinder.Tests\\FeedFinder.Tests.csproj",
+      "Modules\\NewsBlur\\Tests\\NewsBlur.Tests\\NewsBlur.Tests.csproj",
+      "Modules\\Parsers\\Tests\\Parsers.Tests\\Parsers.Tests.csproj",
+      "Modules\\Account\\Tests\\RemoteAccounts.Tests\\RemoteAccounts.Tests.csproj",
+      "Modules\\SyncDatabase\\Tests\\SyncDatabase.Tests\\SyncDatabase.Tests.csproj",
+      "Modules\\Web\\Tests\\Web.Tests\\Web.Tests.csproj",
+      "Modules\\HTMLMetadata\\Tests\\HTMLMetadata.Tests\\HTMLMetadata.Tests.csproj",
+      "Modules\\Images\\Tests\\Images.Tests\\Images.Tests.csproj"
+    ]
+  }
+}

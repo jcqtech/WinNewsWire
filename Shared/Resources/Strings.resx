@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <data name="Unread" xml:space="preserve">
+    <value>unread</value>
+  </data>
+  <data name="UnreadCounts" xml:space="preserve">
+    <value>Unread Counts</value>
+  </data>
+  <data name="ShowUnreadCounts" xml:space="preserve">
+    <value>Show</value>
+  </data>
+  <data name="ShowUnreadDots" xml:space="preserve">
+    <value>Show dot</value>
+  </data>
+  <data name="HideUnreadCounts" xml:space="preserve">
+    <value>Hide</value>
+  </data>
+  <data name="UnreadCountSaveError" xml:space="preserve">
+    <value>Could not save the unread-count display setting: {0}</value>
+  </data>
+  <data name="FindInArticle" xml:space="preserve">
+    <value>Find in Article</value>
+  </data>
+  <data name="FindPrevious" xml:space="preserve">
+    <value>Find Previous</value>
+  </data>
+  <data name="FindNext" xml:space="preserve">
+    <value>Find Next</value>
+  </data>
+  <data name="FindOptions" xml:space="preserve">
+    <value>Find options</value>
+  </data>
+  <data name="CloseFind" xml:space="preserve">
+    <value>Close Find</value>
+  </data>
+  <data name="MatchCase" xml:space="preserve">
+    <value>Match Case</value>
+  </data>
+  <data name="WholeWords" xml:space="preserve">
+    <value>Whole Words</value>
+  </data>
+  <data name="SelectArticleForFind" xml:space="preserve">
+    <value>Select an article before finding text in it.</value>
+  </data>
+  <data name="SelectTextForFind" xml:space="preserve">
+    <value>Select text in the article first.</value>
+  </data>
+  <data name="FindRuntimeRequired" xml:space="preserve">
+    <value>Find in Article requires Microsoft Edge WebView2 Runtime 139.0.3405.78 or newer.</value>
+  </data>
+  <data name="FindLoadingArticle" xml:space="preserve">
+    <value>Loading article...</value>
+  </data>
+  <data name="FindSearching" xml:space="preserve">
+    <value>Searching...</value>
+  </data>
+  <data name="NoFindMatches" xml:space="preserve">
+    <value>No matches</value>
+  </data>
+  <data name="FindMatchPosition" xml:space="preserve">
+    <value>{0} of {1}</value>
+  </data>
+  <data name="ArticleFindError" xml:space="preserve">
+    <value>Find in Article could not finish: {0}</value>
+  </data>
+  <data name="DinosaurThreshold" xml:space="preserve"><value>Show feeds that have not updated in</value></data>
+  <data name="Months" xml:space="preserve"><value>months</value></data>
+  <data name="StaleFeeds" xml:space="preserve"><value>Stale feeds</value></data>
+  <data name="Feed" xml:space="preserve"><value>Feed</value></data>
+  <data name="FeedUrl" xml:space="preserve"><value>Feed URL</value></data>
+  <data name="Account" xml:space="preserve"><value>Account</value></data>
+  <data name="LastArticle" xml:space="preserve"><value>Last Article</value></data>
+  <data name="LastResponse" xml:space="preserve"><value>Last Response</value></data>
+  <data name="ResizeNamedColumn" xml:space="preserve"><value>Resize {0} column</value></data>
+  <data name="SelectInSidebar" xml:space="preserve"><value>Select in Sidebar</value></data>
+  <data name="Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="DeleteFeeds" xml:space="preserve"><value>Delete Feeds</value></data>
+  <data name="OpenHomePage" xml:space="preserve"><value>Open Home Page</value></data>
+  <data name="CopyFeedUrl" xml:space="preserve"><value>Copy Feed URL</value></data>
+  <data name="Undo" xml:space="preserve"><value>Undo</value></data>
+  <data name="Redo" xml:space="preserve"><value>Redo</value></data>
+  <data name="Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Help" xml:space="preserve"><value>Help</value></data>
+  <data name="CurrentActivity" xml:space="preserve"><value>Current Activity</value></data>
+  <data name="NoCurrentActivity" xml:space="preserve"><value>No current activity</value></data>
+  <data name="Pending" xml:space="preserve"><value>Pending</value></data>
+  <data name="Running" xml:space="preserve"><value>Running</value></data>
+  <data name="Completed" xml:space="preserve"><value>Completed</value></data>
+  <data name="Failed" xml:space="preserve"><value>Failed</value></data>
+  <data name="FindingFeed" xml:space="preserve"><value>Finding feed</value></data>
+  <data name="Fetching" xml:space="preserve"><value>Fetching</value></data>
+  <data name="DownloadingImage" xml:space="preserve"><value>Downloading image</value></data>
+  <data name="DownloadingFavicon" xml:space="preserve"><value>Downloading favicon</value></data>
+  <data name="DownloadingAvatar" xml:space="preserve"><value>Downloading avatar</value></data>
+  <data name="DownloadingMetadata" xml:space="preserve"><value>Downloading metadata</value></data>
+  <data name="ShareSubscriptionCancelled" xml:space="preserve"><value>The subscription was cancelled. No feed was added.</value></data>
+  <data name="AllowLocalAutomation" xml:space="preserve"><value>Allow local automation</value></data>
+  <data name="AutomationDescription" xml:space="preserve"><value>Programs running as your Windows user can read feed data and change subscriptions and read/starred state. Remote clients are rejected.</value></data>
+  <data name="AutomationDisabled" xml:space="preserve"><value>Local automation is disabled.</value></data>
+  <data name="AutomationAvailable" xml:space="preserve"><value>Local automation is available to programs running as your Windows user.</value></data>
+  <data name="AutomationStopped" xml:space="preserve"><value>Local automation stopped. Disable and re-enable it to retry.</value></data>
+  <data name="AutomationStartFailed" xml:space="preserve"><value>Could not start local automation: {0}</value></data>
+  <data name="AutomationSaveFailed" xml:space="preserve"><value>Could not save local automation setting: {0}</value></data>
+  <data name="CompatibilityRendering" xml:space="preserve"><value>Compatibility rendering (experimental)</value></data>
+  <data name="CompatibilityRenderingDescription" xml:space="preserve"><value>Uses software page rasterization to avoid GPU shader-compilation stalls. GPU compositing and video decoding remain enabled. May use more CPU. This workaround depends on an experimental WebView2 browser flag.</value></data>
+  <data name="RenderingRestartRequired" xml:space="preserve"><value>Restart WinNewsWire to apply this browser setting.</value></data>
+  <data name="RenderingCompatibilityActive" xml:space="preserve"><value>Compatibility rendering is selected for this session.</value></data>
+  <data name="RenderingHardwareActive" xml:space="preserve"><value>Default rendering is selected for this session.</value></data>
+  <data name="RenderingSaveFailed" xml:space="preserve"><value>Could not save the rendering setting: {0}</value></data>
+  <data name="DirectBrowserScrolling" xml:space="preserve"><value>Direct browser scrolling (experimental)</value></data>
+  <data name="DirectBrowserScrollingDescription" xml:space="preserve"><value>Disables animated browser scrolling, including interruptible wheel inertia. Leave this off to keep coasting that yields to new wheel input. Keyboard scrolling may also feel less animated. Windows touchpad settings are unchanged. This workaround depends on a WebView2 browser flag.</value></data>
+  <data name="DirectScrollingSelected" xml:space="preserve"><value>Direct browser scrolling is selected for this session.</value></data>
+  <data name="AnimatedScrollingSelected" xml:space="preserve"><value>Default browser scroll animation is selected for this session.</value></data>
+  <data name="ScrollingSaveFailed" xml:space="preserve"><value>Could not save the scrolling setting: {0}</value></data>
+  <data name="NoSpeechText" xml:space="preserve"><value>The article has no text to speak.</value></data>
+  <data name="SpeechFailed" xml:space="preserve"><value>Could not speak the article:</value></data>
+  <data name="Speech" xml:space="preserve"><value>Speech</value></data>
+  <data name="StartSpeaking" xml:space="preserve"><value>Start Speaking</value></data>
+  <data name="StopSpeaking" xml:space="preserve"><value>Stop Speaking</value></data>
+  <data name="DinosaurCount" xml:space="preserve"><value>{0} stale feeds</value></data>
+  <data name="DeleteStaleFeedsConfirmation" xml:space="preserve"><value>Delete {0} selected feeds from all their folders and account-root memberships? Their article history is retained. This can be undone in this window.</value></data>
+  <data name="Toolbar" xml:space="preserve"><value>Main toolbar</value></data>
+  <data name="ToolbarShowHide" xml:space="preserve"><value>Show / hide toolbar</value></data>
+  <data name="ToolbarKeyboardHelp" xml:space="preserve"><value>Use Tab or the left and right arrows to reach commands, then Enter or Space to activate. More contains overflow commands and customization.</value></data>
+  <data name="ShowToolbar" xml:space="preserve"><value>Show Toolbar</value></data>
+  <data name="HideToolbar" xml:space="preserve"><value>Hide Toolbar</value></data>
+  <data name="CustomizeToolbar" xml:space="preserve"><value>Customize Toolbar…</value></data>
+  <data name="ToolbarDisplayMode" xml:space="preserve"><value>Toolbar Display</value></data>
+  <data name="ToolbarDisplay_IconsOnly" xml:space="preserve"><value>Icons Only</value></data>
+  <data name="ToolbarDisplay_IconsAndText" xml:space="preserve"><value>Icons and Text</value></data>
+  <data name="ToolbarDisplay_TextOnly" xml:space="preserve"><value>Text Only</value></data>
+  <data name="ToolbarMore" xml:space="preserve"><value>More toolbar commands and customization</value></data>
+  <data name="ToolbarOptions" xml:space="preserve"><value>Toolbar options</value></data>
+  <data name="ToolbarCustomizationHelp" xml:space="preserve"><value>Choose the commands shown in pane headers. Commands stay with their pane; column layout combines them in the selected order. Search and the sidebar button stay in the title bar. Changes apply to all main windows when saved.</value></data>
+  <data name="ToolbarShownItems" xml:space="preserve"><value>Shown toolbar items</value></data>
+  <data name="ToolbarAvailableItems" xml:space="preserve"><value>Available toolbar items</value></data>
+  <data name="ToolbarMoveEarlier" xml:space="preserve"><value>Move Left</value></data>
+  <data name="ToolbarMoveLater" xml:space="preserve"><value>Move Right</value></data>
+  <data name="ToolbarHideItem" xml:space="preserve"><value>Hide Item</value></data>
+  <data name="ToolbarShowItem" xml:space="preserve"><value>Show Item</value></data>
+  <data name="ToolbarRestoreDefaults" xml:space="preserve"><value>Restore Defaults</value></data>
+  <data name="ToolbarSave" xml:space="preserve"><value>Save</value></data>
+  <data name="ToolbarSaveError" xml:space="preserve"><value>Could not save the toolbar. The previous configuration is unchanged: {0}</value></data>
+  <data name="ToolbarCustomizeError" xml:space="preserve"><value>Could not open toolbar customization: {0}</value></data>
+  <data name="ToolbarActionError" xml:space="preserve"><value>The toolbar command could not finish: {0}</value></data>
+  <data name="ToolbarThemeSaveError" xml:space="preserve"><value>Could not save the article theme. The previous theme is unchanged: {0}</value></data>
+  <data name="ToolbarSearchPlaceholder" xml:space="preserve"><value>Search articles</value></data>
+  <data name="ToolbarNewFeed" xml:space="preserve"><value>New Feed…</value></data>
+  <data name="ToolbarNewFolder" xml:space="preserve"><value>New Folder…</value></data>
+  <data name="ToolbarBuiltInTheme" xml:space="preserve"><value>  (built-in)</value></data>
+  <data name="ToolbarHideSidebar" xml:space="preserve"><value>Hide Sidebar</value></data>
+  <data name="ToolbarShowSidebar" xml:space="preserve"><value>Show Sidebar</value></data>
+  <data name="ToolbarMarkUnread" xml:space="preserve"><value>Mark Unread</value></data>
+  <data name="ToolbarUnstar" xml:space="preserve"><value>Unstar</value></data>
+  <data name="ToolbarExitReaderView" xml:space="preserve"><value>Exit Reader View</value></data>
+  <data name="ToolbarShowReadArticles" xml:space="preserve"><value>Show Read Articles</value></data>
+  <data name="ToolbarHideReadArticles" xml:space="preserve"><value>Hide Read Articles</value></data>
+  <data name="Toolbar_toggleSidebar" xml:space="preserve"><value>Toggle Sidebar</value></data>
+  <data name="Toolbar_refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Toolbar_newSidebarItemMenu" xml:space="preserve"><value>Add Item</value></data>
+  <data name="Toolbar_sidebarTrackingSeparator" xml:space="preserve"><value>Sidebar Separator</value></data>
+  <data name="MoreMenus" xml:space="preserve"><value>More menus</value></data>
+  <data name="Toolbar_markAllAsRead" xml:space="preserve"><value>Mark All as Read</value></data>
+  <data name="Toolbar_toggleReadArticlesFilter" xml:space="preserve"><value>Read Articles Filter</value></data>
+  <data name="Toolbar_timelineTrackingSeparator" xml:space="preserve"><value>Timeline Separator</value></data>
+  <data name="Toolbar_flexibleSpace" xml:space="preserve"><value>Flexible Space</value></data>
+  <data name="Toolbar_nextUnread" xml:space="preserve"><value>Next Unread</value></data>
+  <data name="Toolbar_markRead" xml:space="preserve"><value>Mark Read</value></data>
+  <data name="Toolbar_markStar" xml:space="preserve"><value>Star</value></data>
+  <data name="Toolbar_readerView" xml:space="preserve"><value>Reader View</value></data>
+  <data name="Toolbar_openInBrowser" xml:space="preserve"><value>Open in Browser</value></data>
+  <data name="Toolbar_openInWebView" xml:space="preserve"><value>Open in Web View</value></data>
+  <data name="WebPageLoading" xml:space="preserve"><value>Loading webpage...</value></data>
+  <data name="WebPageLoadFailed" xml:space="preserve"><value>The webpage could not be loaded.</value></data>
+  <data name="ToolbarHideReadArticlesHelp" xml:space="preserve"><value>Hide read articles, keeping the current article visible.</value></data>
+  <data name="ToolbarReadFilterUnavailable" xml:space="preserve"><value>Read filtering is fixed for this selection. Select one feed, folder, Today or Starred without an all-accounts search to change it.</value></data>
+  <data name="NavigateBack" xml:space="preserve"><value>Back</value></data>
+  <data name="Toolbar_share" xml:space="preserve"><value>Share</value></data>
+  <data name="Toolbar_articleThemeMenu" xml:space="preserve"><value>Article Theme</value></data>
+  <data name="Toolbar_search" xml:space="preserve"><value>Search Articles</value></data>
+  <data name="Toolbar_cleanUp" xml:space="preserve"><value>Clean Up</value></data>
+  <data name="OpmlWindowsError" xml:space="preserve">
+    <value>Windows reported error 0x{0:X8}.</value>
+  </data>
+  <data name="FindWholeWordsHelp" xml:space="preserve">
+    <value>Matches complete words. Turn off Whole Words to search for phrases.</value>
+  </data>
+  <data name="FindTimedOut" xml:space="preserve">
+    <value>The browser did not finish searching. Try the search again.</value>
+  </data>
+</root>

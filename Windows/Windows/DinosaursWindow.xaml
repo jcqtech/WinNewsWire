@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="WinNewsWire.AppWindows.DinosaursWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:helpers="using:WinNewsWire.Helpers" Title="Dinosaurs">
+    <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
+    <Grid Padding="16" RowSpacing="12">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="Delete" Invoked="Delete_Invoked" />
+            <KeyboardAccelerator Key="Z" Modifiers="Control" Invoked="Undo_Invoked" />
+            <KeyboardAccelerator Key="Z" Modifiers="Control,Shift" Invoked="Redo_Invoked" />
+        </Grid.KeyboardAccelerators>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel Orientation="Horizontal" Spacing="12">
+            <TextBlock x:Name="ThresholdLabel" VerticalAlignment="Center" />
+            <NumberBox x:Name="MonthThreshold" Minimum="1" Maximum="350" SmallChange="1" LargeChange="12"
+                       SpinButtonPlacementMode="Inline" Width="145" ValueChanged="MonthThreshold_ValueChanged" />
+            <TextBlock x:Name="MonthsLabel" VerticalAlignment="Center" />
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+            <ListView x:Name="FeedsList" SelectionMode="Extended" SelectionChanged="FeedsList_SelectionChanged">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.Header>
+                    <Grid x:Name="TableHeader" Padding="12,0" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="FeedColumn" Width="220" MinWidth="120" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="UrlColumn" Width="320" MinWidth="140" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="AccountColumn" Width="180" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="DateColumn" Width="160" MinWidth="120" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="ResponseColumn" Width="130" MinWidth="110" MaxWidth="1000" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="FeedHeader" Tag="FeedName" Click="Sort_Click" Margin="0,0,8,0" />
+                        <Button x:Name="UrlHeader" Grid.Column="1" Tag="FeedUrl" Click="Sort_Click" Margin="0,0,8,0" />
+                        <Button x:Name="AccountHeader" Grid.Column="2" Tag="AccountName" Click="Sort_Click" Margin="0,0,8,0" />
+                        <Button x:Name="DateHeader" Grid.Column="3" Tag="LastArticleDate" Click="Sort_Click" Margin="0,0,8,0" />
+                        <Button x:Name="ResponseHeader" Grid.Column="4" Tag="LastResponseCode" Click="Sort_Click" Margin="0,0,8,0" />
+                        <helpers:ColumnResizeThumb Column="{Binding ElementName=FeedColumn}" HorizontalAlignment="Right" Width="8"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="1" Column="{Binding ElementName=UrlColumn}" HorizontalAlignment="Right" Width="8"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb x:Name="AccountResize" Grid.Column="2" Column="{Binding ElementName=AccountColumn}" HorizontalAlignment="Right" Width="8"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="3" Column="{Binding ElementName=DateColumn}" HorizontalAlignment="Right" Width="8"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="4" Column="{Binding ElementName=ResponseColumn}" HorizontalAlignment="Right" Width="8"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                    </Grid>
+                </ListView.Header>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="12,8" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="{Binding Columns[0].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[1].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[2].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[3].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[4].Width}" />
+                            </Grid.ColumnDefinitions>
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <helpers:IconView Width="16" Height="16" Loaded="FeedIcon_Loaded"
+                                                  AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Grid.Column="1" Text="{Binding Data.FeedName}" TextTrimming="CharacterEllipsis"
+                                           ToolTipService.ToolTip="{Binding Data.FeedName}" />
+                            </Grid>
+                            <TextBlock Grid.Column="1" Text="{Binding Data.FeedUrl}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Data.FeedUrl}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Data.AccountName}" Visibility="{Binding AccountVisibility}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="3" Text="{Binding LastArticle}" Typography.NumeralAlignment="Tabular" />
+                            <TextBlock Grid.Column="4" Text="{Binding LastResponse}" Typography.NumeralAlignment="Tabular" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </ScrollViewer>
+        <TextBlock Grid.Row="2" x:Name="StatusText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+            <ProgressRing x:Name="WorkProgress" Width="24" Height="24" IsActive="False" />
+            <Button x:Name="SelectFeedButton" Click="SelectFeed_Click" IsEnabled="False" />
+            <Button x:Name="DeleteButton" Click="Delete_Click" IsEnabled="False" />
+            <Button x:Name="HomePageButton" Click="HomePage_Click" IsEnabled="False" />
+            <Button x:Name="CopyButton" Click="Copy_Click" IsEnabled="False" />
+            <Button x:Name="UndoButton" Click="Undo_Click" IsEnabled="False" />
+            <Button x:Name="RedoButton" Click="Redo_Click" IsEnabled="False" />
+            <Button x:Name="RefreshButton" Click="Refresh_Click" />
+            <Button x:Name="HelpButton" Click="Help_Click" />
+            <Button x:Name="CloseButton" Click="Close_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

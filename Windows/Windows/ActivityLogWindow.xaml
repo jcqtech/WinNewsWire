@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="WinNewsWire.AppWindows.ActivityLogWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Activity Log">
+    <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
+    <Grid Padding="16" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="Activity Log" Style="{StaticResource SubtitleTextBlockStyle}" />
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name="OwnerFilter" MinWidth="170" SelectionChanged="Filter_Changed"
+                      AutomationProperties.Name="Activity owner" />
+            <AutoSuggestBox Grid.Column="1" x:Name="SearchBox" PlaceholderText="Search activity"
+                            QueryIcon="Find" TextChanged="Search_Changed" />
+            <CheckBox Grid.Column="2" x:Name="ShowCompleted" Content="Show completed" IsChecked="True"
+                      Checked="CompletedFilter_Changed" Unchecked="CompletedFilter_Changed" />
+        </Grid>
+        <ListView Grid.Row="2" x:Name="ActivitiesList" SelectionMode="Extended" AutomationProperties.Name="Activities">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="8" ColumnSpacing="12" RowSpacing="3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="{Binding State}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Header}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Grid.Column="2" Text="{Binding Duration}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Message}" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        <Grid Grid.Row="3">
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Content="Copy" Click="Copy_Click" ToolTipService.ToolTip="Copy selected activities, or all visible activities" />
+                <Button Content="Close" Click="Close_Click" Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

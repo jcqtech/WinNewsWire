@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Subscribe with WinNewsWire",
+  "version": "1.0.1",
+  "description": "Send the current web page to WinNewsWire for feed discovery and subscription.",
+  "permissions": ["activeTab", "storage"],
+  "action": {
+    "default_title": "Subscribe to Feed",
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "128": "icon.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  }
+}

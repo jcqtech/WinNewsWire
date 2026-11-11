@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Subscribe to Feed</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <h1>Subscribe to Feed</h1>
+    <p id="page" class="page"></p>
+    <a id="subscribe" class="subscribe" aria-disabled="true">Open in WinNewsWire</a>
+    <label>
+      <input id="default-reader" type="checkbox">
+      Use the system's default feed reader
+    </label>
+    <p id="status" role="status" aria-live="polite">Reading the current page URL...</p>
+    <p class="hint">Windows may ask to open the reader. Review the account and folder there before adding a feed.</p>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,104 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  IgnorableNamespaces="uap rescap com desktop">
+
+  <Identity
+    Name="JCQTechnology.WinNewsWire"
+    Publisher="CN=698DCB35-1354-4E65-A101-0687CBE1D6D6"
+    Version="1.0.1.0" />
+
+  <mp:PhoneIdentity PhoneProductId="b55c4825-1745-48c4-8717-4985ae8c1e23" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+
+  <Properties>
+    <DisplayName>WinNewsWire</DisplayName>
+    <PublisherDisplayName>JCQ Technology</PublisherDisplayName>
+    <Logo>Images\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="WinNewsWire"
+        Description="WinNewsWire"
+        BackgroundColor="transparent"
+        Square150x150Logo="Images\Square150x150Logo.png"
+        Square44x44Logo="Images\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Images\SplashScreen.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <uap:Extension Category="windows.shareTarget">
+          <uap:ShareTarget>
+            <uap:DataFormat>Uri</uap:DataFormat>
+            <uap:DataFormat>WebLink</uap:DataFormat>
+          </uap:ShareTarget>
+        </uap:Extension>
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="263e45c0-db51-4abc-b82c-47a5a518b381" />
+        </desktop:Extension>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="WinNewsWire\WinNewsWire.exe" DisplayName="WinNewsWire" Arguments="----AppNotificationActivated:">
+              <com:Class Id="263e45c0-db51-4abc-b82c-47a5a518b381" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="feed"><uap:DisplayName>Subscribe in WinNewsWire</uap:DisplayName></uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="feeds"><uap:DisplayName>Subscribe in WinNewsWire</uap:DisplayName></uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="x-netnewswire-feed"><uap:DisplayName>Subscribe in WinNewsWire</uap:DisplayName></uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="x-winnewswire-feed"><uap:DisplayName>Subscribe in WinNewsWire</uap:DisplayName></uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="netnewswire"><uap:DisplayName>Open in WinNewsWire</uap:DisplayName></uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="winnewswire"><uap:DisplayName>Open in WinNewsWire</uap:DisplayName></uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="nnw"><uap:DisplayName>Open in WinNewsWire</uap:DisplayName></uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="opml">
+            <uap:DisplayName>OPML Subscriptions</uap:DisplayName>
+            <uap:SupportedFileTypes><uap:FileType ContentType="text/x-opml">.opml</uap:FileType></uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="nnwtheme">
+            <uap:DisplayName>NetNewsWire Article Theme</uap:DisplayName>
+            <uap:SupportedFileTypes><uap:FileType>.nnwtheme</uap:FileType></uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

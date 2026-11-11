@@ -1,0 +1,759 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="WinNewsWire.MainContent"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:WinNewsWire"
+    xmlns:converters="using:WinNewsWire.Converters"
+    xmlns:models="using:WinNewsWire.Models"
+    xmlns:helpers="using:WinNewsWire.Helpers"
+    xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    KeyboardAcceleratorPlacementMode="Hidden">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <converters:BoolToVisibilityConverter x:Key="InvertedBoolToVisibility" Invert="True" />
+        <converters:RelativeTimeConverter x:Key="RelativeTime" />
+        <converters:UnreadCountToVisibilityConverter x:Key="UnreadCountToVisibility" />
+        <converters:IsReadToUnreadDotConverter x:Key="IsReadToUnreadDot" />
+        <converters:StarredToGlyphConverter x:Key="StarredToGlyph" />
+        <converters:PathToImageSourceConverter x:Key="PathToImage" />
+        <AcrylicBrush x:Key="TimelineHeaderAcrylic" TintColor="{ThemeResource LayerFillColorDefault}"
+                      TintOpacity="0.65" FallbackColor="{ThemeResource SolidBackgroundFillColorBase}" />
+        <Style x:Key="ColumnTimelineItemStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <DataTemplate x:Key="ColumnArticleTemplate" x:DataType="models:FeedItem">
+            <Grid x:Name="TimelineColumnRow" Padding="0,3,0,5"
+                  BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1"
+                  Loaded="TimelineColumnRow_Loaded" Unloaded="TimelineColumnRow_Unloaded"
+                  ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="22" />
+                    <ColumnDefinition Width="22" />
+                    <ColumnDefinition Width="180" />
+                    <ColumnDefinition Width="400" />
+                    <ColumnDefinition Width="130" />
+                </Grid.ColumnDefinitions>
+                <Ellipse Tag="Unread" Width="8" Height="8" VerticalAlignment="Center" HorizontalAlignment="Center"
+                         Fill="{ThemeResource AccentFillColorDefaultBrush}" AutomationProperties.Name="Unread"
+                         Visibility="{x:Bind IsUnread, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                <FontIcon Grid.Column="1" Tag="Starred" Glyph="&#xE735;" FontSize="12" AutomationProperties.Name="Starred"
+                          Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                          Visibility="{x:Bind IsStarred, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                <Grid Grid.Column="2" Tag="Feed" Margin="8,0" ColumnSpacing="5">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <helpers:IconView Width="16" Height="16" VerticalAlignment="Center"
+                                      ImageSource="{x:Bind FaviconPath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                                      AutomationProperties.AccessibilityView="Raw" />
+                    <TextBlock Grid.Column="1" Text="{x:Bind FeedTitle, Mode=OneWay}" FontWeight="{x:Bind ColumnFontWeight, Mode=OneWay}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </Grid>
+                <TextBlock Grid.Column="3" Tag="Title" Text="{x:Bind ColumnTitle, Mode=OneWay}" Margin="8,0"
+                           FontWeight="{x:Bind ColumnFontWeight, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="4" Tag="Date" Text="{x:Bind ColumnDate, Mode=OneWay}" Margin="8,0"
+                           FontWeight="{x:Bind ColumnFontWeight, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <UserControl.KeyboardAccelerators>
+        <KeyboardAccelerator Key="J" Invoked="AccelNext_Invoked" />
+        <KeyboardAccelerator Key="K" Invoked="AccelPrev_Invoked" />
+        <KeyboardAccelerator Key="Down" Modifiers="Control" Invoked="AccelNext_Invoked" />
+        <KeyboardAccelerator Key="Up" Modifiers="Control" Invoked="AccelPrev_Invoked" />
+        <KeyboardAccelerator Key="R" Invoked="AccelRefresh_Invoked" />
+        <KeyboardAccelerator Key="R" Modifiers="Control" Invoked="AccelRefresh_Invoked" />
+        <KeyboardAccelerator Key="M" Invoked="AccelMarkRead_Invoked" />
+        <KeyboardAccelerator Key="S" Invoked="AccelToggleStar_Invoked" />
+        <KeyboardAccelerator Key="L" Invoked="AccelToggleStar_Invoked" />
+        <KeyboardAccelerator Key="U" Invoked="AccelMarkRead_Invoked" />
+        <KeyboardAccelerator Key="Space" Invoked="AccelNextUnread_Invoked" />
+        <KeyboardAccelerator Key="N" Invoked="AccelNextUnread_Invoked" />
+        <KeyboardAccelerator Key="K" Modifiers="Control" Invoked="AccelMarkAllRead_Invoked" />
+        <KeyboardAccelerator Key="I" Modifiers="Control" Invoked="AccelInspector_Invoked" />
+        <KeyboardAccelerator Key="N" Modifiers="Control" Invoked="AccelNewFeed_Invoked" />
+        <KeyboardAccelerator Key="B" Modifiers="Control,Shift" Invoked="AccelToggleSidebar_Invoked" />
+        <KeyboardAccelerator Key="W" Modifiers="Control,Shift" Invoked="AccelReaderMode_Invoked" />
+    </UserControl.KeyboardAccelerators>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- The command host is attached to the article or combined pane header during initialization. -->
+        <helpers:ToolbarPanel x:Name="MainToolbar" Grid.Row="0" Padding="12,8" Visibility="Collapsed"
+                              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <helpers:ToolbarPanel.ContextFlyout>
+                <MenuFlyout Opening="ToolbarContextMenu_Opening" />
+            </helpers:ToolbarPanel.ContextFlyout>
+            <Grid KeyDown="MainToolbar_KeyDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid x:Name="ToolbarItemsPanel" SizeChanged="ToolbarItemsPanel_SizeChanged">
+                    <Button x:Name="ToggleSidebarButton" Click="ToggleSidebarButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <AnimatedIcon Width="16" Height="16" AutomationProperties.AccessibilityView="Raw">
+                            <AnimatedIcon.Source>
+                                <animatedvisuals:AnimatedGlobalNavigationButtonVisualSource />
+                            </AnimatedIcon.Source>
+                            <AnimatedIcon.FallbackIconSource>
+                                <FontIconSource Glyph="&#xE700;" FontSize="16" />
+                            </AnimatedIcon.FallbackIconSource>
+                        </AnimatedIcon>
+                    </Button>
+                    <Button x:Name="ReloadButton" Click="ReloadButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE72C;" FontSize="16" />
+                    </Button>
+                    <DropDownButton x:Name="AddDropdown" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE710;" FontSize="16" />
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                <MenuFlyoutItem Text="New Feed..." Click="NewFeed_Click" />
+                                <MenuFlyoutItem Text="New Folder..." Click="NewFolder_Click" />
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <Button x:Name="MarkAllReadButton" Click="MarkAllReadButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE73E;" FontSize="16" />
+                    </Button>
+                    <ToggleButton x:Name="ReadArticlesFilterButton" Click="ReadArticlesFilterButton_Click">
+                        <FontIcon Glyph="&#xE71C;" FontSize="16" />
+                    </ToggleButton>
+                    <Button x:Name="ToolbarMarkReadButton" Click="ToolbarMarkReadButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <PathIcon x:Name="ToolbarReadStatusIcon" Width="16" Height="16" />
+                    </Button>
+                    <Button x:Name="StarButton" Click="StarButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon x:Name="StarButtonIcon" Glyph="&#xE734;" FontSize="16" />
+                    </Button>
+                    <Button x:Name="NextUnreadButton" Click="NextUnreadButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE893;" FontSize="16" />
+                    </Button>
+                    <ToggleButton x:Name="ReaderModeToggle" IsChecked="{x:Bind ViewModel.IsReaderMode, Mode=TwoWay}">
+                        <FontIcon Glyph="&#xE8A1;" FontSize="16" />
+                    </ToggleButton>
+                    <Button x:Name="ShareButton" Click="ShareButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE72D;" FontSize="16" />
+                    </Button>
+                    <Button x:Name="OpenInWebViewButton" Click="OpenInWebViewButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE737;" FontSize="16" />
+                    </Button>
+                    <Button x:Name="OpenInBrowserButton" Click="OpenInBrowserButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE774;" FontSize="16" />
+                    </Button>
+                    <DropDownButton x:Name="ArticleThemeButton" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE790;" FontSize="16" />
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Opening="ToolbarThemes_Opening" />
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <Button x:Name="CleanUpButton" Click="CleanUpButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xEA99;" FontSize="16" />
+                    </Button>
+                </Grid>
+                <Button x:Name="ToolbarOverflowButton" Grid.Column="1" Width="36" Height="36" Padding="0"
+                        Style="{StaticResource SubtleButtonStyle}" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE712;" FontSize="16" AutomationProperties.AccessibilityView="Raw" />
+                    <Button.Flyout>
+                        <MenuFlyout x:Name="ToolbarOverflowMenu" Opening="ToolbarOverflowMenu_Opening" />
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+        </helpers:ToolbarPanel>
+        <InfoBar x:Name="ToolbarErrorInfoBar" Grid.Row="1" Severity="Error" IsOpen="False" IsClosable="True"
+                 AutomationProperties.LiveSetting="Polite" />
+
+        <!-- Three-Panel Layout -->
+        <Grid Grid.Row="2" x:Name="MainContentGrid" SizeChanged="MainContentGrid_SizeChanged">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="SidebarColumn" Width="260" MinWidth="200" MaxWidth="400" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="ReadingAreaColumn" Width="*" MinWidth="580" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Extend the scroll rail into the gutter while preserving the header and feed-row widths. -->
+            <Grid Grid.Column="0" x:Name="SidebarPanel"
+                  Background="Transparent" Margin="0,0,-4,0" Padding="0,0,4,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Sidebar toolbar -->
+                <Grid x:Name="SidebarHeader" Grid.Row="0" Padding="8,8" MinHeight="52" KeyDown="MainToolbar_KeyDown">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid x:Name="SidebarToolbarItemsPanel" SizeChanged="ToolbarItemsPanel_SizeChanged" />
+                    <ContentControl x:Name="SidebarFilterHost" Grid.Column="1" VerticalAlignment="Center">
+                    <ToggleButton x:Name="SidebarReadFilterButton"
+                                  IsChecked="{x:Bind ViewModel.IsSidebarReadFiltered, Mode=OneWay}"
+                                  Checked="SidebarReadFilter_Changed" Unchecked="SidebarReadFilter_Changed"
+                                  ToolTipService.ToolTip="{x:Bind ViewModel.SidebarReadFilterLabel, Mode=OneWay}"
+                                  AutomationProperties.Name="{x:Bind ViewModel.SidebarReadFilterLabel, Mode=OneWay}"
+                                  Width="36" Height="36" Padding="0" BorderThickness="0">
+                        <FontIcon Glyph="&#xE71C;" FontSize="14"
+                                  AutomationProperties.AccessibilityView="Raw" />
+                    </ToggleButton>
+                    </ContentControl>
+                </Grid>
+
+                <ListView Grid.Row="1" x:Name="SidebarListView"
+                  SelectionChanged="SidebarListView_SelectionChanged"
+                  ContainerContentChanging="SidebarListView_ContainerContentChanging"
+                  KeyDown="SidebarListView_KeyDown"
+                  SelectionMode="Extended"
+                  IsMultiSelectCheckBoxEnabled="False"
+                  Margin="0,0,-4,0" Padding="0,0,8,8"
+                  AutomationProperties.Name="Feeds"
+                  AutomationProperties.LandmarkType="Navigation"
+                  CanDragItems="True"
+                  CanReorderItems="False"
+                  AllowDrop="True"
+                  DragItemsStarting="SidebarListView_DragItemsStarting"
+                  DragItemsCompleted="SidebarListView_DragItemsCompleted"
+                  DragLeave="SidebarListView_DragLeave">
+            <ListView.ItemContainerTransitions>
+                <TransitionCollection />
+            </ListView.ItemContainerTransitions>
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                    <Setter Property="Padding" Value="10,5,0,7" />
+                    <Setter Property="MinHeight" Value="32" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.Resources>
+                <Thickness x:Key="ScrollViewerScrollBarMargin">1,1,0,1</Thickness>
+                <!-- A non-interactive section heading is not disabled-looking content. -->
+                <x:Double x:Key="ListViewItemDisabledThemeOpacity">1</x:Double>
+                <DataTemplate x:Key="SidebarRowTemplate" x:DataType="models:SidebarItem">
+                    <Grid ColumnSpacing="4" Margin="{x:Bind OutlineMargin}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button Width="20" Height="20" MinWidth="0" MinHeight="0" Margin="-2,0" Padding="0" IsTabStop="False"
+                                      Background="Transparent" BorderThickness="0"
+                                      Tag="{x:Bind}"
+                                      Click="SidebarContainerExpansion_Click"
+                                      Visibility="{x:Bind IsExpandable, Converter={StaticResource BoolToVisibility}}"
+                                      AutomationProperties.Name="{x:Bind ExpansionLabel, Mode=OneWay}">
+                            <FontIcon Glyph="{x:Bind ExpansionGlyph, Mode=OneWay}" FontSize="10" />
+                        </Button>
+                        <Image Grid.Column="1" Width="16" Height="16" Margin="0,0,2,0"
+                               Source="{x:Bind FaviconPath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                               Visibility="{x:Bind HasFeedImage, Converter={StaticResource BoolToVisibility}}"
+                               AutomationProperties.AccessibilityView="Raw" />
+                        <FontIcon Grid.Column="1" Width="16" Height="16" FontSize="14" Margin="0,0,2,0"
+                                  Glyph="{x:Bind Icon, Mode=OneWay}"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  Visibility="{x:Bind HasSymbolIcon, Converter={StaticResource BoolToVisibility}}"
+                                  AutomationProperties.AccessibilityView="Raw" />
+
+                        <!-- Read-only label (hidden during inline rename) -->
+                        <TextBlock Grid.Column="2" Text="{x:Bind Title, Mode=OneWay}"
+                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center"
+                                   IsTextTrimmedChanged="SidebarTitle_IsTextTrimmedChanged"
+                                   Loaded="SidebarTitle_Loaded"
+                                   Visibility="{x:Bind IsRenaming, Mode=OneWay, Converter={StaticResource InvertedBoolToVisibility}}" />
+
+                        <!-- Inline rename editor (visible only during rename) -->
+                        <Grid Grid.Column="2"
+                              VerticalAlignment="Center"
+                              ColumnSpacing="2"
+                              Visibility="{x:Bind IsRenaming, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Text="{x:Bind EditableTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     MinHeight="28"
+                                     Padding="6,2"
+                                     VerticalContentAlignment="Center"
+                                     TextWrapping="NoWrap"
+                                     HorizontalAlignment="Stretch"
+                                     Loaded="SidebarRenameBox_Loaded"
+                                     GotFocus="SidebarRenameBox_GotFocus"
+                                     LostFocus="SidebarRenameBox_LostFocus"
+                                     KeyDown="SidebarRenameBox_KeyDown" />
+                            <Button Grid.Column="1" Click="SidebarRenameAccept_Click"
+                                    Width="28" Height="28" Padding="0"
+                                    Style="{StaticResource SubtleButtonStyle}"
+                                    ToolTipService.ToolTip="Rename"
+                                    AutomationProperties.Name="Confirm rename">
+                                <FontIcon Glyph="&#xE73E;" FontSize="12"
+                                          AutomationProperties.AccessibilityView="Raw" />
+                            </Button>
+                            <Button Grid.Column="2" Click="SidebarRenameCancel_Click"
+                                    Width="28" Height="28" Padding="0"
+                                    Style="{StaticResource SubtleButtonStyle}"
+                                    ToolTipService.ToolTip="Cancel"
+                                    AutomationProperties.Name="Cancel rename">
+                                <FontIcon Glyph="&#xE711;" FontSize="12"
+                                          AutomationProperties.AccessibilityView="Raw" />
+                            </Button>
+                        </Grid>
+
+                        <Border x:Name="SidebarUnreadIndicator" Grid.Column="3"
+                                Padding="6,0"
+                                MinWidth="20" Height="18"
+                                VerticalAlignment="Center"
+                                AutomationProperties.AccessibilityView="Raw"
+                                Visibility="{x:Bind ShowUnreadIndicator, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                            <Grid>
+                                <TextBlock Text="{x:Bind UnreadCountText, Mode=OneWay}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"
+                                           Typography.NumeralAlignment="Tabular"
+                                           Visibility="{x:Bind ShowUnreadCount, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                <Ellipse x:Name="SidebarUnreadDot" Width="8" Height="8" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                         Fill="{ThemeResource TextFillColorSecondaryBrush}"
+                                         Visibility="{x:Bind ShowUnreadCountDot, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </DataTemplate>
+                <DataTemplate x:Key="SidebarSectionHeaderTemplate" x:DataType="models:SidebarItem">
+                    <TextBlock Margin="10,8,0,8" VerticalAlignment="Center"
+                               Text="{x:Bind Title, Mode=OneWay}"
+                               FontSize="11" FontWeight="SemiBold"
+                               CharacterSpacing="60"
+                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               AutomationProperties.HeadingLevel="Level2" />
+                </DataTemplate>
+                <helpers:SidebarItemTemplateSelector x:Key="SidebarTemplateSelector"
+                    DefaultTemplate="{StaticResource SidebarRowTemplate}"
+                    SectionHeaderTemplate="{StaticResource SidebarSectionHeaderTemplate}" />
+            </ListView.Resources>
+            <ListView.ItemTemplateSelector>
+                <StaticResource ResourceKey="SidebarTemplateSelector" />
+            </ListView.ItemTemplateSelector>
+            <ListView.ContextFlyout>
+                <MenuFlyout x:Name="SidebarContextMenu" Opening="SidebarContextMenu_Opening" />
+            </ListView.ContextFlyout>
+        </ListView>
+                <Border x:Name="SidebarDropIndicator" Grid.Row="1" Height="2"
+                        VerticalAlignment="Top" HorizontalAlignment="Left"
+                        BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                        Background="Transparent"
+                        Visibility="Collapsed" IsHitTestVisible="False" />
+                <!-- Sidebar status (accounts · feeds · unread) -->
+                <Border Grid.Row="2" Padding="12,4"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="0,1,0,0">
+                    <TextBlock Text="{x:Bind ViewModel.SidebarStatus, Mode=OneWay}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               TextWrapping="NoWrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               AutomationProperties.LiveSetting="Polite" />
+                </Border>
+            </Grid>
+
+            <!-- Keep room for the shifted rail without narrowing the resize hit target. -->
+            <ContentControl x:Name="SidebarSplitter" Grid.Column="1" Width="8" Margin="4,0,0,0"
+                            IsTabStop="True"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"
+                            AutomationProperties.Name="Resize sidebar"
+                            AutomationProperties.HelpText="Press left or right arrow to resize"
+                            ToolTipService.ToolTip="Resize sidebar (drag or use arrow keys)"
+                            PointerPressed="SidebarSplitter_PointerPressed"
+                            PointerMoved="SidebarSplitter_PointerMoved"
+                            PointerReleased="Splitter_PointerReleased"
+                            PointerEntered="Splitter_PointerEntered"
+                            PointerExited="Splitter_PointerExited"
+                            KeyDown="SidebarSplitter_KeyDown">
+                <Border Background="Transparent"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+            </ContentControl>
+
+            <!-- Rounded container for Article List + Content (Edge-style) -->
+            <Border Grid.Column="2"
+                    x:Name="ContentContainer"
+                    CornerRadius="8"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    Margin="0,4,4,0"
+                    Translation="0,0,16">
+                <Border.Shadow>
+                    <ThemeShadow />
+                </Border.Shadow>
+                <Grid x:Name="ArticleContentGrid" SizeChanged="ArticleContentGrid_SizeChanged">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="ArticleListColumn" Width="380" MinWidth="280" MaxWidth="600" />
+                        <ColumnDefinition x:Name="ArticleDividerColumn" Width="Auto" />
+                        <ColumnDefinition x:Name="ArticleDetailColumn" Width="*" MinWidth="{x:Bind local:MainContent.ArticlePaneMinimumWidth}" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition x:Name="ColumnTimelineRow" Height="*" />
+                        <RowDefinition x:Name="ColumnDividerRow" Height="0" />
+                        <RowDefinition x:Name="ColumnDetailRow" Height="0" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Article List -->
+                    <Grid Grid.Column="0" x:Name="TimelinePanel">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <ScrollViewer x:Name="TimelineHorizontalScroll" Grid.Row="0" Grid.RowSpan="2"
+                                      HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled"
+                                      VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled"
+                                      SizeChanged="TimelineHorizontalScroll_SizeChanged">
+                        <Grid x:Name="TimelineTableContainer">
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <Grid x:Name="TimelineColumnsHeader" Visibility="Collapsed"
+                                  Canvas.ZIndex="1" Background="{StaticResource TimelineHeaderAcrylic}"
+                                  SizeChanged="TimelineHeader_SizeChanged"
+                                  BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="TimelineUnreadColumn" Width="22" MinWidth="22" MaxWidth="22" />
+                                    <ColumnDefinition x:Name="TimelineStarredColumn" Width="22" MinWidth="22" MaxWidth="22" />
+                                    <ColumnDefinition x:Name="TimelineFeedColumn" Width="180" MinWidth="80" MaxWidth="2000" />
+                                    <ColumnDefinition x:Name="TimelineTitleColumn" Width="400" MinWidth="100" MaxWidth="2000" />
+                                    <ColumnDefinition x:Name="TimelineDateColumn" Width="130" MinWidth="70" MaxWidth="2000" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.Resources>
+                                    <Style TargetType="Button">
+                                        <Setter Property="MinWidth" Value="0" /><Setter Property="Padding" Value="8,5" />
+                                        <Setter Property="MinHeight" Value="30" />
+                                        <Setter Property="BorderThickness" Value="0" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                        <Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="CornerRadius" Value="0" />
+                                        <Setter Property="UseSystemFocusVisuals" Value="True" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="HeaderBackground" Background="{TemplateBinding Background}">
+                                                        <VisualStateManager.VisualStateGroups>
+                                                            <VisualStateGroup x:Name="CommonStates">
+                                                                <VisualState x:Name="Normal" />
+                                                                <VisualState x:Name="PointerOver">
+                                                                    <VisualState.Setters>
+                                                                        <Setter Target="HeaderBackground.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                                                    </VisualState.Setters>
+                                                                </VisualState>
+                                                                <VisualState x:Name="Pressed">
+                                                                    <VisualState.Setters>
+                                                                        <Setter Target="HeaderBackground.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                                                    </VisualState.Setters>
+                                                                </VisualState>
+                                                                <VisualState x:Name="Disabled" />
+                                                            </VisualStateGroup>
+                                                        </VisualStateManager.VisualStateGroups>
+                                                        <ContentPresenter Content="{TemplateBinding Content}" Padding="{TemplateBinding Padding}"
+                                                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                                          VerticalContentAlignment="Center" Foreground="{TemplateBinding Foreground}" />
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                    <Style TargetType="helpers:ColumnResizeThumb">
+                                        <Setter Property="Width" Value="8" /><Setter Property="HorizontalAlignment" Value="Right" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                    </Style>
+                                </Grid.Resources>
+                                <Button Grid.Column="2" Tag="Feed" Content="Feed" Click="TimelineColumnSort_Click" />
+                                <Button Grid.Column="3" Tag="Title" Content="Title" Click="TimelineColumnSort_Click" />
+                                <Button Grid.Column="4" Tag="Date" Content="Date" Click="TimelineColumnSort_Click" />
+                                <helpers:ColumnResizeThumb Grid.Column="2" Tag="Feed" Column="{x:Bind TimelineFeedColumn}"
+                                    AutomationProperties.Name="Resize timeline Feed column" WidthChanged="TimelineColumn_WidthChanged" ResizeCompleted="TimelineColumn_ResizeCompleted" />
+                                <helpers:ColumnResizeThumb Grid.Column="3" Tag="Title" Column="{x:Bind TimelineTitleColumn}"
+                                    AutomationProperties.Name="Resize timeline Title column" WidthChanged="TimelineColumn_WidthChanged" ResizeCompleted="TimelineColumn_ResizeCompleted" />
+                                <helpers:ColumnResizeThumb Grid.Column="4" Tag="Date" Column="{x:Bind TimelineDateColumn}"
+                                    AutomationProperties.Name="Resize timeline Date column" WidthChanged="TimelineColumn_WidthChanged" ResizeCompleted="TimelineColumn_ResizeCompleted" />
+                            </Grid>
+                        <!-- Rows scroll beneath the acrylic headers; padding keeps the first row unobscured. -->
+                        <ListView x:Name="ArticleListView"
+                                  Grid.Row="0" Grid.RowSpan="2"
+                                  ItemsSource="{x:Bind ViewModel.ArticleItems, Mode=OneWay}"
+                                  SelectionMode="Extended"
+                                  SelectionChanged="ArticleListView_SelectionChanged"
+                                  PointerEntered="ArticleListView_PointerEntered"
+                                  Padding="0,0,0,4">
+                            <ListView.ContextFlyout>
+                                <MenuFlyout x:Name="ArticleContextMenu" Opening="ArticleContextMenu_Opening" />
+                            </ListView.ContextFlyout>
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="12,10" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Margin" Value="4,1" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:FeedItem">
+                                    <Grid ColumnSpacing="10"
+                                          ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid Grid.Column="0" Width="12" VerticalAlignment="Top" Margin="0,4,0,0">
+                                            <Ellipse Width="8" Height="8"
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                     Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                                                     Visibility="{x:Bind ShowUnreadDot, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                                            <FontIcon Glyph="&#xE735;" FontSize="12"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                                      ToolTipService.ToolTip="Starred"
+                                                      Visibility="{x:Bind ShowStar, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                                        </Grid>
+                                        <helpers:IconView Grid.Column="1" Width="48" Height="48"
+                                                          VerticalAlignment="Top"
+                                                          ImageSource="{x:Bind FaviconPath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                                                          AutomationProperties.AccessibilityView="Raw" />
+                                        <StackPanel Grid.Column="2" Spacing="3"
+                                                    VerticalAlignment="Center"
+                                                    AutomationProperties.Name="{x:Bind Tooltip, Mode=OneWay}">
+                                            <TextBlock helpers:HtmlInlines.AttributedText="{x:Bind AttributedTitle, Mode=OneWay}"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                       MaxLines="2" />
+                                            <TextBlock Text="{x:Bind Summary, Mode=OneWay}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                       MaxLines="2" />
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{x:Bind FeedTitle, Mode=OneWay}"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                           FontWeight="SemiBold" />
+                                                <TextBlock Text="{x:Bind PublishedDate, Mode=OneWay, Converter={StaticResource RelativeTime}}"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        </Grid>
+                        </ScrollViewer>
+
+                        <Grid x:Name="TimelineToolbar" Grid.Row="0" MinHeight="52" Padding="12,8"
+                              Canvas.ZIndex="2" VerticalAlignment="Top"
+                              Background="{StaticResource TimelineHeaderAcrylic}"
+                              SizeChanged="TimelineHeader_SizeChanged" KeyDown="MainToolbar_KeyDown"
+                              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                              BorderThickness="0,0,0,1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel x:Name="TimelineHeaderCaption" VerticalAlignment="Center" Margin="0,0,12,0" Spacing="2">
+                                <TextBlock x:Name="ArticleListTitleText"
+                                           Text="{x:Bind ViewModel.ArticleListTitle, Mode=OneWay}"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           TextWrapping="NoWrap"
+                                           TextTrimming="CharacterEllipsis" />
+                            <Border x:Name="TimelineUnreadCount"
+                                    AutomationProperties.Name="{x:Bind ViewModel.HeaderUnreadAccessibilityText, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.ShowHeaderUnreadCount, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{x:Bind ViewModel.HeaderUnreadAccessibilityText, Mode=OneWay}"
+                                           Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           AutomationProperties.AccessibilityView="Raw" />
+                            </Border>
+                            </StackPanel>
+                            <Grid x:Name="TimelineToolbarItemsPanel" Grid.Column="1" SizeChanged="ToolbarItemsPanel_SizeChanged" />
+                            <ContentControl x:Name="CombinedToolbarHost" Grid.Column="1" Visibility="Collapsed"
+                                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+                        </Grid>
+
+                        <!-- Timeline status (N articles · unread · starred) -->
+                        <Border x:Name="TimelineFooter" Grid.Row="2" Padding="12,4"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="0,1,0,0">
+                            <TextBlock Text="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       TextWrapping="NoWrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </Border>
+                    </Grid>
+
+                    <!-- Single-line divider between article list and content.
+                         Same a11y treatment as SidebarSplitter — focusable
+                         ContentControl (not Button) so its custom drag
+                         pointer-capture isn't fought by built-in click logic. -->
+                    <ContentControl x:Name="ArticleSplitter" Grid.Column="1" Width="8"
+                            IsTabStop="True"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"
+                            AutomationProperties.Name="Resize article list"
+                            AutomationProperties.HelpText="Press left or right arrow to resize"
+                            ToolTipService.ToolTip="Resize article list (drag or use arrow keys)"
+                            PointerPressed="ArticleSplitter_PointerPressed"
+                            PointerMoved="ArticleSplitter_PointerMoved"
+                            PointerReleased="Splitter_PointerReleased"
+                            PointerEntered="Splitter_PointerEntered"
+                            PointerExited="Splitter_PointerExited"
+                            KeyDown="ArticleSplitter_KeyDown">
+                        <!-- Transparent backdrop fills the full width so the
+                             whole splitter is draggable, not just the 1 px
+                             centered divider Rectangle. -->
+                        <Grid Background="Transparent">
+                            <Rectangle x:Name="ArticleDividerLine" Width="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}"
+                                       HorizontalAlignment="Center" />
+                        </Grid>
+                    </ContentControl>
+
+                    <!-- Content Pane -->
+                    <Grid x:Name="ArticleDetailPanel" Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <ContentControl x:Name="ArticleToolbarHost" Grid.Row="0"
+                                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+
+                        <Border x:Name="ArticleFindBar" Grid.Row="1" Visibility="Collapsed" Padding="8"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                            <Grid ColumnSpacing="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="ArticleFindText" MinWidth="80" TextChanged="ArticleFindText_TextChanged"
+                                         KeyDown="ArticleFindText_KeyDown" />
+                                <TextBlock x:Name="ArticleFindStatus" Grid.Column="1" VerticalAlignment="Center" MaxWidth="130"
+                                           TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" FontSize="12" />
+                                <Button x:Name="ArticleFindPrevious" Grid.Column="2" Width="32" Padding="0"
+                                        IsEnabled="False" Click="ArticleFindPrevious_Click">
+                                    <FontIcon Glyph="&#xE70E;" FontSize="12" />
+                                </Button>
+                                <Button x:Name="ArticleFindNext" Grid.Column="3" Width="32" Padding="0"
+                                        IsEnabled="False" Click="ArticleFindNext_Click">
+                                    <FontIcon Glyph="&#xE70D;" FontSize="12" />
+                                </Button>
+                                <Button x:Name="ArticleFindOptionsButton" Grid.Column="4" Width="32" Padding="0">
+                                    <FontIcon Glyph="&#xE712;" FontSize="12" />
+                                    <Button.Flyout>
+                                        <MenuFlyout>
+                                            <ToggleMenuFlyoutItem x:Name="ArticleFindMatchCase" Click="ArticleFindOption_Click" />
+                                            <ToggleMenuFlyoutItem x:Name="ArticleFindWholeWord" Click="ArticleFindOption_Click" />
+                                        </MenuFlyout>
+                                    </Button.Flyout>
+                                </Button>
+                                <Button x:Name="ArticleFindClose" Grid.Column="5" Width="32" Padding="0" Click="ArticleFindClose_Click">
+                                    <FontIcon Glyph="&#xE711;" FontSize="12" />
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <!-- WebView2 for article content -->
+                        <WebView2 Grid.Row="2" x:Name="ContentWebView"
+                                  DefaultBackgroundColor="Transparent" />
+
+                        <WebView2 Grid.Row="2" x:Name="WebPageView" Visibility="Collapsed" Opacity="0" />
+                        <Border x:Name="WebPageLoadingState" Grid.Row="2" Canvas.ZIndex="1"
+                                Visibility="Collapsed" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+                            <ContentControl x:Name="WebPageLoadingFocusTarget" IsTabStop="True" UseSystemFocusVisuals="False"
+                                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                                <TextBlock x:Name="WebPageLoadingText" TextWrapping="Wrap" Margin="24"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           AutomationProperties.LiveSetting="Polite" />
+                            </ContentControl>
+                        </Border>
+                        <ProgressBar x:Name="WebPageProgress" Grid.Row="2" Height="2" VerticalAlignment="Top"
+                                     Canvas.ZIndex="2" IsIndeterminate="True" Visibility="Collapsed" IsHitTestVisible="False" />
+                        <InfoBar x:Name="WebPageError" Grid.Row="1" Severity="Error" IsOpen="False" IsClosable="True"
+                                 AutomationProperties.LiveSetting="Polite" />
+
+                        <!-- Empty state overlay -->
+                        <Grid Grid.Row="2" x:Name="EmptyContentState"
+                              Visibility="Visible">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+                                <FontIcon Glyph="&#xE7BC;" FontSize="48"
+                                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                          AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Text="{x:Bind ViewModel.ArticleSelectionMessage, Mode=OneWay}"
+                                           Style="{StaticResource SubtitleTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Detail status (feed · author · date · reader view) -->
+                        <Border x:Name="DetailFooter" Grid.Row="3" Padding="12,4"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="0,1,0,0">
+                            <Grid x:Name="DetailFooterContent">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="CombinedTimelineStatusColumn" Width="0" />
+                                    <ColumnDefinition Width="2*" />
+                                </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="CombinedTimelineStatus" Visibility="Collapsed"
+                                       Text="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       TextWrapping="NoWrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                       AutomationProperties.LiveSetting="Polite" />
+                            <TextBlock x:Name="ArticleDetailStatus" Grid.Column="1" Text="{x:Bind ViewModel.DetailStatus, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       TextWrapping="NoWrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       AutomationProperties.LiveSetting="Polite" />
+                            <TextBlock x:Name="WebPageStatus" Grid.Column="1" Visibility="Collapsed"
+                                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="NoWrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                       AutomationProperties.LiveSetting="Polite" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border x:Name="FloatingToolbarSurface" Grid.Row="2" Canvas.ZIndex="3"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,32,0"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                CornerRadius="{ThemeResource ControlCornerRadius}"
+                Visibility="{Binding Visibility, ElementName=FloatingToolbarButton, Mode=OneWay}">
+            <Button x:Name="FloatingToolbarButton" Width="36" Height="36" Padding="0" Visibility="Collapsed">
+                <FontIcon Glyph="&#xE712;" FontSize="20" AutomationProperties.AccessibilityView="Raw" />
+                <Button.Flyout>
+                    <MenuFlyout x:Name="FloatingToolbarMenu" Opening="ToolbarContextMenu_Opening" />
+                </Button.Flyout>
+            </Button>
+        </Border>
+
+    </Grid>
+</UserControl>

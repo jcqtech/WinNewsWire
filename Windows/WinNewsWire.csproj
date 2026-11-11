@@ -1,0 +1,82 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>WinNewsWire</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\wnw.ico</ApplicationIcon>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <NoWarn>MVVMTK0045</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ParityProbe)' == 'true'">
+    <DefineConstants>$(DefineConstants);PARITY_PROBE</DefineConstants>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(WindowsAppSDKSelfContained)' != 'true'">
+    <!-- Direct executable launches need a runtime package graph before Application.Start. -->
+    <WindowsAppSdkBootstrapInitialize Condition="'$(WindowsAppSdkBootstrapInitialize)' == ''">true</WindowsAppSdkBootstrapInitialize>
+    <WindowsAppSDKBootstrapAutoInitializeOptions_OnPackageIdentity_NoOp>true</WindowsAppSDKBootstrapAutoInitializeOptions_OnPackageIdentity_NoOp>
+    <WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI>true</WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Keyboard\*.plist" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\wnw.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\wnw.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\wnw-flat.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="BrowserExtension\manifest.json;BrowserExtension\popup.html;BrowserExtension\popup.css;BrowserExtension\popup.js;BrowserExtension\subscription-url.js;BrowserExtension\icon.png;BrowserExtension\README.md;BrowserExtension\THIRD-PARTY-NOTICES.txt"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Automation\Invoke-WinNewsWire.ps1;Automation\README.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\wnw-flat.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+    <None Update="Diagnostics\CaptureScrollFrames.mjs" Condition="'$(ParityProbe)' == 'true'"
+          CopyToOutputDirectory="PreserveNewest" TargetPath="CaptureScrollFrames.mjs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3405.78" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Core\Core.csproj" />
+    <ProjectReference Include="..\Modules\Parsers\Parsers.csproj" />
+    <ProjectReference Include="..\Modules\Web\Web.csproj" />
+    <ProjectReference Include="..\Modules\Articles\Articles.csproj" />
+    <ProjectReference Include="..\Modules\ArticlesDatabase\ArticlesDatabase.csproj" />
+    <ProjectReference Include="..\Modules\SyncDatabase\SyncDatabase.csproj" />
+    <ProjectReference Include="..\Modules\FeedFinder\FeedFinder.csproj" />
+    <ProjectReference Include="..\Modules\Tree\Tree.csproj" />
+    <ProjectReference Include="..\Modules\Account\Account.csproj" />
+    <ProjectReference Include="..\Shared\AppShared.csproj" />
+    <ProjectReference Include="..\Modules\ErrorLog\ErrorLog.csproj" />
+    <ProjectReference Include="..\Modules\Secrets\Secrets.csproj" />
+    <ProjectReference Include="..\Modules\NewsBlur\NewsBlur.csproj" />
+    <ProjectReference Include="..\Modules\HTMLMetadata\HTMLMetadata.csproj" />
+    <ProjectReference Include="..\Modules\Images\Images.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\Tools\RefreshWorker\RefreshWorker.targets" />
+
+    <!-- Publish Properties -->
+  <PropertyGroup>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
+    <!-- Account settings and service DTOs use reflection-based JSON serialization. -->
+    <PublishTrimmed>False</PublishTrimmed>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,29 @@
+<Project>
+  <PropertyGroup>
+    <_RefreshWorkerProperties Condition="'$(RuntimeIdentifier)' != ''">RuntimeIdentifier=$(RuntimeIdentifier);</_RefreshWorkerProperties>
+    <_RefreshWorkerProperties Condition="'$(SelfContained)' != ''">$(_RefreshWorkerProperties)SelfContained=$(SelfContained);</_RefreshWorkerProperties>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)WinNewsWire.RefreshWorker.csproj" ReferenceOutputAssembly="false"
+                      BuildReference="false" Private="false" AdditionalProperties="$(_RefreshWorkerProperties)" />
+  </ItemGroup>
+  <Target Name="IncludeRefreshWorkerFiles" AfterTargets="Build" BeforeTargets="GetCopyToPublishDirectoryItems"
+          DependsOnTargets="ResolveProjectReferences" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_RefreshWorkerStage>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'RefreshWorker', '$(SelfContained)'))</_RefreshWorkerStage>
+    </PropertyGroup>
+    <MSBuild Projects="$(MSBuildThisFileDirectory)WinNewsWire.RefreshWorker.csproj" Targets="Build" BuildInParallel="false"
+             RemoveProperties="TargetFramework;PublishProfile;PublishDir;PublishUrl;OutputPath;BaseOutputPath;WindowsPackageType;ParityProbe"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);$(_RefreshWorkerProperties)OutDir=$(_RefreshWorkerStage);BuildProjectReferences=true;PublishReadyToRun=false" />
+    <ItemGroup>
+      <_RefreshWorkerFiles Include="$(_RefreshWorkerStage)**\*" />
+      <ContentWithTargetPath Include="@(_RefreshWorkerFiles)"
+                             TargetPath="RefreshWorker\%(RecursiveDir)%(Filename)%(Extension)"
+                             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+    <!-- Keep the worker's dependency graph separate from WinUI's package overrides. -->
+    <Copy SourceFiles="@(_RefreshWorkerFiles)"
+          DestinationFiles="@(_RefreshWorkerFiles->'$(TargetDir)RefreshWorker\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

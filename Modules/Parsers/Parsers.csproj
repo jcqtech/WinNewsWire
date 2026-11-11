@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinNewsWire.Parsers</RootNamespace>
+    <AssemblyName>WinNewsWire.Parsers</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Parsers.Tests" />
+    <InternalsVisibleTo Include="WinNewsWire.ArticlesDatabase" />
+    <ProjectReference Include="..\Markdown\Markdown.csproj" />
+  </ItemGroup>
+</Project>

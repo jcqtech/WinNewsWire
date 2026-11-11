@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinNewsWire.AppShared</RootNamespace>
+    <AssemblyName>WinNewsWire.AppShared</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Core\Core.csproj" />
+    <ProjectReference Include="..\Modules\Parsers\Parsers.csproj" />
+    <ProjectReference Include="..\Modules\Web\Web.csproj" />
+    <ProjectReference Include="..\Modules\Articles\Articles.csproj" />
+    <ProjectReference Include="..\Modules\ArticlesDatabase\ArticlesDatabase.csproj" />
+    <ProjectReference Include="..\Modules\SyncDatabase\SyncDatabase.csproj" />
+    <ProjectReference Include="..\Modules\FeedFinder\FeedFinder.csproj" />
+    <ProjectReference Include="..\Modules\Tree\Tree.csproj" />
+    <ProjectReference Include="..\Modules\Account\Account.csproj" />
+    <ProjectReference Include="..\Modules\HTMLMetadata\HTMLMetadata.csproj" />
+    <ProjectReference Include="..\Modules\Images\Images.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\DefaultFeeds.opml" />
+    <EmbeddedResource Include="Resources\template.html" />
+    <EmbeddedResource Include="Resources\stylesheet.css" />
+    <EmbeddedResource Include="Resources\core.css" />
+    <EmbeddedResource Include="Resources\main.js" />
+    <EmbeddedResource Include="Resources\main_windows.js" />
+    <EmbeddedResource Include="Resources\newsfoot.js" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SmartReader" Version="0.11.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinNewsWire.Tests" />
+  </ItemGroup>
+</Project>

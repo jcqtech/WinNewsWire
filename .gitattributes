@@ -1,0 +1,9 @@
+# Preserve upstream fixture bytes, including deliberately unusual whitespace.
+Modules/Core/Tests/Core.Tests/Resources/** -text -whitespace
+Modules/Account/Tests/Account.Tests/JSON/** -text -whitespace
+Modules/Parsers/Tests/Parsers.Tests/Resources/** -text -whitespace
+Shared/Resources/template.html -text -whitespace
+Shared/Resources/stylesheet.css -text -whitespace
+Shared/Resources/core.css -text -whitespace
+Shared/Resources/main.js -text -whitespace
+Shared/Resources/newsfoot.js -text -whitespace

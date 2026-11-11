@@ -1,0 +1,319 @@
+using System.Linq;
+using Xunit;
+using WinNewsWire.Parsers;
+
+namespace WinNewsWire.Parsers.Tests;
+
+/// <summary>Port of RSParser's <c>RSSParserTests.swift</c>. Performance tests are omitted.</summary>
+public class RssParserTests
+{
+    private static ParserData Load(string f, string ext, string url) => TestResources.Load($"{f}.{ext}", url);
+
+    [Fact]
+    public void IgnoredElementsAndSupersededDescriptionsDoNotAllocateStrings()
+    {
+        const int length = 256 * 1024;
+        var ignored = new string('x', length);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(
+            "<rss xmlns:content='http://purl.org/rss/1.0/modules/content/'><channel><item>" +
+            "<guid isPermaLink='false'>item</guid><title>Title</title>" +
+            "<content:encoded><![CDATA[<p>Body</p>]]></content:encoded>" +
+            "<description><![CDATA[" + ignored + "]]></description>" +
+            "<unused><![CDATA[" + ignored + "]]></unused></item></channel></rss>");
+        var data = new ParserData("https://example.com/feed", bytes);
+        RssParser.Parse(data);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var feed = RssParser.Parse(data);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var item = Assert.Single(feed.Items);
+        Assert.Equal("item", item.UniqueId);
+        Assert.Equal("Title", item.Title);
+        Assert.Equal("<p>Body</p>", item.ContentHtml);
+        Assert.True(allocated < length + 64 * 1024, $"Ignored XML text allocated {allocated} bytes.");
+    }
+
+    [Fact]
+    public void NatashaTheRobotItemCount()
+    {
+        var feed = FeedParser.Parse(Load("natasha", "xml", "https://www.natashatherobot.com/"))!;
+        Assert.Equal(10, feed.Items.Count);
+    }
+
+    [Fact]
+    public void TheOmniShowAttachments()
+    {
+        var feed = FeedParser.Parse(Load("theomnishow", "rss", "https://theomnishow.omnigroup.com/"))!;
+        foreach (var a in feed.Items)
+        {
+            Assert.NotNull(a.Attachments);
+            Assert.Single(a.Attachments!);
+            var att = a.Attachments!.First();
+            Assert.NotNull(att.MimeType);
+            Assert.NotNull(att.SizeInBytes);
+            Assert.Contains("cloudfront", att.Url);
+            Assert.True(att.SizeInBytes >= 22275279);
+            Assert.Equal("audio/mpeg", att.MimeType);
+        }
+    }
+
+    [Fact]
+    public void TheOmniShowUniqueIds()
+    {
+        var feed = FeedParser.Parse(Load("theomnishow", "rss", "https://theomnishow.omnigroup.com/"))!;
+        foreach (var a in feed.Items)
+            Assert.StartsWith("https://theomnishow.omnigroup.com/episode/", a.UniqueId);
+    }
+
+    [Fact]
+    public void MacworldUniqueIdsAreMd5()
+    {
+        var feed = FeedParser.Parse(Load("macworld", "rss", "https://www.macworld.com/"))!;
+        foreach (var a in feed.Items)
+            Assert.Equal(32, a.UniqueId.Length);
+    }
+
+    [Fact]
+    public void MacworldAuthorsHaveNamesOnly()
+    {
+        var feed = FeedParser.Parse(Load("macworld", "rss", "https://www.macworld.com/"))!;
+        foreach (var a in feed.Items)
+        {
+            var author = a.Authors!.First();
+            Assert.Null(author.EmailAddress);
+            Assert.Null(author.Url);
+            Assert.NotNull(author.Name);
+        }
+    }
+
+    [Fact]
+    public void EmptyContentEncodedIsIgnored()
+    {
+        var feed = FeedParser.Parse(Load("atp", "rss", "http://atp.fm/"))!;
+        foreach (var a in feed.Items)
+            Assert.NotNull(a.ContentHtml);
+    }
+
+    [Fact]
+    public void LivemintGuidsNotPermalinks()
+    {
+        var feed = FeedParser.Parse(Load("livemint", "xml", "https://www.livemint.com/rss/news"))!;
+        foreach (var a in feed.Items)
+            Assert.Null(a.Url);
+    }
+
+    [Fact]
+    public void AktualityTitlesPresent()
+    {
+        var feed = FeedParser.Parse(Load("aktuality", "rss", "https://www.aktuality.sk/"))!;
+        foreach (var a in feed.Items) Assert.NotNull(a.Title);
+    }
+
+    [Fact]
+    public void MantonFeedLanguage()
+    {
+        var feed = FeedParser.Parse(Load("manton", "rss", "http://manton.org/"))!;
+        Assert.Equal("en-US", feed.Language);
+    }
+
+    [Fact]
+    public void KatieFloydIconUrl()
+    {
+        var feed = FeedParser.Parse(Load("KatieFloyd", "rss", "http://katiefloyd.com/"))!;
+        Assert.Equal("https://static.feedpress.it/logo/katiefloyd.png", feed.IconUrl);
+    }
+
+    [Fact]
+    public void AktualityIconNotSetFromItemImages()
+    {
+        var feed = FeedParser.Parse(Load("aktuality", "rss", "https://www.aktuality.sk/"))!;
+        Assert.Null(feed.IconUrl);
+    }
+
+    [Fact]
+    public void MedscapeExternalUrls()
+    {
+        var feed = FeedParser.Parse(Load("medscape", "rss", "https://www.medscape.com/cx/rssfeeds/2674.xml"))!;
+        foreach (var a in feed.Items) Assert.NotNull(a.ExternalUrl);
+    }
+
+    [Fact]
+    public void CloudblogAuthorTitleNotUsedAsItemTitle()
+    {
+        var feed = FeedParser.Parse(Load("cloudblog", "rss", "https://cloudblog.withgoogle.com/"))!;
+        foreach (var a in feed.Items)
+        {
+            Assert.NotEqual("Product Manager, Office of the CTO", a.Title);
+            Assert.NotEqual("Developer Programs Engineer", a.Title);
+            Assert.NotEqual("Product Director", a.Title);
+        }
+    }
+
+    [Fact]
+    public void MonkeydomGuidsThatArentPermalinks()
+    {
+        var feed = FeedParser.Parse(Load("monkeydom", "rss", "https://coding.monkeydom.de/"))!;
+        foreach (var a in feed.Items)
+        {
+            Assert.Null(a.Url);
+            Assert.NotNull(a.UniqueId);
+        }
+    }
+
+    // Port of Swift `testMarkdown1`. RSS feeds carrying source:markdown should
+    // populate ParsedItem.Markdown for every item.
+    [Fact]
+    public void Markdown1()
+    {
+        var feed = FeedParser.Parse(Load("markdown1", "rss",
+            "https://wordland.social/scripting/237777565/rss.xml"))!;
+        Assert.NotEmpty(feed.Items);
+        foreach (var a in feed.Items)
+            Assert.NotNull(a.Markdown);
+    }
+
+    // Port of Swift `testMarkdown2`. Same as Markdown1 with a different feed.
+    [Fact]
+    public void Markdown2()
+    {
+        var feed = FeedParser.Parse(Load("markdown2", "rss",
+            "https://wordland.social/scripting/246529703/rss.xml"))!;
+        Assert.NotEmpty(feed.Items);
+        foreach (var a in feed.Items)
+            Assert.NotNull(a.Markdown);
+    }
+
+    [Fact]
+    public void FeedWithGb2312Encoding()
+    {
+        var feed = FeedParser.Parse(Load("kc0011", "rss", "http://kc0011.net/"))!;
+        Assert.NotEmpty(feed.Items);
+        Assert.All(feed.Items, item => Assert.NotNull(item.ContentHtml));
+    }
+
+    [Fact]
+    public void CDataBodyPreservesHtmlNamedEntities()
+    {
+        var feed = FeedParser.Parse(Load("KatieFloyd", "rss", "http://katiefloyd.com/"))!;
+        Assert.Contains(feed.Items, item => item.ContentHtml?.Contains("&nbsp;") == true);
+        foreach (var item in feed.Items)
+            if (item.ContentHtml is { } html) Assert.DoesNotContain("\u00A0", html);
+    }
+
+    [Fact]
+    public void CDataBodyPreservesNumericEntities()
+    {
+        var feed = FeedParser.Parse(Load("DaringFireball", "rss", "http://daringfireball.net/"))!;
+        Assert.Contains(feed.Items, item => item.ContentHtml?.Contains("&#8217;") == true);
+    }
+
+    [Fact]
+    public void Gb2312FeedDecodesChineseCorrectly()
+    {
+        var feed = FeedParser.Parse(Load("kc0011", "rss", "http://kc0011.net/"))!;
+        Assert.Equal("\u6295\u8D44\u8D44\u8BAF\u7F51\u4EA4\u6613\u5728\u7EBF--\u6D41\u901A\u7EAA\u5FF5\u5E01\u6700\u65B020\u7BC7\u8BBA\u575B\u4E3B\u9898-\u5168\u6587", feed.Title);
+    }
+
+    [Fact]
+    public void CjkItemTitlesPreserveMultiByteUtf8()
+    {
+        var feed = FeedParser.Parse(Load("kc0011", "rss", "http://kc0011.net/"))!;
+        var sawChinese = false;
+        foreach (var item in feed.Items)
+        {
+            if (item.Title is not { } title) continue;
+            sawChinese |= title.Any(c => c is >= '\u4E00' and <= '\u9FFF');
+            Assert.DoesNotContain("\uFFFD", title);
+        }
+        Assert.True(sawChinese);
+    }
+
+    [Fact]
+    public void RdfFeedParsesAsRss()
+    {
+        var feed = FeedParser.Parse(Load("bio", "rdf", "http://biorxiv.org/"))!;
+        Assert.Equal("bioRxiv Subject Collection: Plant Biology", feed.Title);
+        Assert.Equal("http://biorxiv.org", feed.HomePageUrl);
+        Assert.Equal(30, feed.Items.Count);
+        foreach (var item in feed.Items)
+        {
+            Assert.NotNull(item.Title);
+            Assert.NotNull(item.Url);
+            Assert.StartsWith("http://biorxiv.org/cgi/content/", item.UniqueId);
+        }
+    }
+
+    [Fact]
+    public void MacworldCalculatedUniqueIdsArePinnedMd5s()
+    {
+        var feed = FeedParser.Parse(Load("macworld", "rss", "https://www.macworld.com/"))!;
+        var expected = new Dictionary<string, string>
+        {
+            ["Black Friday Exclusive: Save Over 40% On The Nix Mini Color Sensor - Deal Alert"] = "7ee68b71282bbf0f9a203f5c362e048a",
+            ["The iMac Pro might be the first ARM Mac, but it won\u2019t be the last"] = "d2d30947445157657f425924d96fd139",
+            ["Cyber Monday Steal: Get 120+ Hours of iOS 11 Dev Training for $15"] = "1da507ba09dfd933733211e182f95db7"
+        };
+        foreach (var (title, id) in expected)
+            Assert.Equal(id, Assert.Single(feed.Items, item => item.Title == title).UniqueId);
+    }
+
+    [Fact]
+    public void DaringFireballRssItemIsByteStable()
+    {
+        var feed = FeedParser.Parse(Load("DaringFireball", "rss", "http://daringfireball.net/"))!;
+        var item = Assert.Single(feed.Items, item => item.Title == "The Dangerous All Writs Act Precedent in the Apple Encryption Case");
+        Assert.Equal("tag:daringfireball.net,2016:/linked//6.32163", item.UniqueId);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1456420033).UtcDateTime, item.DatePublished);
+        Assert.NotNull(item.ContentHtml);
+        Assert.Equal(1360, item.ContentHtml.Length);
+        Assert.StartsWith("<p>Amy Davidson, writing for The New Yorker:</p>", item.ContentHtml);
+        Assert.Contains("\u201Call writs necessary", item.ContentHtml);
+    }
+
+    [Fact]
+    public void EmarleyAuthorIsNameOnly()
+    {
+        var feed = FeedParser.Parse(Load("EMarley", "rss", "https://emarley.com/"))!;
+        var author = Assert.Single(feed.Items.First().Authors!);
+        Assert.Equal("Liz Marley", author.Name);
+        Assert.Null(author.EmailAddress);
+        Assert.Null(author.Url);
+    }
+
+    [Fact]
+    public void NonStandardSlashDateFormatParsesCorrectly()
+    {
+        var feed = FeedParser.Parse(Load("kc0011", "rss", "http://kc0011.net/"))!;
+        var start = new DateTime(2020, 1, 10, 0, 0, 0, DateTimeKind.Utc);
+        Assert.Contains(feed.Items, item => item.DatePublished >= start && item.DatePublished < start.AddDays(1));
+    }
+
+    [Fact]
+    public void ShopifyNamespaceDoesNotOverwriteTitle()
+    {
+        var feed = FeedParser.Parse(Load("shopify-namespace", "rss", "https://example.com/feed"))!;
+        var item = Assert.Single(feed.Items);
+        Assert.Equal("Real Product Title", item.Title);
+        Assert.Equal("<p>Body HTML</p>", item.ContentHtml);
+        Assert.Equal("Jane Maker", Assert.Single(item.Authors!).Name);
+    }
+
+    [Fact]
+    public void SlashdotTextInputDoesNotOverwriteFeedTitle()
+    {
+        var feed = FeedParser.Parse(Load("slashdot", "rss", "https://rss.slashdot.org/Slashdot/slashdotMain"))!;
+        Assert.Equal("Slashdot", feed.Title);
+        Assert.Equal("https://slashdot.org/", feed.HomePageUrl);
+        Assert.Equal(15, feed.Items.Count);
+    }
+
+    [Fact]
+    public void TextInputInsideChannelIsIgnored()
+    {
+        var feed = FeedParser.Parse(Load("textinput-rss2", "rss", "https://example.com/feed"))!;
+        Assert.Equal("Test Feed", feed.Title);
+        Assert.Equal("https://example.com", feed.HomePageUrl);
+        var item = Assert.Single(feed.Items);
+        Assert.Equal("Real Article Title", item.Title);
+        Assert.Equal("https://example.com/articles/1", item.Url);
+    }
+}

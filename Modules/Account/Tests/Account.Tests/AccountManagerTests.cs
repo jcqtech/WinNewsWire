@@ -1,0 +1,86 @@
+using System.Runtime.Versioning;
+using System.Text.Json;
+using WinNewsWire.Core;
+using WinNewsWire.Feedbin;
+using WinNewsWire.ReaderAPI;
+using WinNewsWire.Secrets;
+using Xunit;
+
+namespace WinNewsWire.Account.Tests;
+
+[SupportedOSPlatform("windows")]
+public class AccountManagerTests : IDisposable
+{
+    private readonly TestAccountManager _storage = new();
+
+    [Fact]
+    public void RemoteAccountsReloadWithRealDelegatesAndStoredUsername()
+    {
+        var credentials = new Credentials(CredentialsType.Basic, "test-user", "test-password");
+        CredentialsManager.Store(credentials, "Feedbin");
+        string id;
+        using (var manager = new AccountManager())
+        {
+            var account = manager.CreateRemoteAccount(AccountType.Feedbin, "My Feedbin", new FeedbinAccountDelegate(credentials));
+            id = account.AccountID;
+            var metadata = File.ReadAllText(Path.Combine(account.AccountDirectory, "Meta.json"));
+            Assert.DoesNotContain(credentials.Secret, metadata);
+            using var json = JsonDocument.Parse(metadata);
+            Assert.Equal("test-user", json.RootElement.GetProperty("Username").GetString());
+        }
+        using var restored = new AccountManager();
+        var reloaded = restored.Accounts.Single(a => a.AccountID == id);
+        var accountDelegate = Assert.IsType<FeedbinAccountDelegate>(reloaded.Delegate);
+        Assert.Equal(credentials, accountDelegate.API.Credentials);
+        Assert.Equal("My Feedbin", reloaded.Name);
+    }
+
+    [Fact]
+    public void FreshRssServerSurvivesRestart()
+    {
+        const string server = "https://example.com/custom/api/greader.php/";
+        string id;
+        using (var manager = new AccountManager())
+            id = manager.CreateRemoteAccount(AccountType.FreshRSS, "FreshRSS",
+                new ReaderAPIAccountDelegate(ReaderAPIVariant.FreshRSS, server)).AccountID;
+        using var restored = new AccountManager();
+        var accountDelegate = Assert.IsType<ReaderAPIAccountDelegate>(restored.Accounts.Single(a => a.AccountID == id).Delegate);
+        Assert.Equal(server, accountDelegate.API.Host);
+    }
+
+    [Fact]
+    public void MissingCredentialsDoNotTurnRemoteAccountsIntoLocalAccounts()
+    {
+        var accountDelegate = AccountDelegateFactory.Resolve(AccountType.Feedbin, "legacy-account");
+        Assert.IsType<FeedbinAccountDelegate>(accountDelegate);
+        Assert.True(accountDelegate.SupportsRemoteSync);
+    }
+
+    [Fact]
+    public void ResolverFailuresAreNotHiddenByLocalFallback()
+    {
+        var previous = AccountDelegateFactory.Resolver;
+        try
+        {
+            AccountDelegateFactory.Resolver = (_, _) => throw new InvalidOperationException("Cannot construct account.");
+            Assert.Throws<InvalidOperationException>(() => AccountDelegateFactory.Resolve(AccountType.Feedbin, "test"));
+        }
+        finally { AccountDelegateFactory.Resolver = previous; }
+    }
+
+    [Fact]
+    public void UnsupportedAccountFilesAreKept()
+    {
+        var directory = Path.Combine(AppConfig.AccountsDirectory, "OnMyMac");
+        Directory.CreateDirectory(directory);
+        var metadata = Path.Combine(directory, "Meta.json");
+        const string original = """{"Type":2,"Name":"iCloud","IsActive":true}""";
+        File.WriteAllText(metadata, original);
+        using var manager = new AccountManager();
+        Assert.Equal(original, File.ReadAllText(metadata));
+        Assert.DoesNotContain(manager.Accounts, a => a.AccountID == "OnMyMac");
+        Assert.IsType<LocalAccountDelegate>(Assert.Single(manager.Accounts).Delegate);
+    }
+
+    public void Dispose() => _storage.Dispose();
+}

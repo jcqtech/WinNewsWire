@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="WinNewsWire.AppWindows.AccountStatsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:helpers="using:WinNewsWire.Helpers"
+    Title="Account Stats">
+    <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
+    <Grid Padding="16" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="Account Stats" Style="{StaticResource SubtitleTextBlockStyle}" />
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+            <ListView x:Name="StatsList" SelectionMode="None" AutomationProperties.Name="Account statistics">
+                <ListView.Resources>
+                    <Style TargetType="helpers:ColumnResizeThumb">
+                        <Setter Property="Width" Value="8" />
+                        <Setter Property="HorizontalAlignment" Value="Right" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="ToolTipService.ToolTip" Value="Drag to resize; use arrow keys or Shift+arrow for larger steps." />
+                    </Style>
+                    <Style TargetType="Button">
+                        <Setter Property="HorizontalAlignment" Value="Stretch" />
+                        <Setter Property="Margin" Value="0,0,8,0" />
+                        <Setter Property="MinWidth" Value="0" />
+                    </Style>
+                </ListView.Resources>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.Header>
+                    <Grid x:Name="StatsHeader" Padding="12,0" ColumnSpacing="8" Loaded="StatsHeader_Loaded">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="AccountColumn" Width="220" MinWidth="40" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="SizeColumn" Width="100" MinWidth="40" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="FeedsColumn" Width="80" MinWidth="10" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="FoldersColumn" Width="80" MinWidth="10" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="ArticlesColumn" Width="110" MinWidth="10" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="StatusesColumn" Width="110" MinWidth="10" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="UnreadColumn" Width="100" MinWidth="10" MaxWidth="1000" />
+                            <ColumnDefinition x:Name="StarredColumn" Width="100" MinWidth="10" MaxWidth="1000" />
+                        </Grid.ColumnDefinitions>
+                        <Button Content="Account" Tag="Name" Click="Sort_Click" HorizontalAlignment="Stretch" />
+                        <Button Grid.Column="1" Content="DB Size" Tag="DatabaseSizeBytes" Click="Sort_Click" HorizontalAlignment="Stretch" />
+                        <Button Grid.Column="2" Content="Feeds" Tag="FeedCount" Click="Sort_Click" HorizontalAlignment="Stretch" />
+                        <Button Grid.Column="3" Content="Folders" Tag="FolderCount" Click="Sort_Click" HorizontalAlignment="Stretch" />
+                        <Button Grid.Column="4" Content="Articles" Tag="ArticleCount" Click="Sort_Click" HorizontalAlignment="Stretch" />
+                        <Button Grid.Column="5" Content="Statuses" Tag="StatusesCount" Click="Sort_Click" HorizontalAlignment="Stretch" />
+                        <Button Grid.Column="6" Content="Unread" Tag="UnreadCount" Click="Sort_Click" HorizontalAlignment="Stretch" />
+                        <Button Grid.Column="7" Content="Starred" Tag="StarredCount" Click="Sort_Click" HorizontalAlignment="Stretch" />
+                        <helpers:ColumnResizeThumb Column="{Binding ElementName=AccountColumn}" AutomationProperties.Name="Resize Account column"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="1" Column="{Binding ElementName=SizeColumn}" AutomationProperties.Name="Resize DB Size column"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="2" Column="{Binding ElementName=FeedsColumn}" AutomationProperties.Name="Resize Feeds column"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="3" Column="{Binding ElementName=FoldersColumn}" AutomationProperties.Name="Resize Folders column"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="4" Column="{Binding ElementName=ArticlesColumn}" AutomationProperties.Name="Resize Articles column"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="5" Column="{Binding ElementName=StatusesColumn}" AutomationProperties.Name="Resize Statuses column"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="6" Column="{Binding ElementName=UnreadColumn}" AutomationProperties.Name="Resize Unread column"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                        <helpers:ColumnResizeThumb Grid.Column="7" Column="{Binding ElementName=StarredColumn}" AutomationProperties.Name="Resize Starred column"
+                                                   WidthChanged="Column_WidthChanged" ResizeCompleted="Column_ResizeCompleted" />
+                    </Grid>
+                </ListView.Header>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid x:Name="StatsRow" Padding="12,8" ColumnSpacing="8" Opacity="{Binding Opacity}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="{Binding Columns[0].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[1].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[2].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[3].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[4].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[5].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[6].Width}" />
+                                <ColumnDefinition Width="{Binding Columns[7].Width}" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Name}" FontWeight="{Binding Weight}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Name}" />
+                            <TextBlock Grid.Column="1" Text="{Binding DatabaseSize}" FontWeight="{Binding Weight}" FontFamily="Consolas" TextAlignment="Right" />
+                            <TextBlock Grid.Column="2" Text="{Binding Feeds}" FontWeight="{Binding Weight}" FontFamily="Consolas" TextAlignment="Right" />
+                            <TextBlock Grid.Column="3" Text="{Binding Folders}" FontWeight="{Binding Weight}" FontFamily="Consolas" TextAlignment="Right" />
+                            <TextBlock Grid.Column="4" Text="{Binding Articles}" FontWeight="{Binding Weight}" FontFamily="Consolas" TextAlignment="Right" />
+                            <TextBlock Grid.Column="5" Text="{Binding Statuses}" FontWeight="{Binding Weight}" FontFamily="Consolas" TextAlignment="Right" />
+                            <TextBlock Grid.Column="6" Text="{Binding Unread}" FontWeight="{Binding Weight}" FontFamily="Consolas" TextAlignment="Right" />
+                            <TextBlock Grid.Column="7" Text="{Binding Starred}" FontWeight="{Binding Weight}" FontFamily="Consolas" TextAlignment="Right" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </ScrollViewer>
+        <TextBlock Grid.Row="2" x:Name="StatusText" TextWrapping="Wrap"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+        <Grid Grid.Row="3" ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock Text="Vacuum compacts the databases without removing subscriptions or article history."
+                       TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <ProgressRing x:Name="WorkProgress" Width="24" Height="24" IsActive="False" />
+                <Button x:Name="RefreshButton" Content="Refresh" Click="Refresh_Click" />
+                <Button x:Name="VacuumButton" Content="Vacuum Databases" Click="Vacuum_Click" />
+                <Button Content="Close" Click="Close_Click" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

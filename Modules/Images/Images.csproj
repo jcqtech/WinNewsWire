@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinNewsWire.Images</RootNamespace>
+    <AssemblyName>WinNewsWire.Images</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Database\Database.csproj" />
+    <ProjectReference Include="..\Web\Web.csproj" />
+    <ProjectReference Include="..\ActivityLog\ActivityLog.csproj" />
+    <ProjectReference Include="..\HTMLMetadata\HTMLMetadata.csproj" />
+  </ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="Images.Tests" /></ItemGroup>
+</Project>

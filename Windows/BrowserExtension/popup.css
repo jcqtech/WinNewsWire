@@ -1,0 +1,40 @@
+:root {
+  color-scheme: light dark;
+  font: 14px system-ui, sans-serif;
+}
+body {
+  width: 300px;
+  padding: 16px;
+  margin: 0;
+}
+h1 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+.page {
+  overflow-wrap: anywhere;
+}
+.subscribe {
+  display: block;
+  padding: 10px;
+  margin-bottom: 16px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  text-align: center;
+}
+.subscribe[aria-disabled="true"] {
+  opacity: 0.55;
+  pointer-events: none;
+}
+label {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+}
+.hint {
+  font-size: 12px;
+}
+a:focus-visible, input:focus-visible {
+  outline: 2px solid Highlight;
+  outline-offset: 3px;
+}

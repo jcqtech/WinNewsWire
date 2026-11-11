@@ -1,0 +1,403 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="WinNewsWire.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:WinNewsWire"
+    xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="WinNewsWire">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid KeyboardAcceleratorPlacementMode="Hidden">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Title Bar -->
+        <Grid x:Name="AppTitleBar" Grid.Row="0" MinHeight="40" Padding="8,4,138,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="TitleColumn" Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="NavigateBackButton" Grid.Column="0" Width="32" Height="32" Padding="0"
+                    VerticalAlignment="Center" IsEnabled="False" Click="NavigateBackButton_Click"
+                    Style="{StaticResource SubtleButtonStyle}">
+                <!-- The native animation's padded canvas matches the smaller 14-DIP fallback glyph. -->
+                <AnimatedIcon x:Name="NavigateBackIcon" Width="18" Height="18" MirroredWhenRightToLeft="True"
+                              AutomationProperties.AccessibilityView="Raw">
+                    <AnimatedIcon.Source>
+                        <animatedvisuals:AnimatedBackVisualSource />
+                    </AnimatedIcon.Source>
+                    <AnimatedIcon.FallbackIconSource>
+                        <FontIconSource Glyph="&#xE72B;" FontSize="14" MirroredWhenRightToLeft="True" />
+                    </AnimatedIcon.FallbackIconSource>
+                </AnimatedIcon>
+            </Button>
+
+            <ContentControl x:Name="TitleBarSidebarHost" Grid.Column="1" Margin="0,0,8,0"
+                            VerticalAlignment="Center" HorizontalContentAlignment="Stretch" />
+
+            <StackPanel x:Name="TitlePanel" Grid.Column="2" Orientation="Horizontal"
+                        VerticalAlignment="Center" Margin="0,0,12,0">
+                <TextBlock Text="WinNewsWire" Style="{StaticResource CaptionTextBlockStyle}"
+                           FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <AutoSuggestBox Grid.Column="3" x:Name="TitleBarSearchBox"
+                            PlaceholderText="Search articles"
+                            QueryIcon="Find"
+                            MaxWidth="480"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Center"
+                            AutomationProperties.Name="Search articles"
+                            TextChanged="TitleBarSearchBox_TextChanged"
+                            QuerySubmitted="TitleBarSearchBox_QuerySubmitted" />
+        </Grid>
+
+        <!-- Full menu bar (File/Edit/View/Article/Feed/Window/Help) — ports Mac NNW MainMenu.
+             AccessKey on each MenuBarItem/MenuFlyoutItem/MenuFlyoutSubItem enables the
+             standard Windows Alt-key mnemonic flow (Alt opens the bar; Alt+F opens File;
+             N triggers New Feed; etc.). Letters are chosen to be unique within each
+             menu's scope. -->
+        <Grid Grid.Row="1" x:Name="MenuBarHost" SizeChanged="MenuLayout_SizeChanged">
+        <MenuBar x:Name="AppMenuBar" HorizontalAlignment="Left"
+                 Loaded="MenuBar_Loaded" SizeChanged="MenuLayout_SizeChanged">
+            <MenuBarItem Title="File" AccessKey="F">
+                <MenuFlyoutItem Text="New Feed…" AccessKey="N" Click="Menu_NewFeed">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="N" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="New Folder…" AccessKey="F" Click="Menu_NewFolder">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="N" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="New Window" AccessKey="W" Click="Menu_NewWindow">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Menu" Key="N" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutSubItem Text="Import" AccessKey="I">
+                    <MenuFlyoutItem Text="Import OPML…" AccessKey="O" Click="ImportOpml_Click" />
+                    <MenuFlyoutItem Text="Import NNW3 Subscriptions…" AccessKey="N" Click="ImportNnw3_Click" />
+                </MenuFlyoutSubItem>
+                <MenuFlyoutItem Text="Export OPML…" AccessKey="E" Click="ExportOpml_Click" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="PreferencesMenuItem" Text="Preferences…" AccessKey="P"
+                                KeyboardAcceleratorTextOverride="Ctrl+/"
+                                Click="Preferences_Click" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="Close Window" AccessKey="C" Click="Menu_CloseWindow">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="W" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Quit WinNewsWire" AccessKey="Q" Click="Menu_Quit">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="Q" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+            </MenuBarItem>
+
+            <MenuBarItem Title="Edit" AccessKey="E">
+                <MenuFlyoutItem x:Name="MenuUndo" Text="Undo" AccessKey="U" Click="Menu_Undo">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="Z" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuRedo" Text="Redo" AccessKey="R" Click="Menu_Redo">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="Z" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="Cut" AccessKey="T" Click="Menu_Cut">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="X" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Copy" AccessKey="C" Click="Menu_Copy">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="C" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuCopyArticleUrl" Text="Copy Article URL" Click="Menu_CopyLink" IsEnabled="False">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="C" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuCopyExternalUrl" Text="Copy External URL" Click="Menu_CopyExternalLink" IsEnabled="False">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Menu" Key="C" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Paste" AccessKey="P" Click="Menu_Paste">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="V" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Select All" AccessKey="A" Click="Menu_SelectAll">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="A" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutSubItem Text="Find" AccessKey="F">
+                    <MenuFlyoutItem Text="Article Search..." Click="Menu_ArticleSearch">
+                        <MenuFlyoutItem.KeyboardAccelerators>
+                            <KeyboardAccelerator Modifiers="Control,Menu" Key="F" />
+                        </MenuFlyoutItem.KeyboardAccelerators>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem x:Name="MenuFindArticle" Text="Find in Article..." Click="Menu_Find">
+                        <MenuFlyoutItem.KeyboardAccelerators>
+                            <KeyboardAccelerator Modifiers="Control" Key="F" />
+                        </MenuFlyoutItem.KeyboardAccelerators>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MenuFindNext" Text="Find Next" Click="Menu_FindNext">
+                        <MenuFlyoutItem.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="F3" />
+                            <KeyboardAccelerator Modifiers="Control" Key="G" />
+                        </MenuFlyoutItem.KeyboardAccelerators>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MenuFindPrevious" Text="Find Previous" Click="Menu_FindPrevious">
+                        <MenuFlyoutItem.KeyboardAccelerators>
+                            <KeyboardAccelerator Modifiers="Shift" Key="F3" />
+                            <KeyboardAccelerator Modifiers="Control,Shift" Key="G" />
+                        </MenuFlyoutItem.KeyboardAccelerators>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MenuUseSelectionFind" Text="Use Selection for Find" Click="Menu_UseSelectionFind">
+                        <MenuFlyoutItem.KeyboardAccelerators>
+                            <KeyboardAccelerator Modifiers="Control" Key="E" />
+                        </MenuFlyoutItem.KeyboardAccelerators>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MenuJumpToSelection" Text="Jump to Selection" Click="Menu_JumpToSelection">
+                        <MenuFlyoutItem.KeyboardAccelerators>
+                            <KeyboardAccelerator Modifiers="Control" Key="J" />
+                        </MenuFlyoutItem.KeyboardAccelerators>
+                    </MenuFlyoutItem>
+                </MenuFlyoutSubItem>
+                <MenuFlyoutSubItem x:Name="MenuSpeech" Text="Speech">
+                    <MenuFlyoutItem x:Name="MenuStartSpeaking" Text="Start Speaking" Click="Menu_StartSpeaking" />
+                    <MenuFlyoutItem x:Name="MenuStopSpeaking" Text="Stop Speaking" Click="Menu_StopSpeaking" IsEnabled="False" />
+                </MenuFlyoutSubItem>
+            </MenuBarItem>
+
+            <MenuBarItem Title="View" AccessKey="V">
+                <MenuFlyoutItem x:Name="MenuShowToolbar" AccessKey="B" Click="Menu_ToggleToolbar">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Menu" Key="T" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuCustomizeToolbar" AccessKey="C" Click="Menu_CustomizeToolbar" />
+                <MenuFlyoutSubItem x:Name="MenuToolbarDisplay" AccessKey="O">
+                    <ToggleMenuFlyoutItem x:Name="MenuToolbarIcons" Tag="IconsOnly" Click="Menu_ToolbarDisplay" />
+                    <ToggleMenuFlyoutItem x:Name="MenuToolbarIconsAndText" Tag="IconsAndText" Click="Menu_ToolbarDisplay" />
+                    <ToggleMenuFlyoutItem x:Name="MenuToolbarText" Tag="TextOnly" Click="Menu_ToolbarDisplay" />
+                </MenuFlyoutSubItem>
+                <MenuFlyoutSeparator />
+                <ToggleMenuFlyoutItem x:Name="MenuColumnLayout" Text="Use Column Layout" Click="Menu_ToggleColumnLayout" />
+                <ToggleMenuFlyoutItem x:Name="MenuUnifiedLayout" Text="Reading Only"
+                                      AccessKey="U" Click="Menu_ToggleUnified" />
+                <ToggleMenuFlyoutItem x:Name="MenuFullScreen" Text="Full Screen" KeyboardAcceleratorTextOverride="F11"
+                                      Click="Menu_ToggleFullScreen" />
+                <ToggleMenuFlyoutItem x:Name="MenuShowSidebar" Text="Show Sidebar"
+                                      AccessKey="S"
+                                      IsChecked="True" Click="Menu_ToggleSidebar">
+                    <ToggleMenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="B" />
+                    </ToggleMenuFlyoutItem.KeyboardAccelerators>
+                </ToggleMenuFlyoutItem>
+                <MenuFlyoutSubItem Text="Sort By">
+                    <ToggleMenuFlyoutItem x:Name="MenuSortDate" Text="Date" Tag="Date" Click="Menu_SortBy" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortFeed" Text="Feed" Tag="Feed" Click="Menu_SortBy" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortTitle" Text="Title" Tag="Title" Click="Menu_SortBy" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortUnread" Text="Unread" Tag="Unread" Click="Menu_SortBy" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortStarred" Text="Starred" Tag="Starred" Click="Menu_SortBy" />
+                    <MenuFlyoutSeparator />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortAscending" Text="Ascending" Tag="ascending" Click="Menu_SortDirection" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortDescending" Text="Descending" Tag="descending" Click="Menu_SortDirection" />
+                </MenuFlyoutSubItem>
+                <MenuFlyoutItem x:Name="MenuReadFeedsFilter" Text="Hide Read Feeds" Click="Menu_ToggleSidebarReadFilter" />
+                <ToggleMenuFlyoutItem x:Name="MenuHideRead" Text="Hide Read Articles" Click="Menu_ToggleReadFilter" />
+                <ToggleMenuFlyoutItem x:Name="MenuSearchAllAccounts" Text="Search All Accounts" Click="Menu_SearchAllAccounts" />
+                <MenuFlyoutSeparator />
+                <ToggleMenuFlyoutItem x:Name="MenuReaderMode" Text="Reader View"
+                                      AccessKey="R"
+                                      Click="Menu_ToggleReaderMode">
+                    <ToggleMenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="W" />
+                    </ToggleMenuFlyoutItem.KeyboardAccelerators>
+                </ToggleMenuFlyoutItem>
+                <MenuFlyoutSubItem x:Name="MenuThemes" Text="Article Theme" AccessKey="T" />
+                <MenuFlyoutItem Text="Install Theme From File…" AccessKey="I" Click="Menu_InstallTheme" />
+                <MenuFlyoutItem Text="Install Theme From URL…" Click="Menu_InstallThemeFromUrl" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutSubItem Text="Appearance" AccessKey="P">
+                    <ToggleMenuFlyoutItem x:Name="MenuAppearanceSystem" Text="Use System Setting" AccessKey="S"
+                                          Click="Menu_AppearanceSystem" />
+                    <ToggleMenuFlyoutItem x:Name="MenuAppearanceLight" Text="Light" AccessKey="L"
+                                          Click="Menu_AppearanceLight" />
+                    <ToggleMenuFlyoutItem x:Name="MenuAppearanceDark" Text="Dark" AccessKey="D"
+                                          Click="Menu_AppearanceDark" />
+                </MenuFlyoutSubItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="Refresh All" AccessKey="A" Click="Menu_Refresh">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="R" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+            </MenuBarItem>
+
+            <MenuBarItem Title="Go" AccessKey="G">
+                <MenuFlyoutItem x:Name="MenuGoNextUnread" Text="Next Unread" Click="Menu_NextUnread" KeyboardAcceleratorTextOverride="N / Space" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="MenuGoToday" Text="Today" Click="Menu_GoToday">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="Number1" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuGoUnread" Text="All Unread" Click="Menu_GoUnread">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="Number2" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuGoStarred" Text="Starred" Click="Menu_GoStarred">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="Number3" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+            </MenuBarItem>
+
+            <MenuBarItem Title="Article" AccessKey="A">
+                <MenuFlyoutItem Text="Mark as Read/Unread" AccessKey="M" KeyboardAcceleratorTextOverride="U" Click="Menu_ToggleRead" />
+                <MenuFlyoutItem Text="Star/Unstar" AccessKey="S" Click="Menu_ToggleStar">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="L" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Mark Above as Read" Click="Menu_MarkAboveRead" />
+                <MenuFlyoutItem Text="Mark Below as Read" Click="Menu_MarkBelowRead" />
+                <MenuFlyoutItem Text="Mark Older as Read" Click="Menu_MarkOlderRead" />
+                <MenuFlyoutItem Text="Clean Up Read Articles" Click="Menu_CleanUpRead" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="MenuArticleNextUnread" Text="Next Unread" AccessKey="U" KeyboardAcceleratorTextOverride="N / Space" Click="Menu_NextUnread" />
+                <MenuFlyoutItem Text="Next" AccessKey="N" Click="Menu_Next" />
+                <MenuFlyoutItem Text="Previous" AccessKey="P" Click="Menu_Prev" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="MenuOpenWebView" Text="Open in Web View" Click="Menu_OpenWebView" />
+                <MenuFlyoutItem Text="Open in Browser" AccessKey="O" Click="Menu_OpenBrowser">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="B" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuOpenBrowserInverted" Text="Open in Browser in Background" Click="Menu_OpenBrowserInverted" />
+                <MenuFlyoutItem x:Name="MenuArticleCopyLink" Text="Copy Link" AccessKey="C" Click="Menu_CopyLink" IsEnabled="False" />
+                <MenuFlyoutItem Text="Share…" AccessKey="H" Click="Menu_Share" />
+            </MenuBarItem>
+
+            <MenuBarItem Title="Feed" AccessKey="D">
+                <MenuBarItem.Resources>
+                    <!-- Items in a MenuBarItem can't directly bind IsEnabled to view-model
+                         state without DataContext gymnastics; we wire it up in the
+                         MenuFlyout.Opening event instead, on the MenuBarItem itself. -->
+                </MenuBarItem.Resources>
+                <MenuFlyoutItem Text="Add Feed…" AccessKey="A" Click="Menu_NewFeed" />
+                <MenuFlyoutItem x:Name="MenuInfoItem" Text="Get Info…" AccessKey="I" Click="Menu_GetInfo">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="I" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="MenuRenameItem" Text="Rename…" AccessKey="R" Click="Menu_Rename" />
+                <MenuFlyoutItem x:Name="MenuDeleteItem" Text="Delete" AccessKey="D" Click="Menu_Delete" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="Mark All as Read" AccessKey="M" Click="Menu_MarkAllRead">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="K" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Refresh" AccessKey="F" Click="Menu_Refresh" />
+            </MenuBarItem>
+
+            <MenuBarItem Title="Window" AccessKey="W">
+                <MenuFlyoutItem Text="Minimize" AccessKey="M" Click="Menu_Minimize">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="M" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Zoom" AccessKey="Z" Click="Menu_Zoom" />
+                <MenuFlyoutItem Text="Bring All to Front" AccessKey="B" Click="Menu_BringAllToFront" />
+                <MenuFlyoutSubItem x:Name="OpenWindowsMenu" Text="Main Windows" AccessKey="W" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="Keyboard Shortcuts" AccessKey="K" Click="KeyboardShortcuts_Click" />
+                <MenuFlyoutItem Text="Current Activity" Click="CurrentActivity_Click">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="Number7" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Activity Log" AccessKey="A" Click="ActivityLog_Click">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="Number8" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Error Log" AccessKey="E" Click="ErrorLog_Click" />
+                <MenuFlyoutItem Text="Account Stats" AccessKey="S" Click="AccountStats_Click" />
+                <MenuFlyoutItem Text="Dinosaurs" Click="Dinosaurs_Click">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="Number6" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+            </MenuBarItem>
+
+            <MenuBarItem Title="Help" AccessKey="H">
+                <MenuFlyoutItem Text="About WinNewsWire" AccessKey="A" Click="About_Click" />
+                <MenuFlyoutItem Text="Send Feedback…" AccessKey="F" Click="Feedback_Click" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="WinNewsWire Help" AccessKey="H" Click="Menu_HelpHome" />
+                <MenuFlyoutItem x:Name="MenuOpenSupportFolder" Text="Open Application Support Folder" Click="Menu_OpenSupportFolder" />
+                <MenuFlyoutItem Text="WinNewsWire Website" AccessKey="W" Click="Menu_Website" />
+                <MenuFlyoutItem Text="Release Notes" AccessKey="R" Click="Menu_ReleaseNotes" />
+                <MenuFlyoutItem Text="How to Support WinNewsWire" Click="Menu_HowToSupport" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="GitHub Repository" AccessKey="G" Click="Menu_GithubRepo" />
+                <MenuFlyoutItem Text="Report a Bug…" AccessKey="B" Click="Menu_BugTracker" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="Privacy Policy" AccessKey="P" Click="Menu_PrivacyPolicy" />
+            </MenuBarItem>
+            <MenuBarItem x:Name="MenuOverflowItem" Title="&#x2026;" AccessKey="M" Visibility="Collapsed">
+                <MenuBarItem.Resources>
+                    <!-- Keep the native menu template and replace only its title button's content. -->
+                    <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                        <Setter Property="ContentTemplate">
+                            <Setter.Value>
+                                <DataTemplate>
+                                    <FontIcon Glyph="&#xE712;" FontSize="20"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              AutomationProperties.AccessibilityView="Raw" />
+                                </DataTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </MenuBarItem.Resources>
+            </MenuBarItem>
+        </MenuBar>
+        </Grid>
+
+        <!-- Main Content -->
+        <local:MainContent x:Name="MainContentControl" Grid.Row="2" />
+    </Grid>
+</Window>
