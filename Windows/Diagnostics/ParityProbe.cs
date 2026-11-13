@@ -150,7 +150,9 @@ internal static partial class ParityProbe
                 await CheckAsync("Recovered feed icons replace native timeline fallbacks", async () =>
                 {
                     await CheckRecoveredFeedIconsAsync(window);
-                    return new { NativeFallbackReplacement = true, DispatchedOnUI = true, UnrelatedRowsPreserved = true };
+                    await CheckRecoveredFeedIconsAsync(window, newHomepageIcon: true);
+                    return new { NativeFallbackReplacement = true, ChangedHomepageIcon = true,
+                        DispatchedOnUI = true, UnrelatedRowsPreserved = true };
                 });
                 return;
             }

@@ -215,6 +215,56 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SavedHomepageIconsStayAvailableWhileCheckingForAReplacement(bool replacementLoads)
+    {
+        var metadataStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseMetadata = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var upgraded = new TaskCompletionSource<FeedIconImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/")
+            {
+                metadataStarted.TrySetResult();
+                await releaseMetadata.Task.WaitAsync(ct);
+                return HtmlResponse("<link rel='apple-touch-icon' sizes='180x180' href='/new.png'>");
+            }
+            return Response(request.RequestUri.AbsolutePath == "/saved.png" || replacementLoads
+                ? HttpStatusCode.OK : HttpStatusCode.NotFound, Image);
+        });
+        var feed = new FeedImageSource(Feed, Home);
+        await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, Home + "saved.png");
+        fixture.Images.FeedIconDidBecomeAvailable += (_, image) => upgraded.TrySetResult(image);
+        try
+        {
+            var saved = await fixture.Images.IconAsync(feed).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(Home + "saved.png", saved?.Url);
+            await metadataStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(upgraded.Task.IsCompleted);
+            releaseMetadata.TrySetResult();
+            if (replacementLoads)
+            {
+                var replacement = await upgraded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal(feed, replacement.Feed);
+                Assert.Equal(Home + "new.png", replacement.Image.Url);
+                Assert.Equal(replacement.Image.Url, fixture.ImageDatabase.IconUrl(Feed));
+            }
+            else
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                while (!fixture.ImageDatabase.RecentlyFailed(Home + "new.png"))
+                    await Task.Delay(10, timeout.Token);
+                await fixture.Images.DisposeAsync();
+                Assert.Equal(Home + "saved.png", fixture.ImageDatabase.IconUrl(Feed));
+                Assert.False(upgraded.Task.IsCompleted);
+                Assert.True(File.Exists(saved!.Path));
+            }
+        }
+        finally { releaseMetadata.TrySetResult(); }
+    }
+
+    [Theory]
     [InlineData(HttpStatusCode.NotFound)]
     [InlineData(HttpStatusCode.OK)]
     public async Task DefinitivelyFailedDeclaredIconUsesHomepageMetadata(HttpStatusCode failure)

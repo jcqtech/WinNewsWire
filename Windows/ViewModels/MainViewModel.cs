@@ -42,6 +42,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private volatile bool _disposed;
     private Images.FeedImageDownloader? _feedImages;
     private readonly HashSet<string> _changedFeedImagePaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<Images.FeedImageSource, (long Version, string Path)> _feedIconUpdates = [];
+    private long _feedIconVersion;
     private int _articleLoadGeneration;
     private bool _restoringArticleSelection;
     private bool _changingSelection;
@@ -1223,16 +1225,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             await EnsureFeedImageObserverAsync();
-            var cache = new Dictionary<(string, string), string?>();
+            var cache = new Dictionary<(string, string), (string? Path, long Version, Images.FeedImageSource? Source)>();
             foreach (var item in items)
             {
                 var key = (item.AccountID, item.FeedId);
-                if (!cache.TryGetValue(key, out var path))
+                if (!cache.TryGetValue(key, out var cached))
                 {
+                    cached = (null, _feedIconVersion, null);
                     if (feedMap.TryGetValue(key, out var feed))
-                        path = await FaviconDownloader.Shared.ImagePathAsync(feed);
-                    cache[key] = path;
+                    {
+                        cached.Source = new(feed.Url, feed.HomePageUrl, feed.FaviconUrl, feed.IconUrl);
+                        cached.Path = await FaviconDownloader.Shared.ImagePathAsync(feed);
+                    }
+                    cache[key] = cached;
                 }
+                var path = cached.Path;
+                // A background upgrade can arrive while this or another feed's request is awaited.
+                if (cached.Source is { } source && _feedIconUpdates.TryGetValue(source, out var updated)
+                    && updated.Version > cached.Version) path = updated.Path;
                 if (!string.IsNullOrEmpty(path))
                 {
                     item.FaviconPath = path;
@@ -1258,6 +1268,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _feedImages.FeedIconDidBecomeAvailable -= FeedIconDidBecomeAvailable;
         }
         _feedImages = service;
+        _feedIconUpdates.Clear();
         if (service is not null)
         {
             service.ImageDidBecomeAvailable += FeedImageDidBecomeAvailable;
@@ -1271,8 +1282,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!_dispatcher.TryEnqueue(() =>
         {
             if (_disposed || !ReferenceEquals(sender, _feedImages)) return;
+            _feedIconUpdates[recovered.Feed] = (++_feedIconVersion, recovered.Image.Path);
             foreach (var item in ArticleItems)
-                if (item.FeedUrl == recovered.Feed.FeedUrl && item.FeedIconUrl == recovered.Feed.IconUrl
+                if (item.FeedUrl == recovered.Feed.FeedUrl && item.FeedIconUrl == (recovered.Feed.IconUrl ?? "")
                     && item.FeedHomePageUrl == recovered.Feed.HomePageUrl)
                     item.FaviconPath = recovered.Image.Path;
         }) && !_disposed)

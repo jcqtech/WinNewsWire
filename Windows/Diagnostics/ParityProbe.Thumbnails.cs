@@ -582,7 +582,7 @@ internal static partial class ParityProbe
         }
     }
 
-    private static async Task CheckRecoveredFeedIconsAsync(MainWindow window)
+    private static async Task CheckRecoveredFeedIconsAsync(MainWindow window, bool newHomepageIcon = false)
     {
         var content = window.ProbeContent;
         var model = content.ViewModel;
@@ -593,36 +593,46 @@ internal static partial class ParityProbe
         bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
         var clock = new ChangedImageClock();
         int ownRequests = 0;
-        using var http = new HttpClient(new ThumbnailHandler((request, _) => Task.FromResult(
-            request.RequestUri!.AbsolutePath switch
+        var releaseMetadata = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var upgraded = new TaskCompletionSource<DownloadedImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var http = new HttpClient(new ThumbnailHandler(async (request, ct) =>
+        {
+            if (newHomepageIcon && request.RequestUri!.AbsolutePath == "/")
+                await releaseMetadata.Task.WaitAsync(ct);
+            return request.RequestUri!.AbsolutePath switch
             {
-                "/own.bmp" => new HttpResponseMessage(++ownRequests == 1 ? HttpStatusCode.InternalServerError : HttpStatusCode.OK)
+                "/own.bmp" => new HttpResponseMessage(++ownRequests == 1 && !newHomepageIcon ? HttpStatusCode.InternalServerError : HttpStatusCode.OK)
                 {
-                    Content = new ByteArrayContent(ownRequests == 1 ? [] : ThumbnailBitmap(1600, 800))
+                    Content = new ByteArrayContent(ownRequests == 1 && !newHomepageIcon ? [] : ThumbnailBitmap(1600, 800))
                 },
                 "/" => new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent("<link rel='apple-touch-icon' sizes='180x180' href='/fallback.bmp'>",
+                    Content = new StringContent($"<link rel='apple-touch-icon' sizes='180x180' href='/{(newHomepageIcon ? "own" : "fallback")}.bmp'>",
                         System.Text.Encoding.UTF8, "text/html")
                 },
                 "/fallback.bmp" => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(ThumbnailBitmap(128, 128)) },
                 _ => throw new InvalidOperationException("Unexpected feed-icon recovery request.")
-            })));
+            };
+        }));
         var downloader = new Downloader(http, clock);
-        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "recovered-icon.db"), clock);
+        var fixtureName = newHomepageIcon ? "homepage-icon" : "recovered-icon";
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, fixtureName + ".db"), clock);
         using var htmlDatabase = new HTMLMetadata.HtmlMetadataDatabase(":memory:", clock);
         await using var metadata = new HTMLMetadata.HtmlMetadataDownloader(htmlDatabase, downloader, clock);
-        await using var images = new FeedImageDownloader(database, metadata, Path.Combine(OutputDirectory, "recovered-icons"),
+        await using var images = new FeedImageDownloader(database, metadata, Path.Combine(OutputDirectory, fixtureName + "s"),
             downloader, clock, maxPixelSize: 48, networkAllowsUpdates: () => true);
         var feed = new FeedImageSource("https://thumbnail.test/recovered-feed", "https://thumbnail.test/",
-            IconUrl: "https://thumbnail.test/own.bmp");
+            IconUrl: newHomepageIcon ? null : "https://thumbnail.test/own.bmp");
+        if (newHomepageIcon)
+            await database.SaveFeedIconUrlAsync(feed.FeedUrl, "https://thumbnail.test/fallback.bmp");
+        images.FeedIconDidBecomeAvailable += (_, update) => upgraded.TrySetResult(update.Image);
         var fallback = await images.IconAsync(feed) ?? throw new InvalidOperationException("The fallback icon did not load.");
         var row = new Models.FeedItem
         {
             Id = "recovered-icon", FeedTitle = "Recovered icon fixture", FaviconPath = fallback.Path,
-            FeedUrl = feed.FeedUrl, FeedHomePageUrl = feed.HomePageUrl, FeedIconUrl = feed.IconUrl!
+            FeedUrl = feed.FeedUrl, FeedHomePageUrl = feed.HomePageUrl, FeedIconUrl = feed.IconUrl ?? ""
         };
-        var unrelated = new Models.FeedItem { Id = "unrelated-recovery", FaviconPath = fallback.Path, FeedIconUrl = feed.IconUrl! };
+        var unrelated = new Models.FeedItem { Id = "unrelated-recovery", FaviconPath = fallback.Path, FeedIconUrl = feed.IconUrl ?? "" };
         bool onUI = true;
         row.PropertyChanged += (_, args) =>
         {
@@ -641,14 +651,19 @@ internal static partial class ParityProbe
             var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
             await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 128 }), "Native fallback icon");
             clock.Advance(TimeSpan.FromMinutes(37));
-            var own = await images.IconAsync(feed) ?? throw new InvalidOperationException("The own icon did not recover.");
+            releaseMetadata.TrySetResult();
+            var own = newHomepageIcon
+                ? await upgraded.Task.WaitAsync(TimeSpan.FromSeconds(10))
+                : await images.IconAsync(feed) ?? throw new InvalidOperationException("The own icon did not recover.");
             await WaitFor(() => Task.FromResult(row.FaviconPath == own.Path
                 && icon.ImageSource is BitmapImage { PixelWidth: 1600, PixelHeight: 800 }), "Recovered native feed icon");
-            Require(onUI && ownRequests == 2 && unrelated.FaviconPath == fallback.Path && unrelated.FaviconSource.Revision == 0,
+            Require(onUI && ownRequests == (newHomepageIcon ? 1 : 2)
+                && unrelated.FaviconPath == fallback.Path && unrelated.FaviconSource.Revision == 0,
                 "Feed-icon recovery changed unrelated rows, ran off UI, or downloaded more than once.");
         }
         finally
         {
+            releaseMetadata.TrySetResult();
             model.ProbeFeedImages = previousImages;
             model.ArticleItems = previousItems;
             model.SelectedArticle = previousSelection;
