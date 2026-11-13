@@ -230,6 +230,8 @@ internal static partial class ParityProbe
             CoalescedDiscoveryAndDecode = true, SeparateModes = true, DecodedLRUBudget = true,
             DisplaySizeDecode = true, ExifOrientation = true, NativeDimensionRejection = true,
             ReaderUsesOriginalSharedImage = true,
+            RenderedImagesUseSharedSources = true, FailedLocalImagesFallBackWithoutPublisherScripts = true,
+            HiddenModeLeavesReaderImagesRemote = true,
             DecoderFailureStopsRetriesWithoutSuppressingIcons = true,
             VisibleNativePixels = true, RoundedClipping = true, ThemedPlaceholder = true,
             RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
@@ -256,6 +258,7 @@ internal static partial class ParityProbe
         var previousItems = model.ArticleItems;
         var previousSelection = model.SelectedArticle;
         bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
+        bool previousScripts = Core.AppDefaults.Shared.ArticleContentJavascriptEnabled;
         var previousDisplay = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
         var previousFeedIcons = Core.AppDefaults.Shared.GetTimelineFeedIconsDisplay();
         bool previousUnified = model.IsUnifiedLayout;
@@ -277,6 +280,7 @@ internal static partial class ParityProbe
         try
         {
             Core.AppDefaults.Shared.UseColumnLayout = false;
+            Core.AppDefaults.Shared.ArticleContentJavascriptEnabled = false;
             Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small);
             Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
             model.IsUnifiedLayout = false;
@@ -379,6 +383,20 @@ internal static partial class ParityProbe
             var originalSmall = Descendants(list).OfType<ThumbnailView>().Single(view =>
                 view.Tag is Article { ArticleID: "timeline-thumbnail-0" }).ImageSource;
             await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Article ready for shared image resource");
+            string selectedImageUrl = AppShared.ArticleRendering.ArticleImageResource.Url("https://thumbnail.test/replaced.bmp");
+            try
+            {
+                await WaitFor(() => ScriptBool(content, "(() => { const image = document.querySelector('img[data-nnw-src]'); return image?.src === "
+                    + System.Text.Json.JsonSerializer.Serialize(selectedImageUrl) + " && image.naturalWidth === 1600; })()"),
+                    "Rendered article routes its timeline image to the original shared source");
+            }
+            catch
+            {
+                File.WriteAllText(Path.Combine(OutputDirectory, "reader-image-state.json"),
+                    await content.ProbeWebView.ExecuteScriptAsync("Array.from(document.images, image => ({src:image.src,"
+                        + "original:image.getAttribute('data-nnw-src'),width:image.naturalWidth,complete:image.complete}))"));
+                throw;
+            }
             string readerImageUrl = AppShared.ArticleRendering.ArticleImageResource.Url("https://thumbnail.test/photo.bmp");
             int previousImageRequests = requests.Count(path => path == "/photo.bmp");
             setNetworkAllowed(false);
@@ -397,6 +415,40 @@ internal static partial class ParityProbe
             {
                 setNetworkAllowed(true);
                 await content.ProbeWebView.ExecuteScriptAsync("document.getElementById('shared-source-probe')?.remove()");
+            }
+            await using (var fallbackServer = new FixtureServer())
+            {
+                string originalHtml = model.ArticleHtml;
+                string fallbackUrl = fallbackServer.Url + "/icon.png";
+                string unavailable = AppShared.ArticleRendering.ArticleImageResource.Url("https://thumbnail.test/missing.bmp");
+                model.ArticleHtml = originalHtml.Replace("</body>",
+                    "<img id='shared-fallback-probe' src='" + unavailable + "' data-nnw-src='" + fallbackUrl + "'>"
+                    + "<script>window.__imagePublisherScriptRan = true;</script></body>", StringComparison.Ordinal);
+                try
+                {
+                    await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Reader with an unavailable local image");
+                    await WaitFor(() => ScriptBool(content,
+                        "document.getElementById('shared-fallback-probe')?.naturalWidth === 1"
+                        + " && !document.getElementById('shared-fallback-probe').hasAttribute('data-nnw-src')"),
+                        "Unavailable shared image falls back to its original remote source");
+                    Require(!content.ProbeWebView.CoreWebView2.Settings.IsScriptEnabled
+                        && !await ScriptBool(content, "window.__imagePublisherScriptRan === true"),
+                        "Image fallback enabled publisher scripts.");
+                    await content.ProbeWebView.ExecuteScriptAsync("document.getElementById('shared-fallback-probe').dispatchEvent(new Event('error'))");
+                    Require(await ScriptBool(content, "document.getElementById('shared-fallback-probe').src === "
+                        + System.Text.Json.JsonSerializer.Serialize(fallbackUrl)),
+                        "A second image error restarted fallback after its marker was removed.");
+                }
+                catch
+                {
+                    File.WriteAllText(Path.Combine(OutputDirectory, "reader-fallback-state.json"),
+                        await content.ProbeWebView.ExecuteScriptAsync("({images:Array.from(document.images, image => ({src:image.src,"
+                            + "original:image.getAttribute('data-nnw-src'),width:image.naturalWidth,complete:image.complete})),"
+                            + "processed:window.__wnwArticleProcessed,html:document.body.innerHTML.slice(-4000)})"));
+                    throw;
+                }
+                finally { model.RefreshArticleHtml(); }
+                await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Reader restored after fallback check");
             }
             await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large));
             await WaitFor(() => Task.FromResult(modeNotifications > 0 && peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
@@ -510,6 +562,9 @@ internal static partial class ParityProbe
                     "Hidden thumbnails propagate from Preferences");
                 Require(new Core.AppDefaults().GetTimelineThumbnailsDisplay() == TimelineThumbnailsDisplay.None
                     && string.IsNullOrEmpty(status.Text), "Hidden mode did not persist or clear the previous error.");
+                await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Reader applies hidden thumbnail mode");
+                Require(await ScriptBool(content, "document.querySelector('img[data-nnw-src]') === null"),
+                    "Hidden mode kept routing reader images through the timeline cache.");
                 var hiddenRow = Row(ArticleFor(80, "https://thumbnail.test/hidden-only.bmp"));
                 rows.Add(hiddenRow);
                 list.ScrollIntoView(hiddenRow, ScrollIntoViewAlignment.Leading);
@@ -579,6 +634,7 @@ internal static partial class ParityProbe
             model.ArticleItems = previousItems;
             model.SelectedArticle = previousSelection;
             Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
+            Core.AppDefaults.Shared.ArticleContentJavascriptEnabled = previousScripts;
             Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
             Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousFeedIcons);
             model.IsUnifiedLayout = previousUnified;

@@ -131,6 +131,16 @@ public sealed partial class MainContent
             if (typeof binding !== "function") throw new Error("The reader host binding is unavailable.");
             const send = message => binding(JSON.stringify({ ...message, navigation }));
             globalThis.__wnwReaderInstalled = true;
+            const restoreOriginalImage = image => {
+                if (!(image instanceof HTMLImageElement) || !image.hasAttribute("data-nnw-src")) return;
+                const original = image.getAttribute("data-nnw-src");
+                image.removeAttribute("data-nnw-src");
+                image.src = original;
+            };
+            document.addEventListener("error", event => restoreOriginalImage(event.target), true);
+            document.querySelectorAll("img[data-nnw-src]").forEach(image => {
+                if (image.complete && image.naturalWidth === 0) restoreOriginalImage(image);
+            });
             let scrollTimer = 0;
             let lastScroll = window.scrollY;
             const reportScroll = () => {

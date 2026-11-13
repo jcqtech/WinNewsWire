@@ -8,6 +8,24 @@ namespace WinNewsWire.AppShared.Tests;
 
 public sealed class ArticleRendererTests
 {
+    [Theory]
+    [InlineData("[[body]]|[[enclosures]]")]
+    [InlineData("[[primary_media]]|[[body]]|[[enclosures]]")]
+    public void MatchingBodyAndGeneratedImagesUseTheSharedSourceWithAnEscapedOriginalUrl(string template)
+    {
+        const string image = "https://example.com/photo.jpg?a=1&b=2";
+        var theme = Theme(template);
+        foreach (string body in new[] { "<p>Body</p>", """<p><img src="/photo.jpg?a=1&amp;b=2"></p>""" })
+        {
+            var rendering = ArticleRenderer.Render(Article(body: body, image: image), theme: theme);
+            string document = ArticleRenderer.Document(rendering, includeScripts: false);
+            string routed = ArticleRenderer.RouteThumbnailImages(document, image, rendering.BaseUrl);
+            Assert.Contains("src=\"" + ArticleImageResource.Url(image) + "\" data-nnw-src=\"https://example.com/photo.jpg?a=1&amp;b=2\"", routed);
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(routed, "data-nnw-src="));
+            Assert.DoesNotContain("data-nnw-src=", document);
+        }
+    }
+
     [Fact]
     public void PrimaryVideoConsumesItsPosterButLeavesOtherAttachments()
     {

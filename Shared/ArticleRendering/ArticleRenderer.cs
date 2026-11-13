@@ -22,6 +22,13 @@ public static partial class ArticleRenderer
 
     public static string BrowserScripts => Scripts.Value;
 
+    public static string RouteThumbnailImages(string html, string thumbnailUrl, string? baseUrl = null)
+    {
+        string attributes = " src=\"" + ArticleImageResource.Url(thumbnailUrl) + "\" data-nnw-src=\"" + Html(thumbnailUrl) + "\"";
+        Uri.TryCreate(baseUrl, UriKind.Absolute, out var documentBase);
+        return HtmlImageAttributeInserter.InsertAttributes(attributes, thumbnailUrl, html, documentBase);
+    }
+
     public static ArticleRendering Render(Article? article, ExtractedArticle? extracted = null,
         ArticleTextSize size = ArticleTextSize.Medium, Account.Feed? feed = null, ArticleTheme? theme = null, string? avatarUrl = null,
         Account.AccountType? accountType = null)

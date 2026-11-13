@@ -17,6 +17,7 @@ using Microsoft.Web.WebView2.Core;
 using WinNewsWire.Models;
 using WinNewsWire.ViewModels;
 using WinNewsWire.Web;
+using WinNewsWire.AppShared;
 using WinNewsWire.AppShared.Timeline;
 using WinNewsWire.AppShared.Sharing;
 using WinNewsWire.AppShared.Commands;
@@ -801,17 +802,25 @@ public sealed partial class MainContent : UserControl
         var article = ViewModel.SelectedArticle;
         ArticleIdentityKey? identity = article is null ? null : MainViewModel.Identity(article);
         var themeFolder = ViewModel.CurrentRendering?.ThemeFolder;
+        var thumbnailMode = ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode();
+        bool IsCurrent() => !_shuttingDown && generation == _htmlLoadGeneration && html == ViewModel.ArticleHtml
+            && ViewModel.SelectedArticle is { } selected && MainViewModel.Identity(selected) == identity
+            && string.Equals(themeFolder, ViewModel.CurrentRendering?.ThemeFolder, StringComparison.OrdinalIgnoreCase)
+            && thumbnailMode == ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode();
         if (!forceReload && _pendingRestoredScroll is null && identity == _renderedArticleIdentity
             && html == _renderedArticleHtml && string.Equals(themeFolder, _mappedThemeFolder, StringComparison.OrdinalIgnoreCase)) return;
         try
         {
             if (identity == _renderedArticleIdentity && _pendingRestoredScroll is null)
                 await CaptureScrollPositionAsync();
-            if (_shuttingDown || generation != _htmlLoadGeneration || html != ViewModel.ArticleHtml
-                || ViewModel.SelectedArticle is not { } selected || MainViewModel.Identity(selected) != identity
-                || !string.Equals(themeFolder, ViewModel.CurrentRendering?.ThemeFolder, StringComparison.OrdinalIgnoreCase)) return;
-            NavigateArticleHtml(html, article, identity, themeFolder);
+            if (!IsCurrent()) return;
+            string? thumbnailUrl = null;
+            if (thumbnailMode is { } mode && article?.SourceArticle is { } source && _thumbnailService is { } images)
+                thumbnailUrl = await images.ThumbnailUrlAsync(source, mode, _thumbnailLifetime.Token);
+            if (!IsCurrent()) return;
+            NavigateArticleHtml(html, article, identity, themeFolder, thumbnailUrl);
         }
+        catch (OperationCanceledException) when (_shuttingDown || _thumbnailLifetime.IsCancellationRequested) { }
         catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException
             or JsonException or System.IO.InvalidDataException)
         {
@@ -819,7 +828,8 @@ public sealed partial class MainContent : UserControl
         }
     }
 
-    private void NavigateArticleHtml(string html, Models.FeedItem? article, ArticleIdentityKey? identity, string? themeFolder)
+    private void NavigateArticleHtml(string html, Models.FeedItem? article, ArticleIdentityKey? identity, string? themeFolder,
+        string? thumbnailUrl)
     {
         if (identity != _renderedArticleIdentity) _ = WinNewsWire.AppRuntime.AppService.Shared.Speech.StopAsync(this);
         _restoreArticleScrollPosition = identity == _renderedArticleIdentity ? _articleScrollPosition : 0;
@@ -847,8 +857,9 @@ public sealed partial class MainContent : UserControl
             WinNewsWire.Core.AppDefaults.Shared.ArticleContentJavascriptEnabled
             && !AppShared.ArticleRendering.ArticleRenderingSpecialCases.ShouldDisableJavaScript(
                 [article?.Link, article?.FeedUrl, article?.FeedHomePageUrl]);
-        // Only the iframe URL changes; upstream's page script owns responsive sizing.
-        var prepared = PrepareArticleHtml(html);
+        var routed = thumbnailUrl is null ? html : AppShared.ArticleRendering.ArticleRenderer.RouteThumbnailImages(
+            html, thumbnailUrl, ViewModel.CurrentRendering?.BaseUrl);
+        var prepared = PrepareArticleHtml(routed);
         // NavigateToString raises NavigationStarting with a data URI, not its about:blank Source.
         _pendingArticleDocumentUri = "data:text/html;charset=utf-8;base64," + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(prepared));
         _renderedArticleHtml = html;
@@ -857,8 +868,15 @@ public sealed partial class MainContent : UserControl
 
     private void OnArticlePreferencesChanged(object? sender, string key)
     {
-        if (key == WinNewsWire.Core.AppDefaults.Key.ArticleContentJavascriptEnabled && _webViewReady && !_shuttingDown)
-            LoadArticleHtml(ViewModel.ArticleHtml, forceReload: true);
+        if (key is not (WinNewsWire.Core.AppDefaults.Key.ArticleContentJavascriptEnabled
+            or AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey) || !_webViewReady || _shuttingDown) return;
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            if (!DispatcherQueue.TryEnqueue(() => OnArticlePreferencesChanged(sender, key)))
+                throw new InvalidOperationException("The article preference dispatcher is unavailable.");
+            return;
+        }
+        LoadArticleHtml(ViewModel.ArticleHtml, forceReload: true);
     }
 
     private async Task RefreshArticleIconAsync()
