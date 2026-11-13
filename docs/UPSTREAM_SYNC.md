@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`b4de29a32d4132b1eee05a471255e2496f62afbc`**. This synchronization is in progress.
+`beea83ce1b0b7336c832689328cd66382e55e5c4`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is favicon source-cache integration, `beea83ce1b0b7336c832689328cd66382e55e5c4`;
+is the bounded waiting-download queue, `3db7db4f4af8c93ca64863b4b77a8a0d4b5983e7`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -112,8 +112,12 @@ are persisted. Known unsuitable thumbnails are skipped using those dimensions,
 independently of transient download failures or their expiry. Native decoding
 still checks dimensions; unreadable thumbnails are excluded for that finder's
 lifetime without suppressing otherwise usable feed icons.
-Windows retains its existing favicon representation and SHA1 migration API,
-while sharing source fetches with the new cache. It retains native decoder
+Favicons share the same disk source and conditional-update policy, retaining
+only their small display representation in memory. Windows repairs missing
+display paths through the shared downloader without replacing full-size source
+bytes with a small icon. Activity details identify the homepage. Retired favicon
+folders, including the former SHA1 cache, are removed once on upgrade; they are
+no longer imported or periodically purged. Windows retains native decoder
 failure reporting instead of the Apple-specific unreadable-data fallback.
 Retired Images/Thumbnails/LargeThumbnails folders are removed once, retaining
 atomic preference markers. Shared sources now use the upstream desktop disk
@@ -163,8 +167,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **103 Ported, 29 Covered, 70 Skipped, and 303 Pending**
-source commits, backed by **119 source-attributed Windows port commits**. Two
+The inventory currently has **104 Ported, 29 Covered, 70 Skipped, and 302 Pending**
+source commits, backed by **120 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -177,7 +181,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are favicon source-cache integration and later image-cache rewrites,
+Still pending are bounded download scheduling and later image-cache rewrites,
 finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
