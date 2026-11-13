@@ -22,6 +22,8 @@ public static class CacheCleaner
             targets.Add(Path.Combine(AppConfig.DataDirectory, "Favicons"));
             targets.Add(Path.Combine(caches, "Favicons"));
             targets.Add(Path.Combine(caches, "Images"));
+            targets.Add(Path.Combine(caches, "Thumbnails"));
+            targets.Add(Path.Combine(caches, "LargeThumbnails"));
         }
         if (!resized) targets.Add(Path.Combine(caches, "FeedIcons"));
         if (periodicFlush)
