@@ -29,7 +29,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly Func<string, ActivityKind> _kind;
     private readonly SemaphoreSlim? _sourceDiskGate;
     private readonly Func<string, ImageResourceRequest, Task>? _sourceWasRead;
-    private readonly Func<string, long, Task>? _sourceWasSaved;
+    private readonly Func<string, Task>? _sourceWasSaved;
     private string ScaledCopySuffix => FormattableString.Invariant($"{_configuration.MaxPixelSize}-Png");
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -55,7 +55,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
         TimeProvider? clock = null, ActivityLogger? activityLog = null,
         DownloadedImageCache? sourceCache = null, SemaphoreSlim? sourceDiskGate = null,
-        Func<string, ImageResourceRequest, Task>? sourceWasRead = null, Func<string, long, Task>? sourceWasSaved = null)
+        Func<string, ImageResourceRequest, Task>? sourceWasRead = null, Func<string, Task>? sourceWasSaved = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFolder);
@@ -292,7 +292,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                     DownloadedImageCache.CalculateNextCheck(response.CacheMaxAge,
                         response.ConditionalGet is not null, _clock.GetUtcNow()))).ConfigureAwait(false);
             await _database.ClearFailureAsync(url).ConfigureAwait(false);
-            if (_sourceWasSaved is not null) await _sourceWasSaved(url, processed.LongLength).ConfigureAwait(false);
+            if (_sourceWasSaved is not null) await _sourceWasSaved(url).ConfigureAwait(false);
         }
         finally { _sourceDiskGate?.Release(); }
     }

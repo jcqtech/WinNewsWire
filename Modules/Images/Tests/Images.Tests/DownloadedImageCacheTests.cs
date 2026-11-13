@@ -31,7 +31,7 @@ public sealed class DownloadedImageCacheTests
             [DownloadedImageCache.DerivedDiskKey(Url("missing"), "144")] = Now,
             [DownloadedImageCache.DerivedDiskKey(Url("orphan"), "144")] = old
         };
-        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, new(150), new(1000));
+        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 150);
         Assert.Equal([Url("missing"), Url("a")], removal.Urls);
         Assert.Equal(100, removal.RemainingByteCount);
         Assert.True(removal.Keys.SetEquals([
@@ -44,7 +44,7 @@ public sealed class DownloadedImageCacheTests
     public async Task DerivedCopiesRoundTripIndependentlyAndDisappearWithEvictedSources()
     {
         await using var fixture = new Fixture();
-        await using var cache = fixture.CreateCache(1, 2);
+        await using var cache = fixture.CreateCache(1);
         Assert.NotNull(await fixture.FetchAsync(cache, "a"));
         Assert.Null(await cache.DerivedImageDataAsync(Url("a"), "144"));
         await cache.SaveDerivedImageDataAsync(Url("a"), "144", [1, 2, 3]);
@@ -56,9 +56,13 @@ public sealed class DownloadedImageCacheTests
         fixture.Clock.Advance(TimeSpan.FromDays(10));
         File.SetLastWriteTimeUtc(fixture.PathFor("a"), fixture.Clock.GetUtcNow().AddDays(-10).UtcDateTime);
         Assert.NotNull(await fixture.FetchAsync(cache, "b"));
+        Assert.True(File.Exists(fixture.PathFor("a") + "-144"));
+        await cache.DisposeAsync();
+        await using var restarted = fixture.CreateCache(1);
+        Assert.NotNull(await fixture.FetchAsync(restarted, "b"));
         Assert.False(File.Exists(fixture.PathFor("a") + "-144"));
-        Assert.Null(await cache.DerivedImageDataAsync(Url("a"), "144"));
-        await cache.SaveDerivedImageDataAsync(Url("a"), "144", [5]);
+        Assert.Null(await restarted.DerivedImageDataAsync(Url("a"), "144"));
+        await restarted.SaveDerivedImageDataAsync(Url("a"), "144", [5]);
         Assert.False(File.Exists(fixture.PathFor("a") + "-144"));
     }
 
@@ -93,7 +97,7 @@ public sealed class DownloadedImageCacheTests
             response.Headers.TryAddWithoutValidation("Cache-Control", "max-age=60");
             return response;
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         var changes = new List<string>();
         cache.DownloadedImageChanged += (_, url) => changes.Add(url);
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
@@ -130,7 +134,7 @@ public sealed class DownloadedImageCacheTests
             if (status == 0) throw new HttpRequestException("Fixture offline.");
             return Task.FromResult(ValidatedResponse((HttpStatusCode)status, corrupt ? "invalid image"u8.ToArray() : replacement));
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         var changes = new List<string>();
         cache.DownloadedImageChanged += (_, url) =>
         {
@@ -176,7 +180,7 @@ public sealed class DownloadedImageCacheTests
             if (count == 2) response.Headers.TryAddWithoutValidation("Retry-After", "120");
             return Task.FromResult(response);
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
         fixture.Clock.Advance(TimeSpan.FromDays(10));
         Assert.NotNull(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
@@ -206,7 +210,7 @@ public sealed class DownloadedImageCacheTests
             return Task.FromResult(ValidatedResponse(request.RequestUri!.AbsolutePath == "/retry.png"
                 ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK, Fixture.Image));
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
         var due = Assert.IsType<DownloadedImageValidation>(
             await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon"))).NextCheck;
@@ -235,7 +239,7 @@ public sealed class DownloadedImageCacheTests
             return Task.FromResult(ValidatedResponse(HttpStatusCode.OK, Fixture.Image));
         });
         fixture.UpdatesAllowed = networkAllowed;
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.NotNull(await fixture.FetchAsync(cache, "a"));
         fixture.Clock.Advance(TimeSpan.FromDays(10));
         Assert.NotNull(await fixture.FetchAsync(cache, "a", checksForUpdates));
@@ -256,7 +260,7 @@ public sealed class DownloadedImageCacheTests
             await release.WaitAsync(ct);
             return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
         });
-        await using var cache = fixture.CreateCache(20, 40);
+        await using var cache = fixture.CreateCache(20);
         await using var thumbnails = fixture.CreateThumbnails(cache);
         Task<DownloadedImage?> FetchAsync(string name, string host = "images.test")
             => throughThumbnailFacade ? thumbnails.SourceAsync(Url(name, host))
@@ -313,7 +317,7 @@ public sealed class DownloadedImageCacheTests
             }
             return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         await using var thumbnails = fixture.CreateThumbnails(cache);
         var downloads = Enumerable.Range(0, 4)
             .Select(index => fixture.FetchAsync(cache, "busy" + index, limited: true, host: "busy" + index / 2 + ".test")).ToArray();
@@ -353,7 +357,7 @@ public sealed class DownloadedImageCacheTests
             await (request.RequestUri.IdnHost == "slow.test" ? slowRelease : fastRelease).WaitAsync(ct);
             return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var tasks = new List<Task<DownloadedImage?>>
         {
@@ -405,7 +409,7 @@ public sealed class DownloadedImageCacheTests
                 revalidationStarted.TrySetResult();
             return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
         fixture.Clock.Advance(TimeSpan.FromDays(10));
         var downloads = Enumerable.Range(0, 4)
@@ -437,7 +441,7 @@ public sealed class DownloadedImageCacheTests
             await Task.Delay(Timeout.Infinite, ct);
             throw new InvalidOperationException("Unreachable");
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.NotNull(await fixture.FetchAsync(cache, "a"));
         fixture.Clock.Advance(TimeSpan.FromDays(10));
         Assert.NotNull(await fixture.FetchAsync(cache, "a", checksForUpdates: true));
@@ -470,7 +474,7 @@ public sealed class DownloadedImageCacheTests
         await fixture.Database.SaveDownloadedImageAsync(new(Url("active"), Fixture.Image.Length, (1, 1),
             new(null, "\"v1\""), fixture.Clock.GetUtcNow()));
         fixture.Clock.Advance(TimeSpan.FromDays(10));
-        await using var cache = fixture.CreateCache(2, 2);
+        await using var cache = fixture.CreateCache(2);
         try
         {
             Assert.NotNull(await fixture.FetchAsync(cache, "active", checksForUpdates: true));
@@ -481,7 +485,7 @@ public sealed class DownloadedImageCacheTests
             await cache.RemoveImagesOverSizeLimitAsync();
             Assert.True(File.Exists(fixture.PathFor("active")));
             Assert.False(File.Exists(fixture.PathFor("other1")));
-            Assert.False(File.Exists(fixture.PathFor("other2")));
+            Assert.True(File.Exists(fixture.PathFor("other2")));
         }
         finally
         {
@@ -496,23 +500,23 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ActiveImagesAreProtectedUnderBothSoftAndHardLimits(bool hardLimit)
+    [InlineData(1)]
+    [InlineData(10)]
+    public void ActiveImagesAreProtectedWhenRemovingOtherLeastRecentSources(int ageDays)
     {
-        var old = Now.AddDays(hardLimit ? -1 : -10);
+        var old = Now.AddDays(-ageDays);
         var records = Enumerable.Range(0, 3)
             .Select(index => new DownloadedImageUsage(Url(index.ToString()), 100, old)).ToArray();
         var dates = records.ToDictionary(record => record.Url.Md5Hex(), _ => old);
-        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, new(200), new(hardLimit ? 200 : 1000),
+        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 200,
             new HashSet<string>(StringComparer.Ordinal) { records[0].Url });
-        Assert.Equal(records.Skip(1).Select(record => record.Url), removal.Urls);
-        Assert.Equal(100, removal.RemainingByteCount);
+        Assert.Equal([records[1].Url], removal.Urls);
+        Assert.Equal(200, removal.RemainingByteCount);
         Assert.DoesNotContain(records[0].Url.Md5Hex(), removal.Keys);
     }
 
     [Fact]
-    public void LeastRecentImagesAndOrphansAreRemovedDownToTheTarget()
+    public void LeastRecentImagesAndOrphansAreRemovedDownToTheLimit()
     {
         var old = Now.AddDays(-10);
         var urls = new[] { Url("a"), Url("b"), Url("c"), Url("fresh") };
@@ -521,24 +525,21 @@ public sealed class DownloadedImageCacheTests
         var dates = urls.ToDictionary(url => url.Md5Hex(), _ => old);
         dates["orphan"] = old;
         dates["fresh-orphan"] = Now;
-        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, new(350), new(1000));
-        Assert.Equal([Url("missing"), urls[0], urls[1]], removal.Urls);
-        Assert.True(removal.Keys.SetEquals(["orphan", urls[0].Md5Hex(), urls[1].Md5Hex()]));
-        Assert.Equal(200L, removal.RemainingByteCount);
+        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 350);
+        Assert.Equal([Url("missing"), urls[0]], removal.Urls);
+        Assert.True(removal.Keys.SetEquals(["orphan", urls[0].Md5Hex()]));
+        Assert.Equal(300L, removal.RemainingByteCount);
     }
 
     [Fact]
-    public void RecentUseIsProtectedUnlessTheHardLimitIsExceeded()
+    public void RecentlyUsedImagesAlsoCountTowardTheStartupLimit()
     {
         var records = Enumerable.Range(0, 5)
             .Select(index => new DownloadedImageUsage(Url(index.ToString()), 100, Now.AddDays(-1).AddSeconds(index))).ToArray();
         var dates = records.ToDictionary(row => row.Url.Md5Hex(), _ => Now.AddDays(-1));
-        var protectedImages = DownloadedImageCache.PlanRemoval(records, dates, Now, new(200), new(1000));
-        Assert.Empty(protectedImages.Urls);
-        Assert.Equal(500L, protectedImages.RemainingByteCount);
-        var capped = DownloadedImageCache.PlanRemoval(records, dates, Now, new(200), new(400));
-        Assert.Equal(records.Take(2).Select(row => row.Url), capped.Urls);
-        Assert.Equal(300L, capped.RemainingByteCount);
+        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 200);
+        Assert.Equal(records.Take(3).Select(row => row.Url), removal.Urls);
+        Assert.Equal(200L, removal.RemainingByteCount);
     }
 
     [Fact]
@@ -556,7 +557,7 @@ public sealed class DownloadedImageCacheTests
             [records[1].Url.Md5Hex()] = Now.AddDays(-9),
             ["fresh-orphan"] = Now.AddMinutes(-1)
         };
-        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, new(50), new(100));
+        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 50);
         Assert.Equal([records[1].Url], removal.Urls);
         Assert.True(removal.Keys.SetEquals([records[1].Url.Md5Hex()]));
         Assert.Equal(200L, removal.RemainingByteCount);
@@ -576,14 +577,14 @@ public sealed class DownloadedImageCacheTests
         await fixture.SeedAsync("fresh");
         File.WriteAllBytes(recentOrphan, Fixture.Image);
         File.SetLastWriteTimeUtc(recentOrphan, fixture.Clock.GetUtcNow().UtcDateTime);
-        await using (var cache = fixture.CreateCache(3, 10)) { }
+        await using (var cache = fixture.CreateCache(3)) { }
         Assert.False(File.Exists(orphan));
         Assert.True(File.Exists(recentOrphan));
         Assert.False(File.Exists(fixture.PathFor("a")));
-        Assert.False(File.Exists(fixture.PathFor("b")));
+        Assert.True(File.Exists(fixture.PathFor("b")));
         Assert.True(File.Exists(fixture.PathFor("c")));
         Assert.True(File.Exists(fixture.PathFor("fresh")));
-        Assert.Equal([Url("c"), Url("fresh")],
+        Assert.Equal([Url("b"), Url("c"), Url("fresh")],
             (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Select(row => row.Url));
         Assert.False(fixture.Database.IsUnsuitableForThumbnail(Url("a")));
     }
@@ -602,7 +603,7 @@ public sealed class DownloadedImageCacheTests
         try
         {
             if (blockedByFile) File.WriteAllText(fixture.SourceDirectory, "Not a directory");
-            await using (var cache = fixture.CreateCache(1, 2)) { }
+            await using (var cache = fixture.CreateCache(1)) { }
             Assert.Equal([Url("a"), Url("b")],
                 (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Select(record => record.Url));
             Assert.Equal(2, Directory.GetFiles(unavailable).Length);
@@ -625,7 +626,7 @@ public sealed class DownloadedImageCacheTests
         });
         string blocked = fixture.PathFor("write-blocked");
         Directory.CreateDirectory(blocked);
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         var result = await cache.FetchAsync(Url("write-blocked"), new(ActivityOwner.FeedImageDownloader,
             ActivityKind.DownloadFeedImage(Url("write-blocked")), null, null), default);
         Assert.True(result.IsTransient);
@@ -644,42 +645,38 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
-    public async Task NewDownloadsTriggerLruRemovalWithoutWaitingForAnotherLaunch()
+    public async Task NewDownloadsCanExceedTheLimitUntilTheNextLaunch()
     {
         await using var fixture = new Fixture();
         foreach (var name in new[] { "a", "b", "c" }) await fixture.SeedAsync(name);
         fixture.Clock.Advance(TimeSpan.FromDays(10));
-        await using var cache = fixture.CreateCache(3, 10);
-        Assert.NotNull(await fixture.FetchAsync(cache, "fresh"));
-        Assert.False(File.Exists(fixture.PathFor("a")));
-        Assert.False(File.Exists(fixture.PathFor("b")));
-        Assert.True(File.Exists(fixture.PathFor("c")));
-        Assert.True(File.Exists(fixture.PathFor("fresh")));
-        Assert.Equal(2, (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
-    }
-
-    [Fact]
-    public async Task RecentImagesAboveTheSoftLimitDeferAnotherPassUntilAQuarterMoreBytesArrive()
-    {
-        await using var fixture = new Fixture();
-        for (int index = 0; index < 20; index++) await fixture.SeedAsync("seed-" + index);
-        await using var cache = fixture.CreateCache(20, 100);
-        await cache.ImageWasUsedAsync(Url("seed-0"), false, default);
+        await using var cache = fixture.CreateCache(3);
+        await cache.ImageWasUsedAsync(Url("c"), false, default);
         string orphan = Path.Combine(fixture.SourceDirectory, "old-orphan");
         File.WriteAllBytes(orphan, Fixture.Image);
-        File.SetLastWriteTimeUtc(orphan, fixture.Clock.GetUtcNow().AddMinutes(-10).UtcDateTime);
-        for (int index = 0; index < 3; index++) Assert.NotNull(await fixture.FetchAsync(cache, "new-" + index));
+        File.SetLastWriteTimeUtc(orphan, fixture.Clock.GetUtcNow().AddDays(-10).UtcDateTime);
+        Assert.NotNull(await fixture.FetchAsync(cache, "fresh"));
+        Assert.True(File.Exists(fixture.PathFor("a")));
+        Assert.True(File.Exists(fixture.PathFor("b")));
+        Assert.True(File.Exists(fixture.PathFor("c")));
+        Assert.True(File.Exists(fixture.PathFor("fresh")));
         Assert.True(File.Exists(orphan));
-        for (int index = 3; index < 6; index++) Assert.NotNull(await fixture.FetchAsync(cache, "new-" + index));
+        Assert.Equal(4, (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
+        await cache.DisposeAsync();
+        await using (var restarted = fixture.CreateCache(3)) { }
         Assert.False(File.Exists(orphan));
-        Assert.Equal(26, (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
+        Assert.False(File.Exists(fixture.PathFor("a")));
+        Assert.True(File.Exists(fixture.PathFor("b")));
+        Assert.True(File.Exists(fixture.PathFor("c")));
+        Assert.True(File.Exists(fixture.PathFor("fresh")));
+        Assert.Equal(3, (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
     }
 
     [Fact]
     public async Task AccessDateThrottleIsBoundedWithoutLosingPersistentUsage()
     {
         await using var fixture = new Fixture();
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.NotNull(await fixture.FetchAsync(cache, "a"));
         var saved = fixture.Clock.GetUtcNow();
         fixture.Clock.Advance(TimeSpan.FromHours(23));
@@ -697,7 +694,7 @@ public sealed class DownloadedImageCacheTests
     public async Task DiskHitsSaveAccessDatesAtMostOnceADayIncludingTheBoundary()
     {
         await using var fixture = new Fixture();
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.NotNull(await fixture.FetchAsync(cache, "a"));
         var saved = fixture.Clock.GetUtcNow();
         fixture.Clock.Advance(TimeSpan.FromHours(23));
@@ -722,7 +719,7 @@ public sealed class DownloadedImageCacheTests
                 Content = new ByteArrayContent(Fixture.Image)
             });
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         int expected = 0;
         for (int attempt = 0; attempt < 4; attempt++)
         {
@@ -759,7 +756,7 @@ public sealed class DownloadedImageCacheTests
             requests++;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         await fixture.SeedAsync("retry");
         Assert.NotNull(await fixture.FetchAsync(cache, "retry"));
@@ -777,7 +774,7 @@ public sealed class DownloadedImageCacheTests
             requests++;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Equal(1, requests);
@@ -806,7 +803,7 @@ public sealed class DownloadedImageCacheTests
                 Content = new ByteArrayContent(Fixture.Image)
             });
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
@@ -839,7 +836,7 @@ public sealed class DownloadedImageCacheTests
             if (retryAfter is not null) response.Headers.TryAddWithoutValidation("Retry-After", retryAfter);
             return Task.FromResult(response);
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Null(await fixture.FetchAsync(cache, "peer"));
         Assert.Equal(1, requests);
@@ -876,7 +873,7 @@ public sealed class DownloadedImageCacheTests
             if (requests == 1) response.Headers.TryAddWithoutValidation("Retry-After", retryAfter.ToString());
             return Task.FromResult(response);
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         fixture.Clock.Advance(TimeSpan.FromSeconds(30));
         cache.NetworkStatusChanged(null, false);
@@ -924,7 +921,7 @@ public sealed class DownloadedImageCacheTests
             return new HttpResponseMessage(request.RequestUri.AbsolutePath == "/first.png"
                 ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) { Content = new ByteArrayContent(Fixture.Image) };
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         var held = fixture.FetchAsync(cache, "held");
         try
         {
@@ -968,7 +965,7 @@ public sealed class DownloadedImageCacheTests
                 Content = new ByteArrayContent(statusCode == 200 ? "<html>Sign in</html>"u8.ToArray() : [])
             });
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.Null(await fixture.FetchAsync(cache, "failed"));
         Assert.Null(await fixture.FetchAsync(cache, "failed"));
         Assert.Equal(1, requests);
@@ -998,7 +995,7 @@ public sealed class DownloadedImageCacheTests
             }
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Fixture.Image) };
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         await using var thumbnails = fixture.CreateThumbnails(cache);
         var active = Enumerable.Range(0, 4).Select(index =>
             thumbnails.SourceAsync(Url("active-" + index, "active" + index / 2 + ".test"))).ToArray();
@@ -1039,7 +1036,7 @@ public sealed class DownloadedImageCacheTests
             requests++;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.Null(await fixture.FetchAsync(cache, "first"));
         fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.Null(await fixture.FetchAsync(cache, "second"));
@@ -1072,7 +1069,7 @@ public sealed class DownloadedImageCacheTests
             return new HttpResponseMessage(request.RequestUri.AbsolutePath == "/retry.png"
                 ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) { Content = new ByteArrayContent(Fixture.Image) };
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         var healthy = fixture.FetchAsync(cache, "healthy");
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
@@ -1097,7 +1094,7 @@ public sealed class DownloadedImageCacheTests
                 Content = new ByteArrayContent(requests == 2 ? "<html>Login</html>"u8.ToArray() : Fixture.Image)
             });
         });
-        await using var cache = fixture.CreateCache(10, 20);
+        await using var cache = fixture.CreateCache(10);
         Assert.Null(await fixture.FetchAsync(cache, "portal"));
         fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.Null(await fixture.FetchAsync(cache, "portal"));
@@ -1137,8 +1134,8 @@ public sealed class DownloadedImageCacheTests
             File.SetLastWriteTimeUtc(PathFor(name), Clock.GetUtcNow().UtcDateTime);
             await Database.SaveDownloadedImageAsync(new(Url(name), Image.LongLength, (1, 1), null));
         }
-        internal DownloadedImageCache CreateCache(int limitImages, int hardLimitImages)
-            => new(Database, _directory, Image.LongLength * limitImages, Image.LongLength * hardLimitImages,
+        internal DownloadedImageCache CreateCache(int limitImages)
+            => new(Database, _directory, Image.LongLength * limitImages,
                 _downloader, Clock, networkAllowsUpdates: () => UpdatesAllowed);
         internal ThumbnailDownloader CreateThumbnails(DownloadedImageCache cache)
             => new(Database, _directory, () => true, downloadedImages: cache);

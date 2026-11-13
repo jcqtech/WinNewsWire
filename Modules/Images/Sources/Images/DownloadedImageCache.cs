@@ -14,8 +14,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private readonly ImageDatabase _database;
     private readonly BinaryDiskCache _diskCache;
     private readonly TimeProvider _clock;
-    private readonly ByteLimit _limit;
-    private readonly ByteLimit _hardLimit;
+    private readonly long _maximumStoredByteCount;
     private readonly Downloader _downloader;
     private readonly ThumbnailTaskQueue _downloadQueue = new(4, 60, maximumRunningCountPerGroup: 2);
     private readonly Func<bool> _networkAllowsUpdates;
@@ -29,8 +28,6 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private readonly SemaphoreSlim _diskGate = new(1, 1);
     private readonly Dictionary<string, DateTimeOffset> _accessDatesSaved = new(StringComparer.Ordinal);
     private readonly Task _initialCleanup;
-    private long? _totalByteCount;
-    private long _removalByteCount;
     internal int WaitingDownloadCount => _downloadQueue.WaitingCount;
 
     /// <summary>Raised on a worker after a validated server replacement is saved; UI consumers must dispatch.</summary>
@@ -45,27 +42,24 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     public DownloadedImageCache(ImageDatabase database, string cacheFolder,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null,
         Func<bool>? networkAllowsUpdates = null)
-        : this(database, cacheFolder, 300L * 1024 * 1024, 1024L * 1024 * 1024,
+        : this(database, cacheFolder, 300L * 1024 * 1024,
             downloader, clock, activityLog, networkAllowsUpdates)
     {
     }
 
     internal DownloadedImageCache(ImageDatabase database, string cacheFolder,
-        long maximumByteCount, long hardMaximumByteCount,
+        long maximumByteCount,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null,
         Func<bool>? networkAllowsUpdates = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFolder);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumByteCount);
-        if (hardMaximumByteCount < maximumByteCount) throw new ArgumentOutOfRangeException(nameof(hardMaximumByteCount));
         _database = database;
         _clock = clock ?? TimeProvider.System;
         _downloader = downloader ?? Downloader.Shared;
         _networkAllowsUpdates = networkAllowsUpdates ?? (() => NetworkMonitor.IsAvailable);
-        _limit = new(maximumByteCount);
-        _hardLimit = new(hardMaximumByteCount);
-        _removalByteCount = maximumByteCount;
+        _maximumStoredByteCount = maximumByteCount;
         _diskCache = new(Path.Combine(cacheFolder, "DownloadedImages"));
         _downloads = new(database, _diskCache.Folder,
             new(int.MaxValue, DownloadQueue: _downloadQueue, StoresSourceData: true),
@@ -247,13 +241,11 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         return now + TimeSpan.FromTicks((long)(interval.Ticks * (0.8 + Random.Shared.NextDouble() * 0.4)));
     }
 
-    private Task ImageWasSavedAsync(string url, long byteCount)
+    private Task ImageWasSavedAsync(string url)
     {
         if (_accessDatesSaved.Count >= 10_000) _accessDatesSaved.Clear();
         _accessDatesSaved[url] = _clock.GetUtcNow();
-        if (_totalByteCount is { } total) _totalByteCount = checked(total + byteCount);
-        return _totalByteCount is null || _totalByteCount > _removalByteCount
-            ? RemoveImagesOverSizeLimitCoreAsync() : Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     internal async Task RemoveImagesOverSizeLimitAsync()
@@ -265,7 +257,6 @@ public sealed class DownloadedImageCache : IAsyncDisposable
 
     private async Task RemoveImagesOverSizeLimitCoreAsync()
     {
-        _totalByteCount = null;
         var now = _clock.GetUtcNow();
         var records = await _database.FetchDownloadedImageUsageByLeastRecentAccessAsync().ConfigureAwait(false);
         var dates = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
@@ -288,30 +279,21 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         }
         var urlsInUse = _downloads.CopyPendingUrls();
         lock (_backgroundGate) urlsInUse.UnionWith(_revalidatingImages.Keys);
-        var removal = PlanRemoval(records, dates, now, _limit, _hardLimit, urlsInUse);
+        var removal = PlanRemoval(records, dates, now, _maximumStoredByteCount, urlsInUse);
         foreach (var key in removal.Keys) _diskCache.Remove(key);
         await _database.DeleteDownloadedImagesAsync(removal.Urls).ConfigureAwait(false);
         foreach (var url in removal.Urls) _accessDatesSaved.Remove(url);
-        _totalByteCount = removal.RemainingByteCount;
-        _removalByteCount = Math.Max(_limit.MaximumByteCount,
-            checked(removal.RemainingByteCount + _limit.MaximumByteCount / 4));
         if (removal.Keys.Count > 0 || removal.Urls.Count > 0)
             Trace.TraceInformation($"Removed {removal.Keys.Count} downloaded image files and {removal.Urls.Count} records; {removal.RemainingByteCount} bytes remain.");
-    }
-
-    internal readonly record struct ByteLimit(long MaximumByteCount)
-    {
-        internal long ByteCountAfterRemoval => MaximumByteCount / 5 * 4;
     }
 
     internal sealed record ImageRemoval(IReadOnlyList<string> Urls, IReadOnlySet<string> Keys, long RemainingByteCount);
 
     internal static ImageRemoval PlanRemoval(IReadOnlyList<DownloadedImageUsage> records,
-        IReadOnlyDictionary<string, DateTimeOffset> fileDates, DateTimeOffset now, ByteLimit limit, ByteLimit hardLimit,
+        IReadOnlyDictionary<string, DateTimeOffset> fileDates, DateTimeOffset now, long maximumByteCount,
         IReadOnlySet<string>? urlsInUse = null)
     {
         var recentChange = now - TimeSpan.FromMinutes(1);
-        var recentUse = now - TimeSpan.FromDays(3);
         var keep = new List<(DownloadedImageUsage Record, string Key)>();
         var recordedKeys = new HashSet<string>(StringComparer.Ordinal);
         var urls = new List<string>();
@@ -325,21 +307,15 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         var keys = fileDates.Where(pair => !recordedKeys.Contains(BaseDiskKey(pair.Key)) && pair.Value < recentChange)
             .Select(pair => pair.Key).ToHashSet(StringComparer.Ordinal);
         long bytes = keep.Sum(item => item.Record.ByteCount);
-        void RemoveLeastRecentlyUsed(DateTimeOffset accessedBefore, ByteLimit target)
+        foreach (var (record, key) in keep)
         {
-            if (bytes <= target.MaximumByteCount) return;
-            foreach (var (record, key) in keep)
-            {
-                if (bytes <= target.ByteCountAfterRemoval || record.LastAccessed >= accessedBefore) break;
-                if (keys.Contains(key) || urlsInUse?.Contains(record.Url) == true
-                    || fileDates.TryGetValue(key, out var modified) && modified >= recentChange) continue;
-                urls.Add(record.Url);
-                keys.Add(key);
-                bytes -= record.ByteCount;
-            }
+            if (bytes <= maximumByteCount || record.LastAccessed >= recentChange) break;
+            if (urlsInUse?.Contains(record.Url) == true
+                || fileDates.TryGetValue(key, out var modified) && modified >= recentChange) continue;
+            urls.Add(record.Url);
+            keys.Add(key);
+            bytes -= record.ByteCount;
         }
-        RemoveLeastRecentlyUsed(recentUse, limit);
-        RemoveLeastRecentlyUsed(recentChange, hardLimit);
         var removedKeys = keys.Concat(urls.Select(url => url.Md5Hex())).ToHashSet(StringComparer.Ordinal);
         keys.UnionWith(fileDates.Keys.Where(key => BaseDiskKey(key) != key && removedKeys.Contains(BaseDiskKey(key))));
         return new(urls, keys, bytes);
