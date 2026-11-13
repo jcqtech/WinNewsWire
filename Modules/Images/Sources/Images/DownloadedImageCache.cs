@@ -270,13 +270,9 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         var records = await _database.FetchDownloadedImageUsageByLeastRecentAccessAsync().ConfigureAwait(false);
         var dates = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
         var directory = new DirectoryInfo(_diskCache.Folder);
-        FileAttributes? attributes = null;
-        try { attributes = File.GetAttributes(directory.FullName); }
-        catch (FileNotFoundException) { }
-        catch (DirectoryNotFoundException) { }
-        if (attributes is { } existingAttributes)
+        try
         {
-            if ((existingAttributes & FileAttributes.ReparsePoint) != 0)
+            if ((File.GetAttributes(directory.FullName) & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Image cache cleanup will not traverse a filesystem link: " + directory.FullName);
             foreach (var file in directory.EnumerateFiles())
             {
@@ -284,6 +280,11 @@ public sealed class DownloadedImageCache : IAsyncDisposable
                     throw new IOException("Image cache cleanup will not traverse a filesystem link: " + file.FullName);
                 dates[file.Name] = file.LastWriteTimeUtc;
             }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Trace.TraceError($"Skipped removing downloaded images because their folder could not be listed: {error}");
+            return;
         }
         var urlsInUse = _downloads.CopyPendingUrls();
         lock (_backgroundGate) urlsInUse.UnionWith(_revalidatingImages.Keys);

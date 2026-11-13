@@ -583,6 +583,32 @@ public sealed class DownloadedImageCacheTests
         Assert.False(fixture.Database.IsUnsuitableForThumbnail(Url("a")));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedFolderListingLeavesSourceFilesAndMetadataUntouched(bool blockedByFile)
+    {
+        await using var fixture = new Fixture();
+        await fixture.SeedAsync("a");
+        await fixture.SeedAsync("b");
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        string unavailable = fixture.SourceDirectory + "-unavailable";
+        Directory.Move(fixture.SourceDirectory, unavailable);
+        try
+        {
+            if (blockedByFile) File.WriteAllText(fixture.SourceDirectory, "Not a directory");
+            await using (var cache = fixture.CreateCache(1, 2)) { }
+            Assert.Equal([Url("a"), Url("b")],
+                (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Select(record => record.Url));
+            Assert.Equal(2, Directory.GetFiles(unavailable).Length);
+        }
+        finally
+        {
+            if (blockedByFile) File.Delete(fixture.SourceDirectory);
+            Directory.Move(unavailable, fixture.SourceDirectory);
+        }
+    }
+
     [Fact]
     public async Task NewDownloadsTriggerLruRemovalWithoutWaitingForAnotherLaunch()
     {
