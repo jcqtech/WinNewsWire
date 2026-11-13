@@ -32,6 +32,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     private readonly Lazy<Task<(ArticleThumbnailFinder Finder, ThumbnailDownloader Downloads)>> _backend;
     private readonly long _cacheByteLimit;
     private readonly Func<bool> _networkAllowsDownloads;
+    private readonly Func<bool> _networkAllowsPrefetch;
     private readonly Dictionary<(string Url, ThumbnailMode Mode), LinkedListNode<CachedThumbnail>> _cache = [];
     private readonly LinkedList<CachedThumbnail> _cacheOrder = [];
     private readonly ConcurrentDictionary<(string Url, ThumbnailMode Mode), Lazy<Task<SoftwareBitmapSource?>>> _pending = [];
@@ -61,7 +62,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 
     internal ArticleThumbnailService(DispatcherQueue dispatcher,
         Func<(ArticleThumbnailFinder Finder, ThumbnailDownloader Downloads)>? createBackend = null,
-        long cacheByteLimit = 128 * 1024 * 1024, Func<bool>? networkAllowsDownloads = null)
+        long cacheByteLimit = 128 * 1024 * 1024, Func<bool>? networkAllowsDownloads = null,
+        Func<bool>? networkAllowsPrefetch = null)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(cacheByteLimit);
@@ -69,6 +71,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         VerifyAccess();
         _cacheByteLimit = cacheByteLimit;
         _networkAllowsDownloads = networkAllowsDownloads ?? NetworkAllowsDownloads;
+        _networkAllowsPrefetch = networkAllowsPrefetch ?? (() => _networkAllowsDownloads()
+            && global::Windows.System.Power.PowerManager.EnergySaverStatus != global::Windows.System.Power.EnergySaverStatus.On);
         NetworkDownloadsAllowed = _networkAllowsDownloads();
         _backend = new(() => Task.Run(() =>
         {
@@ -123,7 +127,10 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(article);
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
         var baseUrl = ArticleBaseUrl(article);
-        return RunOperationAsync(token => FindImageAsync(article, mode, DownloadPriority.Prefetch, baseUrl, token), ct);
+        bool allowed = _networkAllowsPrefetch();
+        return RunOperationAsync(token => allowed
+            ? FindImageAsync(article, mode, DownloadPriority.Prefetch, baseUrl, token)
+            : Task.FromResult<SoftwareBitmapSource?>(null), ct);
     }
 
     internal Task<string?> ThumbnailUrlAsync(Article article, ThumbnailMode mode, CancellationToken ct = default)

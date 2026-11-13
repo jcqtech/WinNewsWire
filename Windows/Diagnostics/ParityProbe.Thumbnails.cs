@@ -36,6 +36,7 @@ internal static partial class ParityProbe
         int requests = 0, notifications = 0;
         bool initializationOnUI = true, notificationOnUI = true;
         bool networkAllowed = true;
+        bool prefetchAllowed = true;
         bool failureOnUI = true;
         int failures = 0;
         var requested = new ConcurrentQueue<string>();
@@ -72,7 +73,8 @@ internal static partial class ParityProbe
             return (new ArticleThumbnailFinder(database),
                 new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "thumbnail-cache"),
                     () => networkAllowed, downloader));
-        }, cacheByteLimit: 3_000_000, networkAllowsDownloads: () => networkAllowed);
+        }, cacheByteLimit: 3_000_000, networkAllowsDownloads: () => networkAllowed,
+            networkAllowsPrefetch: () => networkAllowed && prefetchAllowed);
         service.ThumbnailAvailable += (_, _) =>
         {
             notifications++;
@@ -215,6 +217,19 @@ internal static partial class ParityProbe
         }
         finally { host.Children.Remove(image); }
 
+        int beforeRestrictedPrefetch = requests;
+        int beforeRestrictedDiscovery = service.ProbeUrlResolutions;
+        prefetchAllowed = false;
+        var restrictedPrefetch = FixtureFor("restricted-prefetch.bmp");
+        await service.PrefetchThumbnailAsync(restrictedPrefetch, ThumbnailMode.Small);
+        Require(requests == beforeRestrictedPrefetch && service.ProbeUrlResolutions == beforeRestrictedDiscovery,
+            "Restricted prefetch still started image discovery or downloading.");
+        Require(await service.ThumbnailAsync(restrictedPrefetch, ThumbnailMode.Small) is not null
+            && requests == beforeRestrictedPrefetch + 1,
+            "Prefetch restrictions must not suppress a visible image.");
+        prefetchAllowed = true;
+        await service.PrefetchThumbnailAsync(FixtureFor("allowed-prefetch.bmp"), ThumbnailMode.Small);
+        Require(requests == beforeRestrictedPrefetch + 2, "Allowed prefetch did not resume.");
         int downloaded = requests;
         service.EmptyCache();
         Require(service.ProbeCacheBytes == 0, "Low-memory cleanup retained decoded thumbnails.");
@@ -260,6 +275,7 @@ internal static partial class ParityProbe
             HiddenModeLeavesReaderImagesRemote = true,
             ReaderAndDiscoveryShareBaseUrls = true, FeedBasesCapturedOnUI = true,
             ConnectivityRecoveryRetriesVisiblePlaceholders = true,
+            RestrictedPrefetchPreservesVisibleDownloads = true,
             DecoderFailureStopsRetriesWithoutSuppressingIcons = true,
             VisibleNativePixels = true, RoundedClipping = true, ThemedPlaceholder = true,
             RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
