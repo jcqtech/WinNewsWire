@@ -98,6 +98,35 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
+    public async Task ExhaustedExplicitFaviconCandidatesPersistTheNoFaviconVerdict()
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
+        {
+            "/" => HtmlResponse("<link rel='icon' href='/missing.png'><link rel='icon' href='/also-missing.png'>"),
+            _ => Response(HttpStatusCode.NotFound)
+        }));
+        Assert.Null(await fixture.Images.FaviconAsync(new(Feed, Home)));
+        Assert.Equal([Home, Home + "missing.png", Home + "also-missing.png", Home + "favicon.ico"], fixture.Requests);
+        Assert.Null(fixture.ImageDatabase.FaviconUrl(Home));
+        Assert.True(fixture.ImageDatabase.HomePageHasNoFavicon(Home));
+    }
+
+    [Fact]
+    public async Task AnEarlierTransientCandidatePreventsTheNoFaviconVerdictWhenLaterCandidatesFailDefinitively()
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
+        {
+            "/" => HtmlResponse("<link rel='icon' href='/waiting.png'><link rel='icon' href='/missing.png'>"),
+            "/waiting.png" => Response(HttpStatusCode.InternalServerError),
+            _ => Response(HttpStatusCode.NotFound)
+        }));
+        Assert.Null(await fixture.Images.FaviconAsync(new(Feed, Home)));
+        Assert.Equal([Home, Home + "waiting.png", Home + "missing.png", Home + "favicon.ico"], fixture.Requests);
+        Assert.Null(fixture.ImageDatabase.FaviconUrl(Home));
+        Assert.False(fixture.ImageDatabase.HomePageHasNoFavicon(Home));
+    }
+
+    [Fact]
     public async Task DefaultOnlyFailureExpiresAndRetriesAfterFiveDays()
     {
         int iconCalls = 0;

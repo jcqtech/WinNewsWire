@@ -148,7 +148,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             }
             transient |= result.IsTransient;
         }
-        if (metadata is not null && candidates.Count == 0 && !transient)
+        if (metadata is not null && !transient)
             await _database.SaveHomePageFaviconAsync(homePage, null).ConfigureAwait(false);
         return null;
     }
