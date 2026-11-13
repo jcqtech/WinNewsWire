@@ -34,6 +34,36 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
+    public async Task UnsupportedDeclaredFaviconsFallBackToHomepageDiscovery()
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath == "/"
+            ? HtmlResponse("<link rel='icon' href='/good.png'>") : Response(HttpStatusCode.OK, Image)));
+        var image = await fixture.Images.FaviconAsync(new(Feed, Home, FaviconUrl: "data:image/png;base64,AA"));
+        Assert.Equal(Home + "good.png", image?.Url);
+        Assert.Equal([Home, Home + "good.png"], fixture.Requests);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, false)]
+    [InlineData(HttpStatusCode.OK, true)]
+    [InlineData(HttpStatusCode.InternalServerError, true)]
+    public async Task FailedDeclaredFaviconsUseHomepageCandidatesInTheSameRequest(HttpStatusCode failure, bool savedDeclared)
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
+        {
+            "/bad.png" => Response(failure, "<html>Not an image</html>"u8.ToArray()),
+            "/" => HtmlResponse("<link rel='icon' href='/good.png'>"),
+            "/good.png" => Response(HttpStatusCode.OK, Image),
+            _ => throw new InvalidOperationException("Unexpected declared-favicon fallback request.")
+        }));
+        if (savedDeclared) await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, Home + "bad.png");
+        var image = await fixture.Images.FaviconAsync(new(Feed, Home, FaviconUrl: Home + "bad.png"));
+        Assert.Equal(Home + "good.png", image?.Url);
+        Assert.Equal(Home + "good.png", fixture.ImageDatabase.FaviconUrl(Home));
+        Assert.Equal([Home + "bad.png", Home, Home + "good.png"], fixture.Requests);
+    }
+
+    [Fact]
     public async Task DiscoverySkipsUnsupportedAndFailedCandidatesWithoutStalling()
     {
         await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
@@ -466,6 +496,7 @@ public sealed class FeedImageDownloaderTests
     public async Task EmptySuccessIsAPersistentImageFailure()
     {
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK)));
+        await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, null);
         Assert.Null(await fixture.Images.FaviconAsync(new(Feed, Home, Home + "empty.png")));
         Assert.True(fixture.ImageDatabase.RecentlyFailed(Home + "empty.png"));
         Assert.Null(await fixture.Images.FaviconAsync(new(Feed, Home, Home + "empty.png")));
@@ -478,6 +509,7 @@ public sealed class FeedImageDownloaderTests
         int calls = 0;
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK,
             ++calls == 1 ? "<html>not an image</html>"u8.ToArray() : Image)));
+        await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, null);
         var source = new FeedImageSource(Feed, Home, Home + "bad.png");
         Assert.Null(await fixture.Images.FaviconAsync(source));
         Assert.False(fixture.ImageDatabase.RecentlyFailed(source.FaviconUrl!));
@@ -667,6 +699,7 @@ public sealed class FeedImageDownloaderTests
     public async Task SharedSourceWriteFailureDoesNotPublishAFaviconMappingOrChangeRetiredFiles()
     {
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));
+        await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, null);
         string url = Home + "cached.png";
         Directory.CreateDirectory(fixture.LegacyDirectory);
         Directory.CreateDirectory(fixture.CacheDirectory);

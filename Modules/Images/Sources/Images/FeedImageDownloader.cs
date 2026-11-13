@@ -161,15 +161,21 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         ct.ThrowIfCancellationRequested();
         if (HtmlMetadataDownloader.ShouldSkip(feed.FeedUrl)) return null;
         string? homePage = HomePage(feed);
+        string? failedDeclaredUrl = null;
+        bool transient = false;
         if (feed.FaviconUrl is { Length: > 0 } declared)
         {
-            var image = (await FetchImageAsync(declared, favicon: true, ct, homePage).ConfigureAwait(false)).Image;
-            if (image is not null && homePage is not null) await _database.SaveHomePageFaviconAsync(homePage, declared).ConfigureAwait(false);
-            return image;
+            var result = await FetchImageAsync(declared, favicon: true, ct, homePage).ConfigureAwait(false);
+            if (result.Image is { } image)
+            {
+                if (homePage is not null) await _database.SaveHomePageFaviconAsync(homePage, declared).ConfigureAwait(false);
+                return image;
+            }
+            failedDeclaredUrl = declared;
+            transient = result.IsTransient;
         }
         if (homePage is null || _database.HomePageHasNoFavicon(homePage)) return null;
-        bool transient = false;
-        if (_database.FaviconUrl(homePage) is { } known)
+        if (_database.FaviconUrl(homePage) is { } known && known != failedDeclaredUrl)
         {
             var previous = await FetchImageAsync(known, favicon: true, ct, homePage).ConfigureAwait(false);
             if (previous.Image is not null)
@@ -178,7 +184,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
                 return previous.Image;
             }
             if (previous.IsTransient && !previous.DecodingFailed) return null;
-            transient = previous.IsTransient;
+            transient |= previous.IsTransient;
         }
 
         var metadata = await _metadata.GetMetadataAsync(homePage, ct).ConfigureAwait(false);
