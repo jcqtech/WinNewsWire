@@ -599,9 +599,11 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task IconAndFaviconReadsScheduleConditionalValidationAfterTheirMemoryCacheIsCleared(bool favicon)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task IconAndFaviconReadsScheduleConditionalValidation(bool favicon, bool clearMemory)
     {
         int requests = 0;
         string? conditionalTag = null;
@@ -620,12 +622,34 @@ public sealed class FeedImageDownloaderTests
         Task<DownloadedImage?> ReadAsync() => favicon ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed);
         Assert.NotNull(await ReadAsync());
         fixture.Clock.Advance(TimeSpan.FromDays(10));
-        fixture.Images.EmptyCache();
+        if (clearMemory) fixture.Images.EmptyCache();
         Assert.NotNull(await ReadAsync());
         await fixture.Images.DownloadedImages.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(2, requests);
         Assert.Equal("\"icon-v1\"", conditionalTag);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(feed.IconUrl!));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WarmIconsSaveAccessDatesAtMostOnceADay(bool favicon)
+    {
+        await using var fixture = new Fixture((_, _) =>
+            Task.FromResult(Response(HttpStatusCode.OK, Bitmap(128, 128))));
+        var feed = new FeedImageSource(Feed, Home, FaviconUrl: Home + "icon.bmp", IconUrl: Home + "icon.bmp");
+        Task<DownloadedImage?> ReadAsync() => favicon ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed);
+        var image = await ReadAsync();
+        Assert.NotNull(image);
+        var saved = fixture.Clock.GetUtcNow();
+        fixture.Clock.Advance(TimeSpan.FromHours(23));
+        Assert.Same(image, await ReadAsync());
+        Assert.Equal(saved, Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).LastAccessed);
+        fixture.Clock.Advance(TimeSpan.FromHours(1));
+        Assert.Same(image, await ReadAsync());
+        Assert.Equal(fixture.Clock.GetUtcNow(),
+            Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).LastAccessed);
+        Assert.Single(fixture.Requests);
     }
 
     [Theory]

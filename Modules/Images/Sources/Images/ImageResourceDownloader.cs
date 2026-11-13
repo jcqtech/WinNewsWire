@@ -104,6 +104,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         if (CachedImage(url) is { } cached && (_sourceCache is null || File.Exists(cached.Path)))
         {
+            if (_sourceCache is not null)
+                await _sourceCache.ImageWasUsedAsync(url, checksForUpdates: true, ct).ConfigureAwait(false);
             if (_sourceCache is null && !File.Exists(cached.Path))
                 await _diskCache.SetAsync(url.Md5Hex(), cached.Data, ct).ConfigureAwait(false);
             return new(cached);

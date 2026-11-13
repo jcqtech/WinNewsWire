@@ -66,13 +66,14 @@ internal static partial class ParityProbe
                 ? HttpStatusCode.NotFound : HttpStatusCode.OK) { Content = new ByteArrayContent(data) };
         }));
         var downloader = new Downloader(http);
-        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "thumbnail-metadata.db"));
+        var clock = new ChangedImageClock();
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "thumbnail-metadata.db"), clock);
         await using var service = new ArticleThumbnailService(window.DispatcherQueue, () =>
         {
             initializationOnUI = window.DispatcherQueue.HasThreadAccess;
             return (new ArticleThumbnailFinder(database),
                 new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "thumbnail-cache"),
-                    () => networkAllowed, downloader));
+                    () => networkAllowed, downloader, clock));
         }, cacheByteLimit: 3_000_000, networkAllowsDownloads: () => networkAllowed,
             networkAllowsPrefetch: () => networkAllowed && prefetchAllowed);
         service.ThumbnailAvailable += (_, _) =>
@@ -103,6 +104,14 @@ internal static partial class ParityProbe
             "Thumbnail initialization/decoding or availability notifications ran on the wrong thread.");
         Require(ReferenceEquals(small, await service.ThumbnailAsync(article, ThumbnailMode.Small))
             && service.ProbeDecodes == 1, "A warm thumbnail was decoded again.");
+        clock.Advance(TimeSpan.FromDays(1));
+        int warmRequests = requests;
+        Require(ReferenceEquals(small, await service.ThumbnailAsync(article, ThumbnailMode.Small))
+            && service.ProbeDecodes == 1 && requests == warmRequests,
+            "Noting a warm thumbnail's use decoded or downloaded it again.");
+        Require(((await database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Single().LastAccessed
+            - clock.GetUtcNow()).Duration() < TimeSpan.FromMilliseconds(1),
+            "A warm decoded thumbnail did not refresh its source access date.");
 
         var large = await service.ThumbnailAsync(article, ThumbnailMode.Large);
         Require(service.ProbeLastDecodedSize == (1200, 600), "Large thumbnails were not decoded at display size.");

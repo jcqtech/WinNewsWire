@@ -102,13 +102,39 @@ public sealed class DownloadedImageCache : IAsyncDisposable
 
     internal void PrioritizeDownload(string url) => _downloadLimiter.Prioritize(url);
 
-    private async Task SaveAccessDateIfNeededAsync(string url, ImageResourceRequest request)
+    internal Task ImageWasUsedAsync(string url, bool checksForUpdates, CancellationToken ct)
+    {
+        lock (_backgroundGate)
+        {
+            ObjectDisposedException.ThrowIf(_stopping, this);
+            var task = Task.Run(async () =>
+            {
+                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
+                await _initialCleanup.WaitAsync(cancellation.Token).ConfigureAwait(false);
+                await _diskGate.WaitAsync(cancellation.Token).ConfigureAwait(false);
+                try { await SaveAccessDateIfNeededAsync(url, checksForUpdates).ConfigureAwait(false); }
+                finally { _diskGate.Release(); }
+            });
+            _backgroundTasks.Add(task);
+            _ = task.ContinueWith(completed =>
+            {
+                if (completed.IsFaulted) Trace.TraceError($"Image access-date update failed: {completed.Exception}");
+                lock (_backgroundGate) _backgroundTasks.Remove(completed);
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return task;
+        }
+    }
+
+    private Task SaveAccessDateIfNeededAsync(string url, ImageResourceRequest request)
+        => SaveAccessDateIfNeededAsync(url, request.ChecksForUpdates);
+
+    private async Task SaveAccessDateIfNeededAsync(string url, bool checksForUpdates)
     {
         var now = _clock.GetUtcNow();
         if (_accessDatesSaved.TryGetValue(url, out var saved) && now - saved < TimeSpan.FromDays(1)) return;
         await _database.SaveDownloadedImageAccessDateAsync(url).ConfigureAwait(false);
         _accessDatesSaved[url] = now;
-        if (request.ChecksForUpdates) ScheduleRevalidation(url);
+        if (checksForUpdates) ScheduleRevalidation(url);
     }
 
     private void ScheduleRevalidation(string url)

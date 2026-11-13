@@ -66,6 +66,16 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
         _downloadedImages.PrioritizeDownload(url);
     }
 
+    public Task ImageWasUsedAsync(string url, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        return RunOperationAsync(async token =>
+        {
+            await _downloadedImages.ImageWasUsedAsync(url, checksForUpdates: false, token).ConfigureAwait(false);
+            return true;
+        }, ct);
+    }
+
     private Task<T> RunOperationAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken ct)
     {
         lock (_gate)

@@ -268,7 +268,11 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             _cacheOrder.AddLast(node);
             return Task.FromResult<SoftwareBitmapSource?>(node.Value.Source);
         }).ConfigureAwait(false);
-        if (cached is not null) return cached;
+        if (cached is not null)
+        {
+            await downloads.ImageWasUsedAsync(url, ct).ConfigureAwait(false);
+            return cached;
+        }
 #if PARITY_PROBE
         ProbeDownloadPriorities[url] = priority;
 #endif
