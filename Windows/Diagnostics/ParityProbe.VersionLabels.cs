@@ -13,6 +13,8 @@ internal static partial class ParityProbe
     private static async Task<object?> CheckVersionLabelsAsync()
     {
         var preferences = new AppWindows.PreferencesWindow();
+        bool preferencesClosed = false;
+        AppWindows.AboutWindow? about = null;
         try
         {
             preferences.AppWindow.Resize(new Windows.Graphics.SizeInt32(1500, 1000));
@@ -22,9 +24,21 @@ internal static partial class ParityProbe
             var label = Descendants(preferences.Content).OfType<CopyableLabel>().Single();
             Require(label.Text == $"WinNewsWire {App.DisplayVersion}", "Settings version text lost the application name or full version.");
             await CheckCopyableLabelAsync(label);
-            return new { SettingsVersion = true, WholeTextCopy = true };
+            preferences.Close();
+            preferencesClosed = true;
+            about = new AppWindows.AboutWindow();
+            about.Activate();
+            await WaitFor(() => Task.FromResult(about.Content is FrameworkElement { IsLoaded: true }), "About version label");
+            var aboutLabel = Descendants(about.Content).OfType<CopyableLabel>().Single();
+            Require(aboutLabel.Text == $"Version {App.DisplayVersion}", "About version text lost the full version.");
+            await CheckCopyableLabelAsync(aboutLabel);
+            return new { SettingsVersion = true, AboutVersion = true, WholeTextCopy = true };
         }
-        finally { preferences.Close(); }
+        finally
+        {
+            about?.Close();
+            if (!preferencesClosed) preferences.Close();
+        }
     }
 
     private static async Task CheckCopyableLabelAsync(CopyableLabel label)
