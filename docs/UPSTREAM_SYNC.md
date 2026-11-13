@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`34e7559a3e95ccc5cdd54025183e90e279decdca`**. This synchronization is in progress.
+`15110763e952922cd8ad105cc464b81e1b445ba8`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is visible-thumbnail download prioritization, `15110763e952922cd8ad105cc464b81e1b445ba8`;
+is large-thumbnail row-height scroll anchoring, `3d2b6cd8eaf603532b5adb7a89d2f3b59982e37d`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -110,6 +110,10 @@ offline; new downloads honor connectivity and Windows connection cost.
 At most 60 requests wait, newest-first; overflow drops the oldest request as
 transient without poisoning its URL or imposing a retry backoff. Background
 icon checks bypass thumbnail slots so full thumbnail queues do not block them.
+Visible thumbnails now take precedence over newer next-screen prefetches.
+Queued sources promote by URL when their rows become visible, including
+coalesced downloads. Overflow drops prefetches before visible work; both tiers
+remain newest-first. Native timeline lookahead uses the low-priority path.
 Stored source byte counts, pixel dimensions, last access, ETag and Last-Modified
 are persisted. Known unsuitable thumbnails are skipped using those dimensions,
 independently of transient download failures or their expiry. Native decoding
@@ -170,8 +174,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **105 Ported, 29 Covered, 71 Skipped, and 300 Pending**
-source commits, backed by **121 source-attributed Windows port commits**. Two
+The inventory currently has **106 Ported, 29 Covered, 71 Skipped, and 299 Pending**
+source commits, backed by **122 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -184,7 +188,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are priority-aware download scheduling and later image-cache rewrites,
+Still pending are thumbnail scroll anchoring and later image-cache rewrites,
 finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
