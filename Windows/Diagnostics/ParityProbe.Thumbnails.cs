@@ -481,6 +481,13 @@ internal static partial class ParityProbe
             () => (new ArticleThumbnailFinder(database),
                 new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "prefetch-direction-cache"), () => false)),
             networkAllowsDownloads: () => false, networkAllowsPrefetch: () => true);
+        int savedLoads = 0;
+        bool savedOnUI = false;
+        service.ProbeLoadingSavedUrls = () =>
+        {
+            savedOnUI |= window.DispatcherQueue.HasThreadAccess;
+            Interlocked.Increment(ref savedLoads);
+        };
         var rows = new ObservableCollection<Models.FeedItem>(Enumerable.Range(0, 120).Select(index =>
         {
             string id = "prefetch-direction-" + index;
@@ -518,6 +525,8 @@ internal static partial class ParityProbe
                         && scheduled.Any(item => item.First == panel.FirstVisibleIndex && item.Last == panel.LastVisibleIndex));
                 }, "Directional prefetch after native viewport settles");
                 var settled = (ItemsStackPanel)list.ItemsPanelRoot;
+                Require(Volatile.Read(ref savedLoads) > 0 && !savedOnUI,
+                    "Small timeline rows did not await saved-URL loading off the UI thread.");
                 int first = settled.FirstVisibleIndex, last = settled.LastVisibleIndex;
                 int count = last - first + 1;
                 int start = up ? Math.Max(0, first - count) : last + 1;

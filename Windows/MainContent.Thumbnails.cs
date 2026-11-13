@@ -133,7 +133,7 @@ public sealed partial class MainContent
             var articles = ViewModel.ArticleItems.Select(item => item.SourceArticle).OfType<Article>().ToArray();
             TrackThumbnailTask(async () =>
             {
-                if (ShowsTimelineThumbnails && TimelineThumbnailMode == ThumbnailMode.Large && articles.Length > 0)
+                if (ShowsTimelineThumbnails && articles.Length > 0)
                     await _thumbnailService.LoadSavedAsync(articles, _thumbnailLifetime.Token);
                 if (_shuttingDown || version != _thumbnailRefreshVersion) return;
                 _thumbnailFirstVisibleRow = null;

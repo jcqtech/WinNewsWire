@@ -1086,7 +1086,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             });
         });
         if (generation != Volatile.Read(ref _articleLoadGeneration) || _disposed) return;
-        if (!UseColumnLayout && !IsUnifiedLayout && TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large)
+        if (!UseColumnLayout && !IsUnifiedLayout && TimelineThumbnailsDisplay != TimelineThumbnailsDisplay.None)
         {
             await AppService.Shared.ThumbnailImages.LoadSavedAsync(results);
             if (generation != Volatile.Read(ref _articleLoadGeneration) || _disposed) return;
