@@ -40,7 +40,6 @@ public sealed class CacheCleanerTests : IDisposable
         Assert.True(File.Exists(browser));
         Assert.True(File.Exists(article));
         var reopened = new AppDefaults(Path.Combine(_directory, "defaults.json"));
-        Assert.True(reopened.GetValue(CacheCleaner.ResizingPurgeKey, false));
         Assert.True(reopened.GetValue(CacheCleaner.DownloadedImagesPurgeKey, false));
         Assert.Equal(Now, reopened.GetValue<DateTime?>(CacheCleaner.LastFlushKey));
     }
@@ -71,10 +70,10 @@ public sealed class CacheCleanerTests : IDisposable
     [Fact]
     public void UpgradingRemovesAllRetiredImageFoldersOnceWithoutDeletingSharedSources()
     {
-        _defaults.SetValue(CacheCleaner.ResizingPurgeKey, true);
+        _defaults.SetValue("didPurgeImageCachesForResizing-2026-03-30", true);
         _defaults.SetValue(CacheCleaner.LastFlushKey, Now);
         _defaults.SetValue("didRemoveFoldersReplacedByDownloadedImageCache-2026-10-26", true);
-        var old = new[] { "Favicons", "Images", "Thumbnails", "LargeThumbnails" }
+        var old = new[] { "Favicons", "Images", "FeedIcons", "Thumbnails", "LargeThumbnails" }
             .Select(folder => AddFile("Caches\\" + folder, "retired")).ToArray();
         var source = AddFile("Caches\\DownloadedImages", "source");
         var favicon = AddFile("Caches\\Favicons", "icon");
@@ -89,6 +88,17 @@ public sealed class CacheCleanerTests : IDisposable
         var laterFile = AddFile("Caches\\Images", "not-from-the-upgrade");
         CacheCleaner.PurgeIfNecessary(_defaults, Now.AddHours(1));
         Assert.True(File.Exists(laterFile));
+    }
+
+    [Fact]
+    public void CompletedRetiredFolderCleanupDoesNotRunAnObsoleteResizePurge()
+    {
+        _defaults.SetValue(CacheCleaner.DownloadedImagesPurgeKey, true);
+        var favicon = AddFile("Caches\\Favicons", "not-from-the-upgrade");
+        var feedIcon = AddFile("Caches\\FeedIcons", "not-from-the-upgrade");
+        CacheCleaner.PurgeIfNecessary(_defaults, Now);
+        Assert.True(File.Exists(favicon));
+        Assert.True(File.Exists(feedIcon));
     }
 
     [Fact]
