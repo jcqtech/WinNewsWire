@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`6831d31fc911c1b13a2ebf49a537eeaee8fff8af`**. This synchronization is in progress.
+`f7daad126bc883f052eff3a8ca050d3a7dc7021c`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is direct display-size thumbnail decoding, `f7daad126bc883f052eff3a8ca050d3a7dc7021c`;
+is downloaded-image metadata, `fd191c154fb195c8a61fcc3a03e9ec1d234d4add`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -102,12 +102,12 @@ Thumbnail downloading now shares the existing icon resource pipeline without
 duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
 The new shared `DownloadedImages` cache coalesces reads/downloads across feed
 icons and both thumbnail sizes. It stores one source, at most 1200 pixels, per
-URL without retaining a second raw HTTP-body cache. Small/large representations
-use 512/1200-pixel JPEG scaling and separate 32-MiB encoded memory LRUs, but no
-longer have separate disk files. A shared four-slot cancellation-safe LIFO
+URL without retaining a second raw HTTP-body cache. Native thumbnails now decode
+those bytes directly at 512/1200 pixels, respect EXIF orientation, and retain no
+per-size encoded memory or disk copies. A shared four-slot cancellation-safe LIFO
 scheduler limits thumbnail network requests. Cached images remain available
 offline; new downloads honor connectivity and Windows connection cost.
-Actual image dimensions are checked, with unsuitable thumbnails recorded
+Actual image dimensions are checked during native decoding, with unsuitable thumbnails recorded
 separately so usable feed icons are not suppressed.
 Windows retains its existing favicon representation and SHA1 migration API,
 while sharing source fetches with the new cache. It retains native decoder
@@ -117,7 +117,7 @@ cleanup now includes shared sources and retains atomic preference markers.
 
 The WinUI thumbnail service initializes and decodes on workers, creates native
 presentation sources and availability notifications on the UI dispatcher, and
-bounds decoded images by URL/mode to 128 MiB. Large-mode resources are lazy.
+bounds decoded images by URL/mode to 128 MiB, accounting actual bitmap stride.
 Memory pressure clears the caches, and shutdown drains work before closing the
 metadata database. The native thumbnail control supports aspect-fill cropping,
 rounded clipping, themed placeholders, and recycling to an empty image.
@@ -125,8 +125,8 @@ rounded clipping, themed placeholders, and recycling to an empty image.
 Native WIC scaling now supports JPEG quality options for opaque images while
 retaining PNG for source formats with an alpha channel. Small single-frame
 images keep their original bytes. Header-only largest-frame dimensions avoid a
-full managed pixel-buffer allocation. Both named thumbnail cache folders are
-included in image-cache cleanup, and Current Activity recognizes thumbnail URLs.
+full managed pixel-buffer allocation. Retired named thumbnail cache folders are
+removed on upgrade, and Current Activity recognizes thumbnail URLs.
 
 Timeline navigation now measures the viewport below pinned toolbar and column
 headings. Rows above it scroll minimally; rows below it are centered. Adjacent-row
@@ -147,8 +147,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **99 Ported, 29 Covered, 70 Skipped, and 307 Pending**
-source commits, backed by **115 source-attributed Windows port commits**. Two
+The inventory currently has **100 Ported, 29 Covered, 70 Skipped, and 306 Pending**
+source commits, backed by **116 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -161,8 +161,8 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are direct display-size thumbnail decoding and later image-cache
-rewrites, finder/cache refinements, shared local-image routing, appearance
+Still pending are downloaded-image metadata and later image-cache rewrites,
+finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
 
@@ -281,6 +281,14 @@ Restoring the original per-size disk/network path, unconditional HTTP response
 storage and old cleanup predicate fails all five selected controls. Restored
 native thumbnails and the 63-image/33-group reader gate pass, and regular/probe
 builds have zero warnings/errors. The temporary controls were restored.
+
+Direct display-size decoding passes the 63-image/33-group reader gate and native
+thumbnail suite. Native assertions cover 512/1200-pixel decode sizes, EXIF-rotated
+dimensions and rendered pixels, too-small/narrow rejection, separate icon
+usability, offline source reads and decoded-cache eviction. Restoring the original
+untransformed decoder, ignoring EXIF, and omitting native dimension rejection each
+fail their corresponding new assertion. All controls were restored; regular and
+probe builds pass with zero warnings/errors.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
