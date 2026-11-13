@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`3515b4a4457a014c3a8a40195d137c4db7ba029a`**. This synchronization is in progress.
+`73f7b374adc08fa6ea9997d40bcf357e06ec2583`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is early discovery for the first 1,000 articles, `24ab32aa80c619d9039f4782df120bf2c5afc76a`;
+is metadata-column cleanup, `feedf2913dc0b3bb172b7f048fbd19b14e16a315`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -61,12 +61,17 @@ partial malformed addresses and unsupported schemes.
 HTML image discovery now has the final upstream lazy-source priority, significant
 image filtering, ordered unique candidates, CSS/hidden-image handling, and
 bandwidth-aware responsive-image selection. It rejects tracking pixels, sharing
-buttons, avatars, and decorative strips. The new finder selects provided images
-by thumbnail mode, discovers HTML images off the caller thread, and persists up
-to three ordered candidates plus negative results. Queries are bounded, writes
-transactional, and results expire after 33 days. Failed URLs fall through to the
-next candidate after warm or cold reads. Combined positive/negative in-memory
-results reset after exceeding 50,000 articles and reload from persistent records.
+buttons, avatars, and decorative strips. The finder selects candidates by
+thumbnail mode and discovers HTML images off WinUI. It caches up to three ordered
+HTML candidates plus negative results in memory, not in the database. The obsolete
+article-thumbnail table is dropped, including during legacy Windows metadata
+migration. Failed URLs fall through to the next candidate. Cache resets and
+new finder instances parse current HTML again. Parsed results are retained until
+explicit thumbnail disabling or memory-pressure cleanup; the earlier 50,000-article
+HTML-cache threshold is removed. Chosen URLs remain bounded separately per mode.
+Small mode tries the provided thumbnail first. Large mode tries provided full
+images and significant attachments, then HTML images, and the provided thumbnail
+last, avoiding enlarged square Blogger crops when a full image is available.
 Relative images share the reader's article-link, feed-homepage, then feed-URL
 base rules, stripping fragments and ignoring unrelated external links. Windows
 captures feed metadata on the UI thread before worker discovery; extracted
@@ -74,29 +79,27 @@ content and rendering-only URL rewrites retain their separate behavior.
 Ordinary HTML attribute lookups now use bounded stack UTF-8 scratch memory and
 indexed traversal, avoiding both byte-array and boxed-enumerator allocations;
 long and non-ASCII names retain the full UTF-8 fallback.
-Contentless articles are excluded before database discovery, avoiding stale
-HTML thumbnails while permitting discovery if content arrives later.
+Contentless articles retain negative in-memory HTML results until the next cache
+reset, avoiding repeated parsing checks.
 Chosen URLs, including negative selections, are cached by article ID and image
 fields per thumbnail mode, bounded to 50,000 entries per mode. Only raw image
 links and ordered value-equal attachments are retained, never the article/HTML.
 Replacing an article reuses the choice unless its image fields change.
 Failure notifications invalidate both
 modes first and carry only affected article IDs, allowing native rows to refresh
-without relying on stale per-view URL snapshots. New HTML records invalidate
-dependent choices too; clearing the HTML cache also clears its dependent choices,
-so cached selections cannot accidentally prevent a persistent-record reload.
-The combined finder loads saved positive/negative URLs, signals readiness without
-availability events, then parses and notifies only missing HTML records.
-Windows awaits database readiness rather than blocking WinUI, while the full
-remaining parse is tracked, reported on failure, canceled and drained.
-Initial Small and Large rows and mode/layout geometry changes await saved
-readiness. Generation checks reject superseded loads, and
-selection reconciliation happens after the await to preserve intervening user
-changes. The superseded public preload/discovery APIs are removed; the final
-finder uses one database pass and the existing asynchronous Windows queue.
-Missing HTML is parsed, saved and published in ordered batches of 100, allowing
-early rows to appear before the whole list finishes. Cancellation retains each
-completed batch, including negative records, while remaining articles can retry.
+without relying on stale per-view URL snapshots. New parsed results invalidate
+dependent choices too; clearing HTML results also clears chosen URLs.
+The existing Windows article-fetch preparation step now awaits all missing HTML
+parsing before publishing rows. There is no database-readiness handshake,
+first-1,000 cutoff, parsing batch or metadata-availability notification.
+Generation checks reject superseded loads, and selection reconciliation after
+the await preserves intervening user changes. URL cache misses also parse HTML,
+on the Windows service's worker path, so later layout changes and failed provided
+sources resolve immediately without another discovery pass.
+Tracked operations remain cancellation-aware and drained at shutdown.
+Disabling thumbnails clears HTML choices without discarding decoded pixels.
+Windows low-memory cleanup clears both; iOS background notifications are not
+reproduced as unrelated Windows window-deactivation behavior.
 Standard timeline rows now display
 small thumbnails with local HTML discovery, persisted-failure notifications,
 automatic candidate fallback, and visible-only image downloads. Recycled
@@ -341,8 +344,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **193 Ported, 67 Covered, 83 Skipped, and 162 Pending**
-source commits, backed by **208 source-attributed Windows port commits**.
+The inventory currently has **197 Ported, 68 Covered, 84 Skipped, and 156 Pending**
+source commits, backed by **212 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -382,17 +385,25 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **218 tests** after visible-only loading,
-priority-free newest-first queues, fixed retry dates and launch-only pruning.
+The current image suite passes **219 tests** after memory-only/fetch-time HTML
+discovery and Large-mode HTML-before-thumbnail selection, in addition to
+visible-only loading, priority-free queues, fixed retry dates and launch-only pruning.
+Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
+and both Large-mode selection cases fail their pristine implementations.
+The temporary first-1,000 stage was ported and verified separately before its
+removal; obsolete persistence and batching cases were replaced with the new behavior.
 Three obsolete tier cases and the recurring-prune cadence case were removed;
 retry reset/fallback coverage was updated and expanded. The timer, connectivity,
 non-image and icon-fallback controls produce seven failures on the pristine
 implementation; three pruning controls fail the pristine algorithm with
 signature-only adapters. Restored implementations pass.
-The native viewport and decode probes pass after priority removal. The real HTTP
+The native viewport and decode probes passed after priority removal. The real HTTP
 viewport check covers overlapping moves in both directions, unchanged viewports
 and never-visible metadata discovery, and fails with the original lookahead.
-The current production x64 build is warning-free. All six focused cache retirement
+The updated viewport probe also verifies full fetch-operation completion off UI
+and decoded-pixel retention when only HTML choices are cleared.
+Regular and probe x64 builds at the fetch-time integration checkpoint are
+warning-free. All six focused cache retirement
 tests passed at their port checkpoint.
 These targeted results do not replace the full UI-gate results below.
 
