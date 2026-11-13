@@ -782,11 +782,45 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Theory]
-    [InlineData(null, 60)]
-    [InlineData("5", 60)]
-    [InlineData("120", 121)]
-    [InlineData("7200", 7201)]
-    public async Task ConcurrentHostFailuresDoNotExtendAnActiveWaitWithoutALongerRetryAfter(string? retryAfter, int retryAtSeconds)
+    [InlineData(429, 120)]
+    [InlineData(500, 120)]
+    [InlineData(429, 5)]
+    public async Task ServerRetryAfterWaitsSurviveNetworkNotificationsForUrlsAndHosts(int status, int retryAfter)
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            var response = new HttpResponseMessage(++requests == 1 ? (HttpStatusCode)status : HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(Fixture.Image)
+            };
+            if (requests == 1) response.Headers.TryAddWithoutValidation("Retry-After", retryAfter.ToString());
+            return Task.FromResult(response);
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        fixture.Clock.Advance(TimeSpan.FromSeconds(30));
+        cache.NetworkStatusChanged(null, false);
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(status == 500, await fixture.FetchAsync(cache, "peer") is not null);
+        cache.NetworkStatusChanged(null, true);
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        fixture.Clock.Advance(TimeSpan.FromSeconds(Math.Max(60, retryAfter) - 31));
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.NotNull(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(status == 500 ? 3 : 2, requests);
+    }
+
+    [Theory]
+    [InlineData(null, 60, false)]
+    [InlineData("5", 60, false)]
+    [InlineData("120", 121, false)]
+    [InlineData("7200", 7201, false)]
+    [InlineData("120", 121, true)]
+    [InlineData("7200", 7201, true)]
+    public async Task ConcurrentHostFailuresDoNotExtendAnActiveWaitWithoutALongerRetryAfter(
+        string? retryAfter, int retryAtSeconds, bool networkChanged)
     {
         int requests = 0;
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -814,6 +848,7 @@ public sealed class DownloadedImageCacheTests
             fixture.Clock.Advance(TimeSpan.FromSeconds(1));
             release.TrySetResult();
             Assert.Null(await held);
+            if (networkChanged) cache.NetworkStatusChanged(null, true);
             fixture.Clock.Advance(TimeSpan.FromSeconds(retryAtSeconds - 2));
             Assert.Null(await fixture.FetchAsync(cache, "peer"));
             Assert.Equal(2, requests);

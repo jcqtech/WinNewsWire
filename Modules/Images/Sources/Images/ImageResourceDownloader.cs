@@ -37,7 +37,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly Dictionary<string, Task<ImageResourceResult>> _pending = new(StringComparer.Ordinal);
     private readonly HashSet<string> _unlimitedPending = new(StringComparer.Ordinal);
     private readonly HashSet<Task> _operations = [];
-    private readonly record struct RetryDelay(DateTimeOffset RetryDate, TimeSpan Delay);
+    private readonly record struct RetryDelay(DateTimeOffset RetryDate, TimeSpan Delay, bool IsFromRetryAfter = false);
     private readonly Dictionary<string, RetryDelay> _retryDelays = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RetryDelay> _hostRetryDelays = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _nonImageUrls = new(StringComparer.Ordinal);
@@ -426,19 +426,24 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                 {
                     if (retryAfter is not { } extension || extension <= previous.RetryDate - now) return previous;
                     if (extension <= DateTimeOffset.MaxValue - now)
-                        return new(now + extension, extension > previous.Delay ? extension : previous.Delay);
+                        return new(now + extension, extension > previous.Delay ? extension : previous.Delay, IsFromRetryAfter: true);
                     Trace.TraceWarning($"Ignoring an unrepresentable image Retry-After interval at {url}.");
                     return previous;
                 }
                 var delay = previous.Delay > TimeSpan.Zero
                     ? TimeSpan.FromSeconds(Math.Min(previous.Delay.TotalSeconds * 2, 3600))
                     : TimeSpan.FromMinutes(1);
+                bool fromRetryAfter = retryAfter.HasValue;
                 if (retryAfter is { } serverDelay && serverDelay > delay)
                 {
                     if (serverDelay <= DateTimeOffset.MaxValue - now) delay = serverDelay;
-                    else Trace.TraceWarning($"Ignoring an unrepresentable image Retry-After interval at {url}.");
+                    else
+                    {
+                        Trace.TraceWarning($"Ignoring an unrepresentable image Retry-After interval at {url}.");
+                        fromRetryAfter = false;
+                    }
                 }
-                return new(now + delay, delay);
+                return new(now + delay, delay, fromRetryAfter);
             }
             _retryDelays.TryGetValue(url, out var previous);
             _retryDelays[url] = NextDelay(previous);
@@ -464,9 +469,14 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     {
         lock (_gate)
         {
-            _retryDelays.Clear();
-            _hostRetryDelays.Clear();
+            KeepServerWaits(_retryDelays);
+            KeepServerWaits(_hostRetryDelays);
             _nonImageUrls.Clear();
+        }
+        static void KeepServerWaits(Dictionary<string, RetryDelay> delays)
+        {
+            foreach (var url in delays.Where(pair => !pair.Value.IsFromRetryAfter).Select(pair => pair.Key).ToArray())
+                delays.Remove(url);
         }
     }
 
