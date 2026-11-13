@@ -10,6 +10,30 @@ public sealed class FeedbinHistoryTests : IDisposable
     private readonly TestAccountManager _manager = new();
 
     [Fact]
+    public async Task CompletionDateIsNotPublishedUntilTheWholeRefreshCompletes()
+    {
+        using var http = new HttpClient(new Handler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/subscriptions.json"))
+                return Json("""[{"id":100,"feed_id":1,"title":"Feed","feed_url":"https://example.com/feed"}]""");
+            if (path.EndsWith("/entries.json"))
+                return Json("""[{"id":1,"feed_id":1,"title":"Entry"}]""");
+            return Json("[]");
+        }));
+        var account = _manager.CreateAccount(accountDelegate: new FeedbinAccountDelegate(http: http));
+        account.Settings.LastRefreshCompletedDate = DateTime.UnixEpoch;
+        EventHandler<NewArticlesEventArgs> rejectCompletion = (_, _) => throw new InvalidOperationException("notification failure");
+        account.NewArticlesDownloaded += rejectCompletion;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => account.RefreshAllAsync());
+        Assert.Equal(DateTime.UnixEpoch, account.Settings.LastRefreshCompletedDate);
+        account.NewArticlesDownloaded -= rejectCompletion;
+        var start = DateTime.UtcNow;
+        await account.RefreshAllAsync();
+        Assert.InRange(account.Settings.LastRefreshCompletedDate!.Value, start, DateTime.UtcNow);
+    }
+
+    [Fact]
     public async Task RecentEntriesFollowEveryPage()
     {
         int calls = 0;

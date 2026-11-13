@@ -64,9 +64,9 @@ public sealed partial class ReaderAPIAccountDelegate
                 return entries.Count;
             }, successMessage: count => $"{count} articles");
         if (snapshot is not null) account.Settings.LastArticleFetchStartTime = snapshot.ServerDate ?? start;
-        account.Settings.LastRefreshCompletedDate = DateTime.UtcNow;
         await account.RecalculateUnreadCountsAsync();
         progress?.Report(new ProgressInfo(0, 1, 1));
+        account.Settings.LastRefreshCompletedDate = DateTime.UtcNow;
     }
 
     internal void SyncStructure(Account.Account account, IReadOnlyList<ReaderAPITag>? tags, IReadOnlyList<ReaderAPISubscription>? subscriptions)

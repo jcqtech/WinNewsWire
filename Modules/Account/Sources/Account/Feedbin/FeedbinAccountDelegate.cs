@@ -87,6 +87,7 @@ public sealed partial class FeedbinAccountDelegate : IAccountDelegate
         var newArticles = await DownloadArticlesAsync(account, unread, starred, progress, ct);
         await account.RecalculateUnreadCountsAsync();
         if (newArticles.Count > 0) account.RaiseNewArticlesDownloaded(newArticles);
+        account.Settings.LastRefreshCompletedDate = DateTime.UtcNow;
     }
 
     public Task SendArticleStatusAsync(Account.Account account, CancellationToken ct = default)
@@ -256,7 +257,6 @@ public sealed partial class FeedbinAccountDelegate : IAccountDelegate
         foreach (var batch in missing.Chunk(100))
             added.AddRange(await SaveEntriesAsync(account, await API.RetrieveEntriesAsync(batch.Select(long.Parse), ct), unread, starred));
         account.Settings.LastArticleFetchStartTime = serverDate ?? start;
-        account.Settings.LastRefreshCompletedDate = DateTime.UtcNow;
         if (completedBackdate is { } backdate) _lastBackdateStartTime = backdate;
         return added;
     }

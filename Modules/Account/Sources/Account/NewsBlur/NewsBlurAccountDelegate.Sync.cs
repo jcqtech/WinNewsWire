@@ -36,9 +36,9 @@ public sealed partial class NewsBlurAccountDelegate
             if (feed is not null) await DownloadFeedAsync(account, feed, ct);
             _initialFeeds.Remove(id);
         }
-        account.Settings.LastRefreshCompletedDate = DateTime.UtcNow;
         await account.RecalculateUnreadCountsAsync();
         progress?.Report(new ProgressInfo(0, 1, 1));
+        account.Settings.LastRefreshCompletedDate = DateTime.UtcNow;
     }
 
     internal void SyncStructure(Account.Account account, NewsBlurFeedsResponse response)
