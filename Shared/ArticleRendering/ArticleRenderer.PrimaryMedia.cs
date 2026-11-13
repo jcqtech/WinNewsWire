@@ -6,7 +6,8 @@ namespace WinNewsWire.AppShared.ArticleRendering;
 public static partial class ArticleRenderer
 {
     private static (string Html, HashSet<string> Urls)? PrimaryMedia(string? imageUrl, string? thumbnailUrl,
-        IReadOnlyList<Attachment> attachments, string? articleTitle, string body, IReadOnlySet<string> bodyImageIdentities, string baseUrl)
+        IReadOnlyList<Attachment> attachments, string? articleTitle, string body, IReadOnlySet<string> bodyImageIdentities,
+        string baseUrl, bool includesImage)
     {
         var playable = attachments.Where(attachment => !BodyContainsMedia(body, attachment.URL, bodyImageIdentities, baseUrl)).ToArray();
         var posterUrl = imageUrl ?? thumbnailUrl;
@@ -21,7 +22,7 @@ public static partial class ArticleRenderer
 
         var imageHtml = "";
         var urls = new HashSet<string>(StringComparer.Ordinal);
-        if (PrimaryImage(imageUrl, thumbnailUrl, attachments, body, bodyImageIdentities, baseUrl) is { URL: { } primaryImageUrl } image)
+        if (includesImage && PrimaryImage(imageUrl, thumbnailUrl, attachments, body, bodyImageIdentities, baseUrl) is { URL: { } primaryImageUrl } image)
         {
             imageHtml = PrimaryImageHtml(image, articleTitle, baseUrl);
             urls.Add(primaryImageUrl);

@@ -86,12 +86,48 @@ public sealed class ArticleRendererTests
     }
 
     [Fact]
-    public void UntitledPostsInitiallyUsePrimaryMedia()
+    public void ShortUntitledPostsPlaceLeadImagesAfterTheirText()
     {
         var html = ArticleRenderer.Render(Article(title: null, image: "https://example.com/photo.jpg"),
             theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
-        Assert.StartsWith("<div class=\"nnw-primary-media\">", html);
+        Assert.StartsWith("|<p>Body</p>|<div class=\"nnw-enclosures\">", html);
         Assert.Contains("<img src=\"https://example.com/photo.jpg\"", html);
+    }
+
+    [Theory]
+    [InlineData("audio/mpeg", "audio")]
+    [InlineData("video/mp4", "video")]
+    public void ShortUntitledPostsKeepPlayersAboveBodyButImagesBelow(string mime, string element)
+    {
+        var media = Attachment.Create(null, "https://example.com/playable", mime, null, null, null)!;
+        var image = Attachment.Create(null, "https://example.com/poster.jpg", "image/jpeg", null, null, null)!;
+        var html = ArticleRenderer.Render(Article(title: null, image: image.URL, attachments: [image, media]),
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        var sections = html.Split('|');
+        Assert.Contains("<" + element + " ", sections[0]);
+        Assert.DoesNotContain("<img ", sections[0]);
+        if (element == "audio") Assert.Contains("<img ", sections[2]);
+        else Assert.DoesNotContain("<img ", html);
+    }
+
+    [Theory]
+    [InlineData(2047, false)]
+    [InlineData(2048, true)]
+    public void UntitledPostImagePlacementUsesTheUpstreamLengthBoundary(int length, bool primary)
+    {
+        var html = ArticleRenderer.Render(Article(title: null, body: new string('x', length), image: "https://example.com/photo.jpg"),
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.Equal(primary, html.StartsWith("<div class=\"nnw-primary-media\">", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ShortPostLengthCountsUnicodeTextElementsRatherThanUtf16Units()
+    {
+        var body = string.Concat(Enumerable.Repeat("\U0001F305", 1100));
+        var html = ArticleRenderer.Render(Article(title: null, body: body, image: "https://example.com/photo.jpg"),
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.StartsWith("|", html);
+        Assert.Contains("<img ", html);
     }
 
     [Theory]

@@ -76,16 +76,17 @@ public static partial class ArticleRenderer
         var attachments = article.Attachments?.ToList() ?? [];
         var primaryMediaHtml = "";
         var hasPrimaryMedia = theme.TemplateHtml.Contains("[[primary_media]]", StringComparison.Ordinal);
-        if (hasPrimaryMedia)
+        var showsPrimaryImage = hasPrimaryMedia && !IsShortUntitledPost(article.Title, body);
+        var primaryMediaUrls = new HashSet<string>(StringComparer.Ordinal);
+        if (hasPrimaryMedia && PrimaryMedia(article.RawImageLink, article.RawThumbnailLink, attachments,
+            article.Title, body, bodyImageIdentities, baseUrl, includesImage: showsPrimaryImage) is { } primaryMedia)
         {
-            if (PrimaryMedia(article.RawImageLink, article.RawThumbnailLink, attachments,
-                article.Title, body, bodyImageIdentities, baseUrl) is { } primaryMedia)
-            {
-                primaryMediaHtml = primaryMedia.Html;
-                attachments.RemoveAll(attachment => attachment.URL is { } url && primaryMedia.Urls.Contains(url));
-            }
+            primaryMediaHtml = primaryMedia.Html;
+            primaryMediaUrls = primaryMedia.Urls;
+            attachments.RemoveAll(attachment => attachment.URL is { } url && primaryMediaUrls.Contains(url));
         }
-        else if (PrimaryImage(article.RawImageLink, null, attachments, body, bodyImageIdentities, baseUrl) is { } primaryImage
+        if (!showsPrimaryImage && PrimaryImage(article.RawImageLink, null, attachments, body, bodyImageIdentities, baseUrl)
+            is { URL: { } primaryImageUrl } primaryImage && !primaryMediaUrls.Contains(primaryImageUrl)
             && !attachments.Contains(primaryImage)) attachments.Insert(0, primaryImage);
         substitutions["primary_media"] = primaryMediaHtml;
         var enclosures = EnclosuresHtml(attachments, body, bodyImageIdentities, article.RawImageLink ?? article.RawThumbnailLink, baseUrl);
