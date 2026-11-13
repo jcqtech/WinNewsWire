@@ -82,6 +82,7 @@ internal sealed class RssItem
         if (Attachments.Count == 0) return null;
         var merged = new List<ParsedAttachment>();
         var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
+        var renditionIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var attachment in Attachments)
         {
             if (avatarUrls.Contains(attachment.Url) || attachment.Url == feedImageUrl) continue;
@@ -98,12 +99,20 @@ internal sealed class RssItem
                     Height = existing.Height ?? attachment.Height,
                     Medium = existing.Medium ?? attachment.Medium
                 };
+                continue;
             }
-            else
+            var renditionKey = attachment.Width is not null && Uri.TryCreate(attachment.Url, UriKind.Absolute, out var url)
+                && url.Query.Length > 0 ? new UriBuilder(url) { Query = "", Fragment = "" }.Uri.AbsoluteUri : null;
+            if (renditionKey is not null && renditionIndexes.TryGetValue(renditionKey, out var renditionIndex)
+                && merged[renditionIndex].Width is { } oldWidth && attachment.Width is { } width)
             {
-                indexes[attachment.Url] = merged.Count;
-                merged.Add(attachment);
+                if (width > oldWidth) merged[renditionIndex] = attachment;
+                indexes[attachment.Url] = renditionIndex;
+                continue;
             }
+            indexes[attachment.Url] = merged.Count;
+            if (renditionKey is not null) renditionIndexes[renditionKey] = merged.Count;
+            merged.Add(attachment);
         }
         return merged.Count == 0 ? null : merged.Select(attachment => attachment.DurationInSeconds is null
             && ITunesDurationInSeconds is { } duration

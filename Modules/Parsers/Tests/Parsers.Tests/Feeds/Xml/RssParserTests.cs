@@ -9,6 +9,25 @@ public class RssParserTests
 {
     private static ParserData Load(string f, string ext, string url) => TestResources.Load($"{f}.{ext}", url);
 
+    [Fact]
+    public void SiblingImageRenditionsKeepWidestAtOriginalPosition()
+    {
+        const string xml = """
+            <rss xmlns:m="http://search.yahoo.com/mrss/"><channel><item><guid>1</guid>
+            <m:content url="https://example.com/photo.jpg?width=140" width="140" medium="image"/>
+            <enclosure url="https://example.com/audio.mp3" type="audio/mpeg"/>
+            <m:content url="https://example.com/photo.jpg?width=1000" width="1000" medium="image"/>
+            <m:content url="https://example.com/photo.jpg?width=460" width="460" medium="image"/>
+            <m:content url="https://example.com/other.jpg?width=140" width="140" medium="image"/>
+            </item></channel></rss>
+            """;
+        var attachments = Assert.Single(RssParser.Parse(new ParserData("https://example.com/feed",
+            System.Text.Encoding.UTF8.GetBytes(xml))).Items).Attachments!;
+        Assert.Equal(new[] { "https://example.com/photo.jpg?width=1000", "https://example.com/audio.mp3",
+            "https://example.com/other.jpg?width=140" }, attachments.Select(a => a.Url));
+        Assert.Equal(1000, attachments[0].Width);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
