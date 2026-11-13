@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`beea83ce1b0b7336c832689328cd66382e55e5c4`**. This synchronization is in progress.
+`34e7559a3e95ccc5cdd54025183e90e279decdca`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is the bounded waiting-download queue, `3db7db4f4af8c93ca64863b4b77a8a0d4b5983e7`;
+is visible-thumbnail download prioritization, `15110763e952922cd8ad105cc464b81e1b445ba8`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -107,6 +107,9 @@ those bytes directly at 512/1200 pixels, respect EXIF orientation, and retain no
 per-size encoded memory or disk copies. A shared four-slot cancellation-safe LIFO
 scheduler limits thumbnail network requests. Cached images remain available
 offline; new downloads honor connectivity and Windows connection cost.
+At most 60 requests wait, newest-first; overflow drops the oldest request as
+transient without poisoning its URL or imposing a retry backoff. Background
+icon checks bypass thumbnail slots so full thumbnail queues do not block them.
 Stored source byte counts, pixel dimensions, last access, ETag and Last-Modified
 are persisted. Known unsuitable thumbnails are skipped using those dimensions,
 independently of transient download failures or their expiry. Native decoding
@@ -127,8 +130,8 @@ preserve active images. Startup/download-triggered passes reconcile orphan
 files/records, and disk hits update access dates at most daily. Source disk
 reads/saves and pruning are serialized without serializing network downloads.
 Due icon reads now return cached bytes immediately and revalidate their source
-in tracked background work, using ETag/Last-Modified and the same limited network
-scheduler. Thumbnail reads do not initiate checks. Validator-backed checks use
+in tracked background work, using ETag/Last-Modified independently of the limited
+thumbnail scheduler. Thumbnail reads do not initiate checks. Validator-backed checks use
 an eight-day default and clamp server max-age to 3-30 days; sources without
 validators wait 30 days. Windows reuses its connectivity/connection-cost policy.
 304 responses retain the source and validators; invalid/failed replacements do
@@ -167,8 +170,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **104 Ported, 29 Covered, 70 Skipped, and 302 Pending**
-source commits, backed by **120 source-attributed Windows port commits**. Two
+The inventory currently has **105 Ported, 29 Covered, 71 Skipped, and 300 Pending**
+source commits, backed by **121 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -181,7 +184,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are bounded download scheduling and later image-cache rewrites,
+Still pending are priority-aware download scheduling and later image-cache rewrites,
 finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
