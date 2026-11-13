@@ -40,9 +40,8 @@ public sealed partial class MainContent
     private bool _visibleThumbnailRefreshQueued;
     private (int Start, int End)? _thumbnailLookahead;
     private bool ShowsTimelineThumbnails => !_shuttingDown && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout
-        && ViewModel.TimelineThumbnailsDisplay != TimelineThumbnailsDisplay.None;
-    private ThumbnailMode TimelineThumbnailMode => ViewModel.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
-        ? ThumbnailMode.Large : ThumbnailMode.Small;
+        && ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode() is not null;
+    private ThumbnailMode TimelineThumbnailMode => ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode() ?? ThumbnailMode.Small;
 #if PARITY_PROBE
     internal CancellationToken ProbeThumbnailRequestToken(ThumbnailView view)
         => _timelineThumbnails[view].Request?.Token
