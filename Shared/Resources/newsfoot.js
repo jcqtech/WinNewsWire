@@ -96,9 +96,7 @@
 
 			// Position against the article column rather than the entire web view.
 			this.popover.style.left = `${popoverLeft - containerRect.left}px`;
-			this.popover.style.right = "auto";
 			this.popover.style.width = `${popoverWidth}px`;
-			this.popover.style.transform = "none";
 
 			const arrowWidth = this.arrow.clientWidth;
 			const arrowCenter = refCenter - popoverLeft;
@@ -107,7 +105,6 @@
 				popoverWidth - arrowWidth
 			);
 			this.arrow.style.left = `${insetArrowCenter - (arrowWidth / 2)}px`;
-			this.arrow.style.transform = "rotate(45deg)";
 		}
 	}
 
