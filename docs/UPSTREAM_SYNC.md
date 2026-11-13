@@ -105,6 +105,39 @@ Platform code is assessed by behavior, not just its directory: a desktop feature
 implemented in AppKit may still need a Windows equivalent. Apple-specific
 toolchain changes do not require translating Swift locks or UIKit APIs into C#.
 
+## Reader theme compatibility
+
+The loader prefers `template7.3.html` when present, otherwise `template.html`.
+Theme authors can keep a legacy template for older NetNewsWire releases and put
+the new media slots in the versioned template. Windows continues to accept
+`Info.json` as an alternative to `Info.plist`; optional Apple Finder metadata is
+not used by the Windows reader.
+
+| Template slot | Rendered content |
+|---|---|
+| `[[primary_media]]` | A video, otherwise audio with artwork, otherwise a lead image, normally before the body. |
+| `[[enclosures]]` | Remaining audio, video, and images, normally after the body. |
+
+Lead-image selection prefers the article image, then the first image enclosure,
+then the thumbnail. Media already embedded in the body is omitted, including
+resized copies and stills of an embedded YouTube video. Primary video consumes its
+poster rather than displaying that image separately. Untitled posts shorter than
+2,048 text elements keep their images after the text but can still have primary
+audio or video.
+
+Without a primary-media slot, the article's image can appear among the enclosures,
+but a thumbnail-only fallback is not added. Without an enclosure slot, the reader
+appends enclosures to a wrapper around the body; selectors that assume direct
+children of `.articleBody` may need adjusting. Slot detection searches literal
+template text, so do not put slot macros in template comments.
+
+Media markup has no inline styling. Themes can override `nnw-primary-media`,
+`nnw-primary-image`, `nnw-primary-image-caption`, `nnw-enclosures`,
+`nnw-enclosure-image`, `nnw-enclosure-audio`, `nnw-enclosure-video`, and
+`nnw-enclosure-caption`. Feed-supplied dimensions are included only when both are
+positive; the lead-image caption is omitted when it repeats the article title.
+Generated media URLs remain restricted to HTTP(S) on Windows.
+
 ## Continuing the synchronization
 
 Start with `Pending` entries in the inventory, in recorded topological order.
