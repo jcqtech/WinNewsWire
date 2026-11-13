@@ -16,9 +16,7 @@ public static class CacheCleaner
             Path.Combine(AppConfig.DataDirectory, "Favicons"),
             Path.Combine(caches, "Favicons"),
             Path.Combine(caches, "Images"),
-            Path.Combine(caches, "FeedIcons"),
-            Path.Combine(caches, "Thumbnails"),
-            Path.Combine(caches, "LargeThumbnails")
+            Path.Combine(caches, "FeedIcons")
         };
         foreach (var path in targets)
         {

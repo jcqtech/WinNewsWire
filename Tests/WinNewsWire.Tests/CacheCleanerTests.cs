@@ -34,8 +34,8 @@ public sealed class CacheCleanerTests : IDisposable
         Assert.False(File.Exists(nativeFavicon));
         Assert.True(File.Exists(downloaded));
         Assert.False(File.Exists(image));
-        Assert.False(File.Exists(thumbnail));
-        Assert.False(File.Exists(largeThumbnail));
+        Assert.True(File.Exists(thumbnail));
+        Assert.True(File.Exists(largeThumbnail));
         Assert.False(File.Exists(feedIcon));
         Assert.True(File.Exists(browser));
         Assert.True(File.Exists(article));
@@ -67,14 +67,18 @@ public sealed class CacheCleanerTests : IDisposable
     {
         _defaults.SetValue("didPurgeImageCachesForResizing-2026-03-30", true);
         _defaults.SetValue("didRemoveFoldersReplacedByDownloadedImageCache-2026-10-26", true);
-        var old = new[] { "Favicons", "Images", "FeedIcons", "Thumbnails", "LargeThumbnails" }
+        var old = new[] { "Favicons", "Images", "FeedIcons" }
             .Select(folder => AddFile("Caches\\" + folder, "retired")).ToArray();
+        var thumbnail = AddFile("Caches\\Thumbnails", "development-only");
+        var largeThumbnail = AddFile("Caches\\LargeThumbnails", "development-only");
         var source = AddFile("Caches\\DownloadedImages", "source");
         var favicon = AddFile("Caches\\Favicons", "icon");
         var legacyFavicon = AddFile("Favicons", "legacy");
         var browser = AddFile("Caches\\WebView2", "data");
         CacheCleaner.PurgeIfNecessary(_defaults);
         Assert.All(old, path => Assert.False(File.Exists(path)));
+        Assert.True(File.Exists(thumbnail));
+        Assert.True(File.Exists(largeThumbnail));
         Assert.True(File.Exists(source));
         Assert.False(File.Exists(favicon));
         Assert.False(File.Exists(legacyFavicon));
