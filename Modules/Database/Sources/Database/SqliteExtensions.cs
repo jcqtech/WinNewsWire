@@ -6,13 +6,28 @@ namespace WinNewsWire.Database;
 /// <summary>Port of <c>FMDatabase+Extras</c> / <c>FMResultSet+Extras</c>.</summary>
 public static class SqliteExtensions
 {
-    public static void SetUpDatabase(this SqliteConnection connection)
+    public static void SetUpDatabase(this SqliteConnection connection, JournalMode journalMode = JournalMode.Delete)
     {
-        var mode = connection.Scalar<string>("PRAGMA journal_mode=DELETE;");
-        if (mode != "delete" && !(mode == "memory"
+        string requested = journalMode switch
+        {
+            JournalMode.Delete => "DELETE",
+            JournalMode.Wal => "WAL",
+            _ => throw new ArgumentOutOfRangeException(nameof(journalMode))
+        };
+        var mode = connection.Scalar<string>($"PRAGMA journal_mode={requested};");
+        if (!string.Equals(mode, requested, StringComparison.OrdinalIgnoreCase) && !(mode == "memory"
             && string.IsNullOrEmpty(connection.Scalar<string>("SELECT file FROM pragma_database_list WHERE name='main';"))))
-            throw new IOException($"SQLite could not use DELETE journaling for {connection.DataSource}; it returned {mode ?? "no mode"}.");
+            throw new IOException($"SQLite could not use {requested} journaling for {connection.DataSource}; it returned {mode ?? "no mode"}.");
         connection.Execute("PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;");
+    }
+
+    public static void Checkpoint(this SqliteConnection connection)
+    {
+        using var command = connection.Cmd("PRAGMA wal_checkpoint(TRUNCATE);");
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) throw new IOException($"SQLite returned no checkpoint result for {connection.DataSource}.");
+        if (reader.GetInt64(0) != 0)
+            throw new SqliteException($"SQLite could not truncate the WAL for {connection.DataSource} because it is busy.", 5);
     }
 
     public static SqliteCommand Cmd(this SqliteConnection c, string sql)

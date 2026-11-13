@@ -2,6 +2,8 @@ using Microsoft.Data.Sqlite;
 
 namespace WinNewsWire.Database;
 
+public enum JournalMode { Delete, Wal }
+
 /// <summary>
 /// Port of <c>DatabaseQueue</c>. Owns one connection and serializes reads and writes.
 /// Async work runs off the caller's thread; in-memory databases live until disposal.
@@ -9,12 +11,15 @@ namespace WinNewsWire.Database;
 public sealed class DatabaseQueue : IDisposable
 {
     private readonly string _connectionString;
+    private readonly JournalMode _journalMode;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private SqliteConnection? _connection;
     private bool _disposed;
 
-    public DatabaseQueue(string filePath)
+    public DatabaseQueue(string filePath, JournalMode journalMode = JournalMode.Delete)
     {
+        if (journalMode is not (JournalMode.Delete or JournalMode.Wal)) throw new ArgumentOutOfRangeException(nameof(journalMode));
+        _journalMode = journalMode;
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = filePath,
@@ -36,7 +41,7 @@ public sealed class DatabaseQueue : IDisposable
             try
             {
                 connection.Open();
-                connection.SetUpDatabase();
+                connection.SetUpDatabase(_journalMode);
                 return _connection = connection;
             }
             catch
@@ -91,6 +96,14 @@ public sealed class DatabaseQueue : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = "VACUUM;";
             command.ExecuteNonQuery();
+            return Task.CompletedTask;
+        });
+
+    public Task CheckpointAsync(CancellationToken ct = default)
+        => RunAsync(connection =>
+        {
+            ct.ThrowIfCancellationRequested();
+            connection.Checkpoint();
             return Task.CompletedTask;
         });
 

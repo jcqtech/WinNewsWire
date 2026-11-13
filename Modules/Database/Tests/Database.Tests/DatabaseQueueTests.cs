@@ -25,6 +25,54 @@ public sealed class DatabaseQueueTests : IDisposable
     }
 
     [Fact]
+    public async Task WalModeCheckpointsCommittedDataAndKeepsSubsequentWritesUsable()
+    {
+        string path = Path.Combine(_directory, "wal.db");
+        using (var queue = new DatabaseQueue(path, JournalMode.Wal))
+        {
+            queue.Run(connection =>
+            {
+                Assert.Equal("wal", connection.Scalar<string>("PRAGMA journal_mode;"));
+                Assert.Equal(1L, connection.Scalar<long>("PRAGMA synchronous;"));
+                connection.Execute("PRAGMA wal_autocheckpoint=0; CREATE TABLE t (value BLOB); INSERT INTO t VALUES (zeroblob(16000));");
+            });
+            Assert.True(new FileInfo(path + "-wal").Length > 0);
+            await queue.CheckpointAsync();
+            Assert.Equal(0L, new FileInfo(path + "-wal").Length);
+            queue.Run(connection => connection.Execute("INSERT INTO t VALUES (zeroblob(8000));"));
+            Assert.True(new FileInfo(path + "-wal").Length > 0);
+            await queue.CheckpointAsync();
+        }
+        using var reopened = new DatabaseQueue(path, JournalMode.Wal);
+        Assert.Equal(24000L, reopened.Run(connection => connection.Scalar<long>("SELECT sum(length(value)) FROM t;")));
+    }
+
+    [Fact]
+    public async Task BlockedWalCheckpointReportsFailureWithoutLosingCommittedDataAndCanRetry()
+    {
+        string path = Path.Combine(_directory, "blocked-checkpoint.db");
+        using var queue = new DatabaseQueue(path, JournalMode.Wal);
+        queue.Run(connection =>
+        {
+            connection.DefaultTimeout = 1;
+            connection.Execute("CREATE TABLE t (value INTEGER); INSERT INTO t VALUES (1);");
+        });
+        using (var reader = Open(path))
+        using (var transaction = reader.BeginTransaction(deferred: true))
+        {
+            Assert.Equal(1L, reader.Scalar<long>("SELECT count(*) FROM t;"));
+            queue.Run(connection => connection.Execute("INSERT INTO t VALUES (2);"));
+            var failure = await Assert.ThrowsAsync<SqliteException>(() => queue.CheckpointAsync());
+            Assert.Equal(5, failure.SqliteErrorCode);
+            Assert.True(new FileInfo(path + "-wal").Length > 0);
+            Assert.Equal(1L, reader.Scalar<long>("SELECT count(*) FROM t;"));
+        }
+        await queue.CheckpointAsync();
+        Assert.Equal(0L, new FileInfo(path + "-wal").Length);
+        Assert.Equal(2L, queue.Run(connection => connection.Scalar<long>("SELECT count(*) FROM t;")));
+    }
+
+    [Fact]
     public void InMemoryDatabasesKeepTheirRequiredMemoryJournal()
     {
         using var queue = new DatabaseQueue(":memory:");
