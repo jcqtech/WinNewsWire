@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`edd83c59d0f16a1187fcf86d53d5c2343cf2f90f`**. This synchronization is in progress.
+`60640b235e42bb7fd1e718dedc4c799d24a95cfc`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is image-validation scheduling jitter, `264911cabb27bf8d20f8e3a8954cdfe1b82d4111`;
+is chosen-thumbnail URL tracking, `7125510fa0582d7f40e8dbe2fed4011e9a832b07`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -110,6 +110,12 @@ preserves publisher markup. Metadata discovery runs off the UI thread, and
 stale-navigation/shutdown checks protect asynchronous responses. Unavailable
 local images fall back once to their original URL in the isolated reader world,
 without enabling publisher scripts. None mode leaves reader images remote.
+Routed URLs now carry an HMAC-SHA256 signature under a random, process-only
+256-bit key. Exact parameter checks and constant-time authentication reject
+unsigned or altered URLs before the shared source downloader is called, so
+publisher markup cannot use this resource to request arbitrary cache downloads.
+Only generated routes are authorized; original remote fallback remains separate.
+Windows has no UIKit full-screen image viewer or its timeline-image click flag.
 Routing is confined to WebView navigation; shared render/export HTML stays
 portable. Selected HTML restores original image URLs in an inert copy document,
 retaining absolute links without starting restored-image downloads.
@@ -119,8 +125,15 @@ duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
 The new shared `DownloadedImages` cache coalesces reads/downloads across feed
 icons, reader images and both thumbnail sizes. It stores original full-size encoded
 bytes, including animation, per URL without a second raw HTTP-body cache. Native thumbnails decode
-those bytes directly at 512/1200 pixels, respect EXIF orientation, and retain no
-per-size encoded memory or disk copies. A shared four-slot cancellation-safe LIFO
+those bytes directly at 256/1200 pixels, respect EXIF orientation, and retain no
+per-size encoded thumbnail copies. Scaled icon/favicon representations now also
+persist beside the original, keyed by size and encoding, avoiding repeated
+resizing after memory eviction or service recreation. Corrupt copies are rebuilt
+without poisoning the original URL; changed originals invalidate derived copies.
+The source path still identifies the full-size original for reader/native callers.
+Derived copies follow source eviction/orphan cleanup and do not count toward
+the upstream original-source byte budget.
+A shared four-slot cancellation-safe LIFO
 scheduler limits thumbnail network requests. Cached images remain available
 offline; new downloads honor connectivity and Windows connection cost.
 At most 60 requests wait, newest-first; overflow drops the oldest request as
@@ -138,6 +151,16 @@ falls below the usual limit. Connectivity and Windows connection-cost recovery
 notifications dispatch to UI and retry only settled empty visible placeholders;
 active requests and displayed pixels are retained. Native observers detach at
 shutdown.
+New limited timeline downloads above 25 MiB are rejected before decoding or
+saving. The exact boundary is allowed, and already-cached large sources remain
+usable. Rejection marks thumbnail-only lifetime unsuitability rather than
+blocking reader/icon access for five days. Shared work becomes unlimited when
+a reader joins; a caller arriving just after rejection retries safely. The
+independent pre-existing 64-MiB transport safety limit remains.
+New prefetch admission also respects Windows Energy Saver. Visible work remains
+independent of that prefetch restriction. Windows retains its existing stricter
+connection-cost policy for visible downloads rather than silently permitting
+metered traffic to match Apple's visible-image policy.
 Stored source byte counts, pixel dimensions, last access, ETag and Last-Modified
 are persisted. Known unsuitable thumbnails are skipped using those dimensions,
 independently of transient download failures or their expiry. Native decoding
@@ -157,6 +180,13 @@ budget instead of periodic folder purges: 300 MiB soft, 1 GiB hard, and
 preserve active images. Startup/download-triggered passes reconcile orphan
 files/records, and disk hits update access dates at most daily. Source disk
 reads/saves and pruning are serialized without serializing network downloads.
+Warm icon/favicon and decoded thumbnail hits now update the same daily access
+accounting, without decoding or downloading again. Warm icons also schedule due
+validation; decoded thumbnails do not. Tracked, canceled/drained metadata touches
+share the disk gate without recursively acquiring it. The session throttle is
+bounded to 10,000 URLs; clearing it never removes persisted usage or image data.
+Retired-folder deletion runs on a worker through tracked startup, retains its
+completion markers/error reporting, and drains before shutdown completes.
 Soft and hard eviction also protect actual pending reads/downloads and active
 conditional revalidations, including work that outlives individual canceled
 waiters. Protection ends on completion so old sources can be removed later.
@@ -164,7 +194,8 @@ Due icon reads now return cached bytes immediately and revalidate their source
 in tracked background work, using ETag/Last-Modified independently of the limited
 thumbnail scheduler. Thumbnail reads do not initiate checks. Validator-backed checks use
 an eight-day default and clamp server max-age to 3-30 days; sources without
-validators wait 30 days. Windows reuses its connectivity/connection-cost policy.
+validators wait 30 days. The final selected interval receives plus-or-minus
+20-percent jitter to spread server checks. Windows reuses its connectivity/connection-cost policy.
 304 responses retain the source and validators; invalid/failed replacements do
 not poison a valid cached copy. Background checks cancel and drain on shutdown.
 Existing metadata databases gain the validation-date column through a migration.
@@ -192,6 +223,11 @@ beyond one hour; unrepresentable intervals are reported and ignored.
 Disk hits and unrelated hosts remain usable. Only a real non-transient network
 response clears a host pause, and connectivity changes reset both kinds of
 delay. Admission rechecks cooldowns after waiting for a thumbnail slot.
+Nonempty unreadable HTTP-200 sources are transient, allowing captive-portal
+recovery instead of a five-day failure or premature declared-icon fallback.
+Unreadable revalidations preserve the good original and validators but reschedule
+the next check; empty successes remain permanent failures. Windows requires a
+native-decodable source rather than trusting an SVG MIME label alone.
 
 Image metadata now lives in `Images.db` using opt-in SQLite WAL mode; other
 database queues retain their existing DELETE default. Checked TRUNCATE checkpoints
@@ -239,8 +275,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **137 Ported, 39 Covered, 75 Skipped, and 254 Pending**
-source commits, backed by **152 source-attributed Windows port commits**.
+The inventory currently has **148 Ported, 40 Covered, 79 Skipped, and 238 Pending**
+source commits, backed by **163 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -252,6 +288,14 @@ and UIKit-only contextual-preview behavior. The FreshRSS merge resolution was
 reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
+Reviewed cache-specific platform adaptations retain the Windows binary-cache
+semaphore: atomic replacement alone does not prevent Windows file-sharing errors
+while managed reads are open. Foundation's `Data(mappedIfSafe:)` has no direct
+zero-copy equivalent in the existing managed `byte[]` decoder API; mapping and
+then copying would not deliver its reclaimable-page optimization, so no
+ineffective mapping or unrelated unmanaged ownership rewrite was introduced.
+The 64-MiB decoded-cache reduction is iOS-only; desktop Windows retains the
+upstream desktop 128-MiB policy.
 
 WinUI's native scroll anchoring preserves the top visible article and pixel
 offset while preceding large-thumbnail rows shrink and grow; the actual timeline
@@ -272,8 +316,16 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The latest reader/header/sidebar/navigation gate passes **145 image tests and
-33 UI groups** after changed-image presentation and host-retry integration.
+The latest reader/header/sidebar/navigation gate passes **159 image tests and
+32 of 33 UI groups** after scaled-icon persistence and signed-resource integration.
+The remaining assertion is the existing responsive-menu open-during-resize
+check ("A still-open menu was replaced during resizing"). The preceding gate
+also hit that assertion; an earlier size/power/portal run additionally timed out
+in the unrelated webpage text-deletion check. These are not clean full-gate passes.
+The last complete passing gate remains **145 image tests and 33 UI groups** after
+changed-image presentation and host-retry integration.
+The full shared application suite now passes **517 tests**; focused image-parser
+coverage remains **46 tests**. Regular and probe x64 builds are warning-free.
 Conditional-request isolation and response metadata pass **141 web tests**. Existing equivalent
 behavior passes 28 binary-cache and 46 image-parser tests.
 The focused native thumbnail probe
@@ -307,8 +359,27 @@ retry boundaries, exponential capping, connectivity/permanent/success resets,
 long and malformed `Retry-After`, other hosts, cached sources during cooldown,
 and in-flight successful/permanent responses ending a host pause.
 
-The x64 Windows application builds with zero warnings/errors. The complete parser
-suite passes 535 tests, and the shared application suite passes 508. Earlier
+New controls fail for fixed validation dates, absent timeline source-size limits,
+unpromoted shared-reader requests, unrestricted prefetch, captive-portal
+permanent failures, missing warm-hit access accounting, 512-pixel small decoding,
+derived-copy eviction, absent scaled-copy reads/invalidation, unbounded access
+tracking, and unsigned reader routes. Warm-hit native checks verify no extra
+decode/HTTP, daily source access, and conditional icon validation. The 256-pixel
+native probe passes exact geometry, EXIF/multiframe selection, pixel rendering
+and LRU accounting. Power-aware prefetch had one timeout followed by a passing
+repeat. Derived-copy round-trip/removal, cold scaled-icon reuse, corruption
+recovery and changed-source tests pass in the 159-test image suite.
+
+The signed-image native diagnostic captured a correctly loaded 1600-pixel signed
+image and completed unsigned/tampered images with zero natural width. Its
+JavaScript assertion had an extra call suffix, subsequently corrected. Later
+focused runs terminated before writing results in `Microsoft.UI.Xaml.dll`,
+exception `0xc000027b`; a synchronous-cleanup control reproduced the crash.
+Do not treat these as a passing corrected full focused probe. The latest full
+reader gate completed, with only the menu assertion described above failing.
+
+The x64 Windows application builds with zero warnings/errors. The earlier complete parser
+suite passed 535 tests. Earlier
 related checks covered remote-account synchronization, OPML autosave, attachment
 and thumbnail storage/migration, and NewsBlur model decoding.
 
