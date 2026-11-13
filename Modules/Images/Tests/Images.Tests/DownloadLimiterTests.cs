@@ -63,6 +63,48 @@ public sealed class DownloadLimiterTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VisibleDownloadsPrecedeNewerPrefetchesAndPromotedRowsMoveToTheFront(bool promote)
+    {
+        var limiter = new DownloadLimiter(1, 10);
+        using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
+        var olderPrefetch = limiter.AcquireAsync(key: "older", priority: DownloadPriority.Prefetch).AsTask();
+        var visible = limiter.AcquireAsync(key: "visible").AsTask();
+        var newerPrefetch = limiter.AcquireAsync(key: "newer", priority: DownloadPriority.Prefetch).AsTask();
+        if (promote) limiter.Prioritize("older");
+        active.Dispose();
+        var first = promote ? olderPrefetch : visible;
+        using var firstLease = Assert.IsAssignableFrom<IDisposable>(await first.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(newerPrefetch.IsCompleted);
+        firstLease.Dispose();
+        var second = promote ? visible : newerPrefetch;
+        using var secondLease = Assert.IsAssignableFrom<IDisposable>(await second.WaitAsync(TimeSpan.FromSeconds(5)));
+        var last = promote ? newerPrefetch : olderPrefetch;
+        Assert.False(last.IsCompleted);
+        secondLease.Dispose();
+        using var lastLease = Assert.IsAssignableFrom<IDisposable>(await last.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task OverflowDropsPrefetchesBeforeEvenTheOldestVisibleDownload()
+    {
+        var limiter = new DownloadLimiter(1, 2);
+        using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
+        var olderVisible = limiter.AcquireAsync(key: "older-visible").AsTask();
+        var olderPrefetch = limiter.AcquireAsync(key: "older-prefetch", priority: DownloadPriority.Prefetch).AsTask();
+        var newerPrefetch = limiter.AcquireAsync(key: "newer-prefetch", priority: DownloadPriority.Prefetch).AsTask();
+        Assert.Null(await olderPrefetch.WaitAsync(TimeSpan.FromSeconds(5)));
+        var newerVisible = limiter.AcquireAsync(key: "newer-visible").AsTask();
+        Assert.Null(await newerPrefetch.WaitAsync(TimeSpan.FromSeconds(5)));
+        active.Dispose();
+        using var newestLease = Assert.IsAssignableFrom<IDisposable>(await newerVisible.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(olderVisible.IsCompleted);
+        newestLease.Dispose();
+        using var oldestLease = Assert.IsAssignableFrom<IDisposable>(await olderVisible.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(2)]
     public async Task OverflowDropsTheOldestWaiterWithoutLeakingOrReorderingRemainingSlots(int maximumWaiting)

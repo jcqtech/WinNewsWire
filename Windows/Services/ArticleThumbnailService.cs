@@ -48,6 +48,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal long ProbeCacheBytes => _cacheBytes;
     internal (int Width, int Height) ProbeLastDecodedSize;
     internal int ProbeDecodeError;
+    internal readonly ConcurrentDictionary<string, DownloadPriority> ProbeDownloadPriorities = new(StringComparer.Ordinal);
 #endif
 
     internal ArticleThumbnailService(DispatcherQueue dispatcher,
@@ -89,7 +90,14 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(article);
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
-        return RunOperationAsync(token => FindImageAsync(article, mode, token), ct);
+        return RunOperationAsync(token => FindImageAsync(article, mode, DownloadPriority.Visible, token), ct);
+    }
+
+    internal Task PrefetchThumbnailAsync(Article article, ThumbnailMode mode, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(article);
+        if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
+        return RunOperationAsync(token => FindImageAsync(article, mode, DownloadPriority.Prefetch, token), ct);
     }
 
     internal Task<string?> ThumbnailUrlAsync(Article article, ThumbnailMode mode, CancellationToken ct = default)
@@ -141,7 +149,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         return backend.Finder.ThumbnailUrl(article, mode);
     }
 
-    private async Task<SoftwareBitmapSource?> FindImageAsync(Article article, ThumbnailMode mode, CancellationToken ct)
+    private async Task<SoftwareBitmapSource?> FindImageAsync(Article article, ThumbnailMode mode, DownloadPriority priority,
+        CancellationToken ct)
     {
         var tried = new HashSet<string>(StringComparer.Ordinal);
         while (await ResolveUrlAsync(article, mode, ct).ConfigureAwait(false) is { } url && tried.Add(url))
@@ -149,7 +158,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             var backend = await _backend.Value.ConfigureAwait(false);
             var key = (url, mode);
             var pending = _pending.GetOrAdd(key, _ => new(() => LoadImageAsync(url, mode, article.Title,
-                backend.Finder, backend.Downloads, ct)));
+                backend.Finder, backend.Downloads, priority, ct)));
+            if (priority == DownloadPriority.Visible) backend.Downloads.PrioritizeDownload(url);
             try
             {
                 if (await pending.Value.ConfigureAwait(false) is { } image) return image;
@@ -179,7 +189,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     }
 
     private async Task<SoftwareBitmapSource?> LoadImageAsync(string url, ThumbnailMode mode, string? title,
-        ArticleThumbnailFinder finder, ThumbnailDownloader downloads, CancellationToken ct)
+        ArticleThumbnailFinder finder, ThumbnailDownloader downloads, DownloadPriority priority, CancellationToken ct)
     {
         var cached = await OnDispatcherAsync(() =>
         {
@@ -190,7 +200,10 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             return Task.FromResult<SoftwareBitmapSource?>(node.Value.Source);
         }).ConfigureAwait(false);
         if (cached is not null) return cached;
-        var downloaded = await downloads.SourceAsync(url, ct, title).ConfigureAwait(false);
+#if PARITY_PROBE
+        ProbeDownloadPriorities[url] = priority;
+#endif
+        var downloaded = await downloads.SourceAsync(url, ct, title, priority).ConfigureAwait(false);
         if (downloaded is null) return null;
         SoftwareBitmap decoded;
         try { decoded = await DecodeAsync(downloaded.Data, mode, ct).ConfigureAwait(false); }

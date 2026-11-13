@@ -13,7 +13,7 @@ internal sealed record ImageResourceConfiguration(int MaxPixelSize, ScaledImageF
     Func<bool>? NetworkAllowsDownloads = null,
     bool StoresSourceData = false);
 internal sealed record ImageResourceRequest(ActivityOwner Owner, ActivityKind Kind, string? Detail,
-    Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false);
+    Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false, DownloadPriority? DownloadPriority = null);
 
 internal sealed class ImageResourceDownloader : IAsyncDisposable
 {
@@ -146,7 +146,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
         var limiter = !_configuration.StoresSourceData || request.NetworkAllowsDownloads is not null
             ? _configuration.DownloadLimiter : null;
-        using var lease = limiter is not null ? await limiter.AcquireAsync(ct).ConfigureAwait(false) : null;
+        using var lease = limiter is not null
+            ? await limiter.AcquireAsync(ct, url, request.DownloadPriority ?? DownloadPriority.Visible).ConfigureAwait(false) : null;
         if (limiter is not null && lease is null) return new(null, IsTransient: true);
         ct.ThrowIfCancellationRequested();
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);

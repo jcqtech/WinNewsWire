@@ -1,4 +1,5 @@
 using System.Net;
+using System.Threading.Channels;
 using WinNewsWire.ActivityLog;
 using WinNewsWire.Core;
 using WinNewsWire.Web;
@@ -104,6 +105,58 @@ public sealed class DownloadedImageCacheTests
         Assert.NotNull(await fixture.FetchAsync(cache, "a", checksForUpdates));
         await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, requests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CoalescedVisibleRequestsPromoteQueuedSourcesAheadOfNewerPrefetches(bool throughThumbnailFacade)
+    {
+        using var release = new SemaphoreSlim(0);
+        var started = Channel.CreateUnbounded<string>();
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            started.Writer.TryWrite(request.RequestUri!.AbsolutePath);
+            await release.WaitAsync(ct);
+            return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
+        });
+        await using var cache = fixture.CreateCache(20, 40);
+        await using var thumbnails = fixture.CreateThumbnails(cache);
+        Task<DownloadedImage?> FetchAsync(string name, DownloadPriority priority = DownloadPriority.Visible)
+            => throughThumbnailFacade ? thumbnails.SourceAsync(Url(name), priority: priority)
+                : fixture.FetchAsync(cache, name, limited: true, priority: priority);
+        var active = Enumerable.Range(0, 4)
+            .Select(index => FetchAsync("active" + index)).ToArray();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        async Task WaitForQueuedAsync(int count)
+        {
+            while (cache.WaitingDownloadCount != count) await Task.Delay(5, timeout.Token);
+        }
+        try
+        {
+            for (int index = 0; index < 4; index++) await started.Reader.ReadAsync(timeout.Token);
+            var older = FetchAsync("older", DownloadPriority.Prefetch);
+            await WaitForQueuedAsync(1);
+            var visible = FetchAsync("visible");
+            await WaitForQueuedAsync(2);
+            var newer = FetchAsync("newer", DownloadPriority.Prefetch);
+            await WaitForQueuedAsync(3);
+            var promoted = fixture.FetchAsync(cache, "older", limited: true);
+            release.Release();
+            Assert.Equal("/older.png", await started.Reader.ReadAsync(timeout.Token));
+            release.Release();
+            Assert.Equal("/visible.png", await started.Reader.ReadAsync(timeout.Token));
+            release.Release();
+            Assert.Equal("/newer.png", await started.Reader.ReadAsync(timeout.Token));
+            release.Release(4);
+            await Task.WhenAll(active.Concat([older, visible, newer, promoted])).WaitAsync(timeout.Token);
+            Assert.False(started.Reader.TryRead(out _));
+        }
+        finally
+        {
+            release.Release(10);
+            await Task.WhenAll(active).WaitAsync(TimeSpan.FromSeconds(5));
+        }
     }
 
     [Fact]
@@ -310,10 +363,13 @@ public sealed class DownloadedImageCacheTests
         internal DownloadedImageCache CreateCache(int limitImages, int hardLimitImages)
             => new(Database, _directory, Image.LongLength * limitImages, Image.LongLength * hardLimitImages,
                 _downloader, Clock, networkAllowsUpdates: () => UpdatesAllowed);
+        internal ThumbnailDownloader CreateThumbnails(DownloadedImageCache cache)
+            => new(Database, _directory, () => true, downloadedImages: cache);
         internal async Task<DownloadedImage?> FetchAsync(DownloadedImageCache cache, string name, bool checksForUpdates = false,
-            bool limited = false)
+            bool limited = false, DownloadPriority priority = DownloadPriority.Visible)
             => (await cache.FetchAsync(Url(name), new(ActivityOwner.FeedImageDownloader,
-                ActivityKind.DownloadFeedImage(Url(name)), null, limited ? () => true : null, checksForUpdates), default)).Image;
+                ActivityKind.DownloadFeedImage(Url(name)), null, limited ? () => true : null, checksForUpdates,
+                limited ? priority : null), default)).Image;
         public ValueTask DisposeAsync()
         {
             Database.Dispose();

@@ -31,6 +31,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private readonly Task _initialCleanup;
     private long? _totalByteCount;
     private long _removalByteCount;
+    internal int WaitingDownloadCount => _downloadLimiter.WaitingCount;
 
     internal event EventHandler<string>? DownloadFailed
     {
@@ -74,8 +75,11 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     {
         lock (_backgroundGate) ObjectDisposedException.ThrowIf(_stopping, this);
         await _initialCleanup.WaitAsync(ct).ConfigureAwait(false);
+        if (request.DownloadPriority == DownloadPriority.Visible) PrioritizeDownload(url);
         return await _downloads.FetchAsync(url, ct, request: request).ConfigureAwait(false);
     }
+
+    internal void PrioritizeDownload(string url) => _downloadLimiter.Prioritize(url);
 
     private async Task SaveAccessDateIfNeededAsync(string url, ImageResourceRequest request)
     {

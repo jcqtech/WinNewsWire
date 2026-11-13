@@ -1,5 +1,7 @@
 namespace WinNewsWire.Images;
 
+public enum DownloadPriority { Visible, Prefetch }
+
 internal sealed class DownloadLimiter
 {
     private readonly object _gate = new();
@@ -7,6 +9,7 @@ internal sealed class DownloadLimiter
     private readonly int _maximumWaitingDownloads;
     private readonly LinkedList<Waiter> _waiting = [];
     private int _running;
+    internal int WaitingCount { get { lock (_gate) return _waiting.Count; } }
 
     internal DownloadLimiter(int maximumConcurrentDownloads, int maximumWaitingDownloads = 60)
     {
@@ -16,8 +19,11 @@ internal sealed class DownloadLimiter
         _maximumWaitingDownloads = maximumWaitingDownloads;
     }
 
-    internal ValueTask<IDisposable?> AcquireAsync(CancellationToken ct = default)
+    internal ValueTask<IDisposable?> AcquireAsync(CancellationToken ct = default, string? key = null,
+        DownloadPriority priority = DownloadPriority.Visible)
     {
+        if (priority is not (DownloadPriority.Visible or DownloadPriority.Prefetch))
+            throw new ArgumentOutOfRangeException(nameof(priority));
         lock (_gate)
         {
             ct.ThrowIfCancellationRequested();
@@ -26,8 +32,16 @@ internal sealed class DownloadLimiter
                 _running++;
                 return ValueTask.FromResult<IDisposable?>(new Lease(this));
             }
-            var waiter = new Waiter(this);
-            _waiting.AddLast(waiter.Node);
+            var waiter = new Waiter(this, key, priority);
+            if (priority == DownloadPriority.Visible) _waiting.AddLast(waiter.Node);
+            else
+            {
+                var firstVisible = _waiting.First;
+                while (firstVisible is not null && firstVisible.Value.Priority == DownloadPriority.Prefetch)
+                    firstVisible = firstVisible.Next;
+                if (firstVisible is null) _waiting.AddLast(waiter.Node);
+                else _waiting.AddBefore(firstVisible, waiter.Node);
+            }
             if (_waiting.Count > _maximumWaitingDownloads)
             {
                 var oldest = _waiting.First!;
@@ -35,6 +49,19 @@ internal sealed class DownloadLimiter
                 oldest.Value.Ready.SetResult(null);
             }
             return new(WaitAsync(waiter, ct));
+        }
+    }
+
+    internal void Prioritize(string key)
+    {
+        lock (_gate)
+        {
+            var node = _waiting.Last;
+            while (node is not null && !string.Equals(node.Value.Key, key, StringComparison.Ordinal)) node = node.Previous;
+            if (node is null) return;
+            _waiting.Remove(node);
+            node.Value.Priority = DownloadPriority.Visible;
+            _waiting.AddLast(node);
         }
     }
 
@@ -70,11 +97,15 @@ internal sealed class DownloadLimiter
     private sealed class Waiter
     {
         internal DownloadLimiter Owner { get; }
+        internal string? Key { get; }
+        internal DownloadPriority Priority { get; set; }
         internal TaskCompletionSource<IDisposable?> Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal LinkedListNode<Waiter> Node { get; }
-        internal Waiter(DownloadLimiter owner)
+        internal Waiter(DownloadLimiter owner, string? key, DownloadPriority priority)
         {
             Owner = owner;
+            Key = key;
+            Priority = priority;
             Node = new(this);
         }
     }

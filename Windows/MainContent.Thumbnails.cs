@@ -350,7 +350,7 @@ public sealed partial class MainContent
         _thumbnailLookahead = (start, end);
         for (int index = start; index < end; index++)
             if (ViewModel.ArticleItems[index].SourceArticle is { } article)
-                TrackThumbnailTask(async () => { await _thumbnailService.ThumbnailAsync(article, TimelineThumbnailMode, _thumbnailLifetime.Token); });
+                TrackThumbnailTask(() => _thumbnailService.PrefetchThumbnailAsync(article, TimelineThumbnailMode, _thumbnailLifetime.Token));
     }
 
     private void TrackThumbnailTask(Func<Task> work)
