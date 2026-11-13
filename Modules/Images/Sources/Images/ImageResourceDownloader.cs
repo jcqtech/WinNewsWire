@@ -7,7 +7,8 @@ using ActivityKind = WinNewsWire.ActivityLog.ActivityKind;
 
 namespace WinNewsWire.Images;
 
-internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransient = false, long? RejectedByteCount = null);
+internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransient = false, long? RejectedByteCount = null,
+    bool DecodingFailed = false);
 internal sealed record ImageResourceConfiguration(int MaxPixelSize,
     long MemoryCacheByteLimit = 0, ThumbnailTaskQueue? DownloadQueue = null,
     Func<bool>? NetworkAllowsDownloads = null,
@@ -229,7 +230,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             if (_configuration.StoresSourceData)
             {
                 NoteTransientFailure(url);
-                return new(null, IsTransient: true);
+                return new(null, IsTransient: true, DecodingFailed: true);
             }
             ClearRetryDelay(url);
             await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);

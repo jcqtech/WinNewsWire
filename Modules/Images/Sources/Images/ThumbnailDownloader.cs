@@ -17,6 +17,8 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
     private Task? _shutdown;
     /// <summary>Raised on a worker after a permanent failure or thumbnail-only rejection; UI subscribers must dispatch.</summary>
     public event EventHandler<string>? DownloadFailed;
+    /// <summary>Raised on a worker when a transient source response cannot decode as an image.</summary>
+    public event EventHandler<string>? ImageDecodingFailed;
 
     public ThumbnailDownloader(ImageDatabase database, string cacheFolder, Func<bool> networkAllowsDownloads,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null,
@@ -45,7 +47,9 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
             if (_database.RecentlyFailed(url) || _database.IsUnsuitableForThumbnail(url)) return null;
             var request = new ImageResourceRequest(ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail(url),
                 activityDetail, _networkAllowsDownloads, DownloadPriority: priority);
-            return (await _downloadedImages.FetchAsync(url, request, token).ConfigureAwait(false)).Image;
+            var result = await _downloadedImages.FetchAsync(url, request, token).ConfigureAwait(false);
+            if (result.DecodingFailed) ImageDecodingFailed?.Invoke(this, url);
+            return result.Image;
         }, ct);
     }
 

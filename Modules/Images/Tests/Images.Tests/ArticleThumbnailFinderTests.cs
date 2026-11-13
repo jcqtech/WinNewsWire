@@ -187,6 +187,23 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
+    public void TransientNonImageResponsesFallThroughUntilNetworkChanges()
+    {
+        using var database = new ImageDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        const string provided = "https://example.com/thumbnail.jpg";
+        const string fallback = "https://example.com/photo.jpg";
+        var article = Article(thumbnail: provided, image: fallback);
+        Assert.Equal(provided, finder.ThumbnailUrl(article, ThumbnailMode.Small));
+        finder.RecordDecodingFailure(provided);
+        Assert.Equal(fallback, finder.ThumbnailUrl(article, ThumbnailMode.Small));
+        Assert.False(database.RecentlyFailed(provided));
+        Assert.False(database.IsUnsuitableForThumbnail(provided));
+        finder.ResetDecodingFailures();
+        Assert.Equal(provided, finder.ThumbnailUrl(Article(thumbnail: provided, image: fallback), ThumbnailMode.Small));
+    }
+
+    [Fact]
     public async Task FailedProvidedImageStartsHtmlDiscoveryOnlyAfterTheProvidedSourceFails()
     {
         using var database = new ImageDatabase(":memory:");

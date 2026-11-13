@@ -136,6 +136,11 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         ThumbnailUrlDidFail(url);
     }
 
+    public void ResetDecodingFailures()
+    {
+        lock (_gate) _decodingFailures.Clear();
+    }
+
     public void ThumbnailUrlDidFail(string url)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);

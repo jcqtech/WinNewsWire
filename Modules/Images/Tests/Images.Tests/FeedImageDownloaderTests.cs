@@ -790,6 +790,26 @@ public sealed class FeedImageDownloaderTests
         Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
     }
 
+    [Fact]
+    public async Task NonImageThumbnailResponsesNotifyDecodeFallbackWithoutPersistingAFailure()
+    {
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, "<html>Sign in</html>"u8.ToArray())));
+        const string url = Home + "portal.png";
+        string? decodeFailure = null;
+        int permanentFailures = 0;
+        fixture.Thumbnails.ImageDecodingFailed += (_, failedUrl) => decodeFailure = failedUrl;
+        fixture.Thumbnails.DownloadFailed += (_, _) => permanentFailures++;
+        Assert.Null(await fixture.Thumbnails.SourceAsync(url));
+        Assert.Equal(url, decodeFailure);
+        Assert.Equal(0, permanentFailures);
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+        Assert.False(fixture.ImageDatabase.IsUnsuitableForThumbnail(url));
+        decodeFailure = null;
+        Assert.Null(await fixture.Thumbnails.SourceAsync(url));
+        Assert.Null(decodeFailure);
+        Assert.Single(fixture.Requests);
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.NotFound, true)]
     [InlineData(HttpStatusCode.Forbidden, true)]

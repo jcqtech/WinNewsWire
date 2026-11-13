@@ -100,6 +100,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             backend.Finder.ThumbnailUrlsAvailable += FinderUrlsAvailable;
             backend.Finder.ThumbnailDownloadFailed += FinderDownloadFailed;
             backend.Downloads.DownloadFailed += BackendDownloadFailed;
+            backend.Downloads.ImageDecodingFailed += BackendImageDecodingFailed;
             return backend;
         }));
         NetworkInformation.NetworkStatusChanged += OnNetworkStatusChanged;
@@ -111,6 +112,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     private void OnNetworkStatusChanged(object? sender)
         => DispatchNotification(() =>
         {
+            _finder?.ResetDecodingFailures();
             bool allowed = _networkAllowsDownloads();
             if (NetworkDownloadsAllowed == allowed) return;
             NetworkDownloadsAllowed = allowed;
@@ -296,6 +298,9 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 
     private void BackendDownloadFailed(object? sender, string url)
         => (_finder ?? throw new InvalidOperationException("The thumbnail finder is not initialized.")).ThumbnailUrlDidFail(url);
+
+    private void BackendImageDecodingFailed(object? sender, string url)
+        => (_finder ?? throw new InvalidOperationException("The thumbnail finder is not initialized.")).RecordDecodingFailure(url);
 
     private void FinderDownloadFailed(object? sender, ThumbnailUrlFailure failure)
         => DispatchNotification(() => ThumbnailDownloadFailed?.Invoke(this, failure));
@@ -490,6 +495,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
                     backend.Finder.ThumbnailUrlsAvailable -= FinderUrlsAvailable;
                     backend.Finder.ThumbnailDownloadFailed -= FinderDownloadFailed;
                     backend.Downloads.DownloadFailed -= BackendDownloadFailed;
+                    backend.Downloads.ImageDecodingFailed -= BackendImageDecodingFailed;
                     await backend.Downloads.DisposeAsync();
                 }
             }
