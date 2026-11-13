@@ -24,6 +24,7 @@ namespace WinNewsWire.Account;
 public sealed class OpmlFile : IDisposable
 {
     private readonly Account _account;
+    private readonly HashSet<Feed> _observedFeeds = new(ReferenceEqualityComparer.Instance);
     public string FilePath { get; }
 
     public OpmlFile(string filePath, Account account)
@@ -31,6 +32,7 @@ public sealed class OpmlFile : IDisposable
         FilePath = filePath;
         _account = account;
         _account.AccountStructureChanged += OnAccountStructureChanged;
+        ObserveFeeds();
     }
 
     /// <summary>
@@ -68,7 +70,34 @@ public sealed class OpmlFile : IDisposable
         }
     }
 
-    private void OnAccountStructureChanged(object? sender, EventArgs e) => Save();
+    private void ObserveFeeds()
+    {
+        var current = _account.FlattenedFeeds().ToHashSet<Feed>(ReferenceEqualityComparer.Instance);
+        foreach (var feed in _observedFeeds.ToArray())
+            if (!current.Contains(feed))
+            {
+                feed.DisplayNameChanged -= OnFeedDisplayNameChanged;
+                _observedFeeds.Remove(feed);
+            }
+        foreach (var feed in current)
+            if (_observedFeeds.Add(feed)) feed.DisplayNameChanged += OnFeedDisplayNameChanged;
+    }
 
-    public void Dispose() => _account.AccountStructureChanged -= OnAccountStructureChanged;
+    private void OnFeedDisplayNameChanged(object? sender, EventArgs e)
+    {
+        if (!_account.IsPerformingBatchUpdate) Save();
+    }
+
+    private void OnAccountStructureChanged(object? sender, EventArgs e)
+    {
+        ObserveFeeds();
+        Save();
+    }
+
+    public void Dispose()
+    {
+        _account.AccountStructureChanged -= OnAccountStructureChanged;
+        foreach (var feed in _observedFeeds) feed.DisplayNameChanged -= OnFeedDisplayNameChanged;
+        _observedFeeds.Clear();
+    }
 }

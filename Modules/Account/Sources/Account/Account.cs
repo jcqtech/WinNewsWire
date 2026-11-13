@@ -420,6 +420,7 @@ public sealed partial class Account : IDisplayNameProvider, IOpmlRepresentable, 
     }
 
     private int _batchDepth;
+    internal bool IsPerformingBatchUpdate => _batchDepth > 0;
 
     private void SaveAndNotifyStructure()
     {

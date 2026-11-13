@@ -128,6 +128,23 @@ public class OpmlFileTests : IDisposable
         Assert.Contains("opml", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FeedTitleChangesAreSavedWithoutAStructureChange(bool inFolder)
+    {
+        var account = MakeLocalAccount();
+        var feed = account.AddFeed("https://example.test/rss", "Old title", inFolder ? account.AddFolder("Podcasts") : null);
+        feed.Name = "New & updated title";
+        feed.OnDisplayNameChanged();
+        var document = OpmlParser.Parse(new ParserData(account.OpmlFile!.FilePath, File.ReadAllBytes(account.OpmlFile.FilePath)));
+        var outline = inFolder ? Assert.Single(Assert.Single(document.Children).Children) : Assert.Single(document.Children);
+        Assert.Equal("New & updated title", outline.Title);
+        account.Dispose();
+        _accounts.Remove(account);
+        Assert.Equal("New & updated title", Assert.Single(MakeLocalAccount().FlattenedFeeds()).Name);
+    }
+
     [Fact]
     public void OpmlFileLoadIgnoresInvalidXml()
     {
