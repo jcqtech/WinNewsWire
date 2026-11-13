@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`381c5e4d970b485051e7bbc80abc41def0c4b302`**. This synchronization is in progress.
+`48cc714ce1a6c1363254042689433bee21558117`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is local image attribute insertion, `92059c4c10bd1fde89bce750473e274e9e0b0c9c`;
+is immediate reader promotion of queued downloads, `14f570bbf1fd233564d09ae035b8ebc4c72ee47a`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -100,13 +100,21 @@ after another consumer downloads their images. Active/unrelated requests and
 already displayed images are left alone. UIKit-only preview collections,
 their assets/headings, and Swift access-control corrections are assessed
 separately rather than reproduced in Windows Preferences.
-Shared local-image routes remain pending.
+Reader images matching the selected timeline source now use the same original
+bytes through the trusted Windows HTTPS resource origin. Attribute insertion
+preserves publisher markup. Metadata discovery runs off the UI thread, and
+stale-navigation/shutdown checks protect asynchronous responses. Unavailable
+local images fall back once to their original URL in the isolated reader world,
+without enabling publisher scripts. None mode leaves reader images remote.
+Routing is confined to WebView navigation; shared render/export HTML stays
+portable. Selected HTML restores original image URLs in an inert copy document,
+retaining absolute links without starting restored-image downloads.
 
 Thumbnail downloading now shares the existing icon resource pipeline without
 duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
 The new shared `DownloadedImages` cache coalesces reads/downloads across feed
-icons and both thumbnail sizes. It stores one source, at most 1200 pixels, per
-URL without retaining a second raw HTTP-body cache. Native thumbnails now decode
+icons, reader images and both thumbnail sizes. It stores original full-size encoded
+bytes, including animation, per URL without a second raw HTTP-body cache. Native thumbnails decode
 those bytes directly at 512/1200 pixels, respect EXIF orientation, and retain no
 per-size encoded memory or disk copies. A shared four-slot cancellation-safe LIFO
 scheduler limits thumbnail network requests. Cached images remain available
@@ -190,9 +198,9 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **114 Ported, 32 Covered, 72 Skipped, and 287 Pending**
-source commits, backed by **131 source-attributed Windows port commits**. Two
-pending rows already have partial Windows implementations. Skips have
+The inventory currently has **123 Ported, 34 Covered, 73 Skipped, and 275 Pending**
+source commits, backed by **138 source-attributed Windows port commits**.
+The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
 slot-only updates to eight older theme bundles not shipped by Windows,
@@ -211,7 +219,7 @@ current shared display settings, avoiding the separate AppKit search controller'
 stale pre-view-load snapshot.
 
 Still pending are later image-cache rewrites,
-finder/cache refinements, shared local-image routing, appearance
+finder/cache refinements, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
 
@@ -223,8 +231,18 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
+The latest reader/header/sidebar/navigation gate passes **114 image tests and
+33 UI groups** after shared-original routing. The focused native thumbnail probe
+also verifies 1600x800 offline reader images, automatic document routing,
+one-shot remote fallback with publisher scripts disabled, hidden-mode behavior,
+and portable selection copying without changing the displayed image. Ordinary
+main-world fallback callbacks fail with disabled publisher scripts; the isolated
+reader-world implementation passes. The original HTML copier fails the new
+native selection assertion. One copy-probe run produced an incomplete result
+file; its repeat passed all native groups.
+
 The x64 Windows application builds with zero warnings/errors. The complete parser
-suite passes 532 tests, and the shared application suite passes 495. Earlier
+suite passes 535 tests, and the shared application suite passes 508. Earlier
 related checks covered remote-account synchronization, OPML autosave, attachment
 and thumbnail storage/migration, and NewsBlur model decoding.
 
