@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`3aa2459de6997c49e9e3c8b065eea0994af7c4bb`**. This synchronization is in progress.
+`07468ada23264d1fc2ca7f29a8997a3985f110be`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is thumbnail URL reuse, `69bebf67afbd0b13187782f81b4b95c56c767d2d`;
+is configurable SQLite WAL support, `ea3080011e4d1f4a6fef449e7cbf45378e8cea4a`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -80,8 +80,8 @@ command, with UI-dispatched updates in other windows and no loss of selection.
 Its initial responsive layout was ported separately, then refined to a fixed
 180-logical-pixel height aligned with the feed icon (or text without an icon).
 Both timeline modes fit the whole image on a theme-aware fill. The reusable view
-also supports top-preserving portrait fill and centered wide crops, updates
-automatically on resize, and clips rounded corners. Permanent failures refresh
+now always fits and centers images, removing the unused crop/fit option; native
+layout updates scaling on resize and clips rounded corners. Permanent failures refresh
 only matching rows; download lookahead waits for native layout to settle.
 Shared **Small / Large / None** settings now replace the initial large-mode
 boolean. The localized View submenu and native Preferences picker stay in sync
@@ -118,6 +118,8 @@ Visible thumbnails now take precedence over newer next-screen prefetches.
 Queued sources promote by URL when their rows become visible, including
 coalesced downloads. Overflow drops prefetches before visible work; both tiers
 remain newest-first. Native timeline lookahead uses the low-priority path.
+Visible rows reuse their already resolved URL during loading; failed candidates
+still trigger fresh lookup and fallback rather than freezing a bad choice.
 Stored source byte counts, pixel dimensions, last access, ETag and Last-Modified
 are persisted. Known unsuitable thumbnails are skipped using those dimensions,
 independently of transient download failures or their expiry. Native decoding
@@ -150,7 +152,7 @@ The WinUI thumbnail service initializes and decodes on workers, creates native
 presentation sources and availability notifications on the UI dispatcher, and
 bounds decoded images by URL/mode to 128 MiB, accounting actual bitmap stride.
 Memory pressure clears the caches, and shutdown drains work before closing the
-metadata database. The native thumbnail control supports aspect-fill cropping,
+metadata database. The native thumbnail control supports whole-image fitting,
 rounded clipping, themed placeholders, and recycling to an empty image.
 
 Native WIC scaling now supports JPEG quality options for opaque images while
@@ -178,8 +180,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **108 Ported, 31 Covered, 71 Skipped, and 295 Pending**
-source commits, backed by **125 source-attributed Windows port commits**. Two
+The inventory currently has **110 Ported, 31 Covered, 72 Skipped, and 292 Pending**
+source commits, backed by **127 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -198,7 +200,7 @@ probe verifies both directions. Search results reuse the same timeline and read
 current shared display settings, avoiding the separate AppKit search controller's
 stale pre-view-load snapshot.
 
-Still pending are thumbnail URL reuse and later image-cache rewrites,
+Still pending are configurable SQLite WAL support and later image-cache rewrites,
 finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
