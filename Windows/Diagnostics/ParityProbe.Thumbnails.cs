@@ -343,7 +343,7 @@ internal static partial class ParityProbe
                 "Original reader icon");
             await content.ProbeWebView.CoreWebView2.ExecuteScriptAsync("window.changedIconSentinel = true;");
             string document = model.ArticleHtml;
-            clock.Advance(TimeSpan.FromDays(8));
+            clock.Advance(TimeSpan.FromDays(10));
             Require(await images.FaviconAsync(feed) is not null, "The icon source was not rechecked.");
             await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 1600, PixelHeight: 800 }),
                 "Replacement native icon at the unchanged file path");

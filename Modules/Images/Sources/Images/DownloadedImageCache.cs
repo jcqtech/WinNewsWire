@@ -166,7 +166,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         var interval = !hasValidators ? TimeSpan.FromDays(30) : maxAge is { } age
             ? TimeSpan.FromTicks(Math.Clamp(age.Ticks, TimeSpan.FromDays(3).Ticks, TimeSpan.FromDays(30).Ticks))
             : TimeSpan.FromDays(8);
-        return now + interval;
+        return now + TimeSpan.FromTicks((long)(interval.Ticks * (0.8 + Random.Shared.NextDouble() * 0.4)));
     }
 
     private Task ImageWasSavedAsync(string url, long byteCount)

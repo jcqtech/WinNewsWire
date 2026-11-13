@@ -20,8 +20,12 @@ public sealed class DownloadedImageCacheTests
     [InlineData(3456000, true, 30)]
     [InlineData(60, false, 30)]
     public void RecheckDatesRespectValidatorsAndClampServerFreshness(int? maxAgeSeconds, bool validators, int days)
-        => Assert.Equal(Now.AddDays(days), DownloadedImageCache.CalculateNextCheck(
-            maxAgeSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null, validators, Now));
+    {
+        var dates = Enumerable.Range(0, 16).Select(_ => DownloadedImageCache.CalculateNextCheck(
+            maxAgeSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null, validators, Now)).ToArray();
+        Assert.All(dates, date => Assert.InRange(date, Now.AddDays(days * 0.8), Now.AddDays(days * 1.2)));
+        Assert.True(dates.Distinct().Count() > 1, "Sources checked together must not all receive the same next-check date.");
+    }
 
     [Fact]
     public async Task CachedIconsReturnImmediatelyAndA304KeepsTheSourceAndItsValidators()
@@ -44,7 +48,7 @@ public sealed class DownloadedImageCacheTests
         cache.DownloadedImageChanged += (_, url) => changes.Add(url);
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
         var modified = File.GetLastWriteTimeUtc(fixture.PathFor("icon"));
-        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
         Assert.NotNull(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(release.Task.IsCompleted);
@@ -53,7 +57,7 @@ public sealed class DownloadedImageCacheTests
         await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(modified, File.GetLastWriteTimeUtc(fixture.PathFor("icon")));
         var validation = Assert.IsType<DownloadedImageValidation>(await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")));
-        Assert.Equal(fixture.Clock.GetUtcNow().AddDays(3), validation.NextCheck);
+        Assert.InRange(validation.NextCheck, fixture.Clock.GetUtcNow().AddDays(2.4), fixture.Clock.GetUtcNow().AddDays(3.6));
         Assert.Equal("\"v1\"", validation.ConditionalGet?.ETag);
         Assert.Equal(2, requests);
         Assert.Empty(changes);
@@ -84,7 +88,9 @@ public sealed class DownloadedImageCacheTests
             changes.Add(url);
         };
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
-        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        var originalCheck = Assert.IsType<DownloadedImageValidation>(
+            await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon"))).NextCheck;
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
         var cached = Assert.IsType<DownloadedImage>(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
         Assert.Equal(Fixture.Image, cached.Data);
         await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
@@ -95,7 +101,8 @@ public sealed class DownloadedImageCacheTests
         Assert.False(fixture.Database.RecentlyFailed(Url("icon")));
         Assert.Equal(expected, (await fixture.FetchAsync(cache, "icon"))?.Data);
         var validation = Assert.IsType<DownloadedImageValidation>(await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")));
-        Assert.Equal(status == 0 || corrupt ? fixture.Clock.GetUtcNow() : fixture.Clock.GetUtcNow().AddDays(8), validation.NextCheck);
+        if (status == 0 || corrupt) Assert.Equal(originalCheck, validation.NextCheck);
+        else Assert.InRange(validation.NextCheck, fixture.Clock.GetUtcNow().AddDays(6.4), fixture.Clock.GetUtcNow().AddDays(9.6));
     }
 
     [Theory]
@@ -112,7 +119,7 @@ public sealed class DownloadedImageCacheTests
         fixture.UpdatesAllowed = networkAllowed;
         await using var cache = fixture.CreateCache(10, 20);
         Assert.NotNull(await fixture.FetchAsync(cache, "a"));
-        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
         Assert.NotNull(await fixture.FetchAsync(cache, "a", checksForUpdates));
         await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, requests);
@@ -236,7 +243,7 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(10, 20);
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
-        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
         var downloads = Enumerable.Range(0, 4)
             .Select(index => fixture.FetchAsync(cache, "busy" + index, limited: true)).ToArray();
         try
@@ -268,7 +275,7 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(10, 20);
         Assert.NotNull(await fixture.FetchAsync(cache, "a"));
-        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
         Assert.NotNull(await fixture.FetchAsync(cache, "a", checksForUpdates: true));
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await cache.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
@@ -298,7 +305,7 @@ public sealed class DownloadedImageCacheTests
         await fixture.SeedAsync("active");
         await fixture.Database.SaveDownloadedImageAsync(new(Url("active"), Fixture.Image.Length, (1, 1),
             new(null, "\"v1\""), fixture.Clock.GetUtcNow()));
-        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
         await using var cache = fixture.CreateCache(2, 2);
         try
         {

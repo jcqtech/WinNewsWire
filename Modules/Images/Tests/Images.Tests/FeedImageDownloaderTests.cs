@@ -415,7 +415,7 @@ public sealed class FeedImageDownloaderTests
         const string url = Home + "revalidated-source.bmp";
         var feed = new FeedImageSource(Feed, Home, IconUrl: url);
         Assert.NotNull(await fixture.Images.IconAsync(feed));
-        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
         fixture.Images.EmptyCache();
         Assert.NotNull(await fixture.Images.IconAsync(feed));
         await fixture.Images.DownloadedImages.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
@@ -465,7 +465,7 @@ public sealed class FeedImageDownloaderTests
         {
             if (image.Url == url) available.TrySetResult(image);
         };
-        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
         Assert.NotNull(await (favicon ? fixture.Images.IconAsync(feed) : fixture.Images.FaviconAsync(feed)));
         var fresh = await available.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal((48u, 24u), WindowsImage.LargestFramePixelSize(fresh.Data));
@@ -506,7 +506,9 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal((fixture.Clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds, rows.GetDouble(4));
         Assert.Equal(etag, rows.GetString(5));
         Assert.Equal(modified, rows.GetString(6));
-        Assert.Equal((fixture.Clock.GetUtcNow().AddDays(3) - DateTimeOffset.UnixEpoch).TotalSeconds, rows.GetDouble(7));
+        Assert.InRange(rows.GetDouble(7),
+            (fixture.Clock.GetUtcNow().AddDays(2.4) - DateTimeOffset.UnixEpoch).TotalSeconds,
+            (fixture.Clock.GetUtcNow().AddDays(3.6) - DateTimeOffset.UnixEpoch).TotalSeconds);
         Assert.False(rows.Read());
     }
 
@@ -531,7 +533,7 @@ public sealed class FeedImageDownloaderTests
         var feed = new FeedImageSource(Feed, Home, FaviconUrl: Home + "icon.bmp", IconUrl: Home + "icon.bmp");
         Task<DownloadedImage?> ReadAsync() => favicon ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed);
         Assert.NotNull(await ReadAsync());
-        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
         fixture.Images.EmptyCache();
         Assert.NotNull(await ReadAsync());
         await fixture.Images.DownloadedImages.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
