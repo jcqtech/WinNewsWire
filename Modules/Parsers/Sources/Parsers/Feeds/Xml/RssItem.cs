@@ -17,7 +17,7 @@ internal sealed class RssItem
     public DateTime? DateModified { get; set; }
     public HashSet<ParsedAuthor> Authors { get; } = [];
     public List<ParsedAttachment> Attachments { get; } = [];
-    public string? ImageUrl { get; set; }
+    public string? ThumbnailUrl { get; set; }
     public string? ITunesImageUrl { get; set; }
     public long? ITunesDurationInSeconds { get; set; }
     public string? MediaDescription { get; set; }
@@ -69,9 +69,9 @@ internal sealed class RssItem
             syncServiceId: null, uniqueId: UniqueId, feedUrl: feedUrl,
             url: Permalink, externalUrl: Link, title: Title, language: Language,
             contentHtml: contentHtml, contentText: contentText, markdown: Markdown, summary: summary,
-            imageUrl: ImageUrl ?? ITunesImageUrl, bannerImageUrl: null, datePublished: DatePublished, dateModified: DateModified,
+            imageUrl: ITunesImageUrl, bannerImageUrl: null, datePublished: DatePublished, dateModified: DateModified,
             authors: authors.Count == 0 ? null : authors, tags: null,
-            attachments: MergedAttachments(avatarUrls, feedImageUrl))
+            attachments: MergedAttachments(avatarUrls, feedImageUrl), thumbnailUrl: ThumbnailUrl)
         {
             LegacyUniqueId = legacyUniqueId == UniqueId ? null : legacyUniqueId
         };

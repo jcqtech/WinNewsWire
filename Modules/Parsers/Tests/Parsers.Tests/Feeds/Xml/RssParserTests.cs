@@ -109,17 +109,19 @@ public class RssParserTests
     }
 
     [Theory]
-    [InlineData(false, "https://example.com/podcast.jpg")]
+    [InlineData(false, null)]
     [InlineData(true, "https://example.com/preview.jpg")]
-    public void ITunesImageIsFallbackForMediaThumbnail(bool mediaThumbnail, string expected)
+    public void MediaThumbnailIsSeparateFromITunesArtwork(bool mediaThumbnail, string? expectedThumbnail)
     {
         var xml = """
             <rss xmlns:i="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:m="http://search.yahoo.com/mrss/">
             <channel><item><guid>1</guid><i:image href="https://example.com/podcast.jpg"/>
             """ + (mediaThumbnail ? "<m:thumbnail url='https://example.com/preview.jpg'/>" : "")
             + "</item></channel></rss>";
-        Assert.Equal(expected, Assert.Single(RssParser.Parse(new ParserData("https://example.com/feed",
-            System.Text.Encoding.UTF8.GetBytes(xml))).Items).ImageUrl);
+        var item = Assert.Single(RssParser.Parse(new ParserData("https://example.com/feed",
+            System.Text.Encoding.UTF8.GetBytes(xml))).Items);
+        Assert.Equal("https://example.com/podcast.jpg", item.ImageUrl);
+        Assert.Equal(expectedThumbnail, item.ThumbnailUrl);
     }
 
     [Theory]
@@ -175,7 +177,8 @@ public class RssParserTests
             System.Text.Encoding.UTF8.GetBytes(xml))).Items);
         Assert.Equal("Article", item.Title);
         Assert.Null(item.ExternalUrl);
-        Assert.Equal("https://example.com/preview.jpg", item.ImageUrl);
+        Assert.Equal("https://example.com/preview.jpg", item.ThumbnailUrl);
+        Assert.Null(item.ImageUrl);
         var attachment = Assert.Single(item.Attachments!);
         Assert.Equal("https://example.com/high.mp4", attachment.Url);
         Assert.Equal("video/mp4", attachment.MimeType);

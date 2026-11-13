@@ -85,9 +85,9 @@ internal sealed class MediaElementTracker
             ContainerDepth++;
             return false;
         }
-        if (name.SequenceEqual("thumbnail"u8) && item.ImageUrl is null
+        if (name.SequenceEqual("thumbnail"u8) && item.ThumbnailUrl is null
             && attributes.ValueForNameCaseInsensitive("url") is { Length: > 0 } thumbnail)
-            item.ImageUrl = resolveUrl(thumbnail);
+            item.ThumbnailUrl = resolveUrl(thumbnail);
         return true;
     }
 

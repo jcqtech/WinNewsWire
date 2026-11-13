@@ -32,7 +32,8 @@ public class AtomParserTests
             Encoding.UTF8.GetBytes(xml))).Items);
         Assert.Equal("Article", item.Title);
         Assert.Equal("https://example.com/watch", item.Url);
-        Assert.Equal("https://example.com/media/preview.jpg", item.ImageUrl);
+        Assert.Equal("https://example.com/media/preview.jpg", item.ThumbnailUrl);
+        Assert.Null(item.ImageUrl);
         var attachment = Assert.Single(item.Attachments!);
         Assert.Equal("https://example.com/media/video.mp4", attachment.Url);
         Assert.Equal("video/mp4", attachment.MimeType);
