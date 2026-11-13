@@ -672,6 +672,108 @@ internal static partial class ParityProbe
         }
     }
 
+    private static async Task CheckRecoveredFaviconsAsync(MainWindow window, bool preferredIcon)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSidebar = model.SidebarItems.ToArray();
+        var previousSelection = model.SelectedArticle;
+        var previousImages = model.ProbeFeedImages;
+        var previousIcons = Core.AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+        bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
+        bool online = false;
+        int recoveredRequests = 0;
+        using var http = new HttpClient(new ThumbnailHandler((request, _) =>
+        {
+            if (online && request.RequestUri!.AbsolutePath is not ("/" or "/preferred.bmp")) recoveredRequests++;
+            return Task.FromResult(request.RequestUri!.AbsolutePath switch
+            {
+                "/" => new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("<link rel='icon' href='/home.bmp'>", System.Text.Encoding.UTF8, "text/html")
+                },
+                "/preferred.bmp" => new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(ThumbnailBitmap(128, 128))
+                },
+                _ => new HttpResponseMessage(online ? HttpStatusCode.OK : HttpStatusCode.InternalServerError)
+                {
+                    Content = new ByteArrayContent(online ? ThumbnailBitmap(1600, 800) : [])
+                }
+            });
+        }));
+        var downloader = new Downloader(http);
+        var fixtureName = preferredIcon ? "favicon-with-own-icon" : "favicon-without-icon";
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, fixtureName + ".db"));
+        using var htmlDatabase = new HTMLMetadata.HtmlMetadataDatabase(":memory:");
+        await using var metadata = new HTMLMetadata.HtmlMetadataDownloader(htmlDatabase, downloader);
+        await using var images = new FeedImageDownloader(database, metadata, Path.Combine(OutputDirectory, fixtureName),
+            downloader, maxPixelSize: 48, networkAllowsUpdates: () => true);
+        var feed = new Account.Feed("favicon-fixture", "feed", "https://favicon.test/feed")
+        {
+            HomePageUrl = "https://favicon.test/", FaviconUrl = "https://favicon.test/own.bmp",
+            IconUrl = preferredIcon ? "https://favicon.test/preferred.bmp" : null
+        };
+        var source = new FeedImageSource(feed.Url, feed.HomePageUrl, feed.FaviconUrl, feed.IconUrl);
+        var preferred = preferredIcon ? await images.IconAsync(source) : null;
+        Require(await images.FaviconAsync(source) is null, "The offline favicon unexpectedly loaded.");
+        var row = new Models.FeedItem
+        {
+            Id = "recovered-favicon", FaviconPath = preferred?.Path, FeedUrl = feed.Url,
+            FeedHomePageUrl = feed.HomePageUrl, FeedFaviconUrl = feed.FaviconUrl, FeedIconUrl = feed.IconUrl ?? ""
+        };
+        var unrelated = new Models.FeedItem { Id = "unrelated-favicon", FaviconPath = preferred?.Path };
+        var sidebar = new Models.SidebarItem { Title = "Favicon fixture", Tag = feed, ItemType = Models.SidebarItemType.Feed };
+        var unrelatedSidebar = new Models.SidebarItem { Title = "Unrelated favicon" };
+        var available = new TaskCompletionSource<DownloadedImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        images.FaviconDidBecomeAvailable += (_, update) => available.TrySetResult(update.Image);
+        bool onUI = true;
+        row.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(Models.FeedItem.FaviconSource))
+                onUI &= window.DispatcherQueue.HasThreadAccess;
+        };
+        var list = (ListView)content.FindName("ArticleListView");
+        try
+        {
+            Core.AppDefaults.Shared.UseColumnLayout = false;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
+            model.ProbeFeedImages = images;
+            model.SelectedArticle = null;
+            model.ArticleItems = new ObservableCollection<Models.FeedItem> { row, unrelated };
+            model.SidebarItems.Clear();
+            model.SidebarItems.Add(sidebar);
+            model.SidebarItems.Add(unrelatedSidebar);
+            await WaitFor(() => Task.FromResult(list.ContainerFromItem(row) is not null), "Favicon recovery row");
+            var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
+            online = true;
+            typeof(DownloadedImageCache).GetMethod("NetworkStatusChanged",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(images.DownloadedImages, [null, true]);
+            typeof(FeedImageDownloader).GetMethod("NetworkStatusChanged",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(images, [null, true]);
+            var recovered = await available.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await WaitFor(() => Task.FromResult(sidebar.FaviconPath == recovered.Path
+                && row.FaviconPath == (preferred?.Path ?? recovered.Path)
+                && icon.ImageSource is BitmapImage bitmap && bitmap.PixelWidth == (preferredIcon ? 128 : 1600)),
+                "Recovered native favicon");
+            Require(onUI && recoveredRequests == 1 && unrelated.FaviconPath == preferred?.Path
+                && unrelated.FaviconSource.Revision == 0 && unrelatedSidebar.FaviconPath is null,
+                "Favicon recovery replaced a preferred icon, changed unrelated rows, or ran off UI.");
+        }
+        finally
+        {
+            model.ProbeFeedImages = previousImages;
+            model.SidebarItems.Clear();
+            foreach (var item in previousSidebar) model.SidebarItems.Add(item);
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousIcons);
+        }
+    }
+
     private static async Task CheckChangedFeedIconsAsync(MainWindow window)
     {
         var content = window.ProbeContent;

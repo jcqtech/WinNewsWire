@@ -109,6 +109,7 @@ public partial class FeedItem : ObservableObject
     public WinNewsWire.Articles.Article? SourceArticle { get => _sourceArticle; init => _sourceArticle = value; }
     public string? FeedUrl { get; set; }
     public string? FeedHomePageUrl { get; set; }
+    public string? FeedFaviconUrl { get; set; }
 
     internal void UpdateFrom(FeedItem item)
     {
@@ -137,6 +138,7 @@ public partial class FeedItem : ObservableObject
         FeedId = item.FeedId;
         FeedUrl = item.FeedUrl;
         FeedHomePageUrl = item.FeedHomePageUrl;
+        FeedFaviconUrl = item.FeedFaviconUrl;
         OnPropertyChanged(nameof(Tooltip));
     }
 

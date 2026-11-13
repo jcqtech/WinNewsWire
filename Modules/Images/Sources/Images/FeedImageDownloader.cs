@@ -60,6 +60,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     /// <summary>Raised on a worker when a changed source has a freshly rebuilt icon representation.</summary>
     public event EventHandler<DownloadedImage>? ImageDidBecomeAvailable;
     public event EventHandler<FeedIconImage>? FeedIconDidBecomeAvailable;
+    public event EventHandler<FeedIconImage>? FaviconDidBecomeAvailable;
     private readonly object _gate = new();
     private sealed class OwnIconWait(string url)
     {
@@ -67,6 +68,8 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         internal DownloadedImage? Image { get; set; }
     }
     private readonly Dictionary<FeedImageSource, OwnIconWait> _waitingForOwnIcons = [];
+    private readonly Dictionary<FeedImageSource, HashSet<string>> _waitingForFavicons = [];
+    private readonly HashSet<FeedImageSource> _retryingFavicons = [];
     private readonly HashSet<FeedImageSource> _homePageIconFeeds = [];
     private readonly HashSet<FeedImageSource> _checkingHomePageIcons = [];
     private readonly Dictionary<FeedImageSource, HtmlMetadataRecord> _pendingHomePageMetadata = [];
@@ -106,10 +109,37 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     {
         if (!available) return;
         KeyValuePair<FeedImageSource, OwnIconWait>[] waiting;
+        KeyValuePair<FeedImageSource, HashSet<string>>[] favicons;
         lock (_gate)
         {
             if (_stopping) return;
             waiting = _waitingForOwnIcons.ToArray();
+            favicons = _waitingForFavicons.ToArray();
+        }
+        foreach (var (feed, urls) in favicons)
+        {
+            if (urls.All(DownloadedImages.IsWaitingToRetry)) continue;
+            lock (_gate)
+            {
+                if (_stopping) return;
+                if (!_waitingForFavicons.TryGetValue(feed, out var current) || !ReferenceEquals(current, urls)) continue;
+                if (!_retryingFavicons.Add(feed)) continue;
+                var task = RunOperationAsync(async ct =>
+                {
+                    try
+                    {
+                        var image = await FaviconCoreAsync(feed, ct).ConfigureAwait(false);
+                        if (image is not null) FaviconDidBecomeAvailable?.Invoke(this, new(feed, image));
+                        return image;
+                    }
+                    finally { lock (_gate) _retryingFavicons.Remove(feed); }
+                }, CancellationToken.None);
+                _ = task.ContinueWith(completed =>
+                {
+                    if (completed.IsFaulted)
+                        Trace.TraceError($"Could not retry the favicon for {feed.FeedUrl}: {completed.Exception}");
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
         }
         foreach (var (feed, ownIcon) in waiting)
         {
@@ -158,6 +188,21 @@ public sealed class FeedImageDownloader : IAsyncDisposable
 
     private async Task<DownloadedImage?> FaviconCoreAsync(FeedImageSource feed, CancellationToken ct)
     {
+        var transientUrls = new HashSet<string>();
+        var image = await FindFaviconAsync(feed, transientUrls, ct).ConfigureAwait(false);
+        lock (_gate)
+        {
+            if (!_stopping)
+            {
+                if (transientUrls.Count > 0) _waitingForFavicons[feed] = transientUrls;
+                else _waitingForFavicons.Remove(feed);
+            }
+        }
+        return image;
+    }
+
+    private async Task<DownloadedImage?> FindFaviconAsync(FeedImageSource feed, HashSet<string> transientUrls, CancellationToken ct)
+    {
         ct.ThrowIfCancellationRequested();
         if (HtmlMetadataDownloader.ShouldSkip(feed.FeedUrl)) return null;
         string? homePage = HomePage(feed);
@@ -166,6 +211,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         if (feed.FaviconUrl is { Length: > 0 } declared)
         {
             var result = await FetchImageAsync(declared, favicon: true, ct, homePage).ConfigureAwait(false);
+            if (result.IsTransient) transientUrls.Add(declared);
             if (result.Image is { } image)
             {
                 if (homePage is not null) await _database.SaveHomePageFaviconAsync(homePage, declared).ConfigureAwait(false);
@@ -178,6 +224,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         if (_database.FaviconUrl(homePage) is { } known && known != failedDeclaredUrl)
         {
             var previous = await FetchImageAsync(known, favicon: true, ct, homePage).ConfigureAwait(false);
+            if (previous.IsTransient) transientUrls.Add(known);
             if (previous.Image is not null)
             {
                 CheckForNewFavicon(homePage, known);
@@ -193,6 +240,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         foreach (var candidate in candidates.Append(root))
         {
             var result = await FetchImageAsync(candidate, favicon: true, ct, homePage).ConfigureAwait(false);
+            if (result.IsTransient) transientUrls.Add(candidate);
             if (result.Image is { } image)
             {
                 await _database.SaveHomePageFaviconAsync(homePage, candidate).ConfigureAwait(false);
@@ -437,6 +485,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             _metadata.MetadataAvailable -= MetadataAvailable;
             NetworkMonitor.ConnectivityChanged -= NetworkStatusChanged;
             _waitingForOwnIcons.Clear();
+            _waitingForFavicons.Clear();
             _homePageIconFeeds.Clear();
             _pendingHomePageMetadata.Clear();
             _faviconHomePages.Clear();

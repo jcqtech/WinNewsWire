@@ -43,6 +43,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private Images.FeedImageDownloader? _feedImages;
     private readonly HashSet<string> _changedFeedImagePaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Images.FeedImageSource, (long Version, string Path)> _feedIconUpdates = [];
+    private readonly Dictionary<Images.FeedImageSource, (long Version, string Path)> _faviconUpdates = [];
     private long _feedIconVersion;
     private int _articleLoadGeneration;
     private bool _restoringArticleSelection;
@@ -962,7 +963,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             try
             {
+                var source = FeedImageSourceFor(feed);
+                var version = _feedIconVersion;
                 var path = await FaviconDownloader.Shared.FaviconPathAsync(feed);
+                if (_faviconUpdates.TryGetValue(source, out var updated) && updated.Version > version)
+                    path = updated.Path;
                 if (!string.IsNullOrEmpty(path))
                 {
                     item.FaviconPath = path;
@@ -1065,7 +1070,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var feedMap = AppService.Shared.Accounts.Accounts.SelectMany(a => a.FlattenedFeeds())
             .GroupBy(f => (f.AccountID, f.FeedID)).ToDictionary(g => g.Key, g => g.First());
         var feedMetadata = feedMap.ToDictionary(pair => pair.Key, pair => new TimelineFeedMetadata(
-            pair.Value.Url, pair.Value.HomePageUrl, pair.Value.FaviconUrl ?? pair.Value.IconUrl ?? "",
+            pair.Value.Url, pair.Value.HomePageUrl, pair.Value.IconUrl ?? "", pair.Value.FaviconUrl,
             pair.Value.NameForDisplay, pair.Value.Authors));
         var previousItems = ArticleItems.ToDictionary(Identity);
         // Prepare new rows off-thread; bound rows and current status/selection are updated only after returning.
@@ -1081,6 +1086,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     && ReferenceEquals(previous.SourceArticle, article)
                     && previous.FeedUrl == feed?.Url && previous.FeedHomePageUrl == feed?.HomePageUrl
                     && previous.FeedIconUrl == (feed?.IconUrl ?? "")
+                    && previous.FeedFaviconUrl == feed?.FaviconUrl
                     && previous.FeedTitle == ArticleStringFormatter.Shared.TruncatedFeedName(feed?.Name ?? "")
                     && previous.Author == article.Byline(feed?.Name, feed?.Authors))
                     return previous;
@@ -1123,7 +1129,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (previousItems.TryGetValue(Identity(item), out var previous))
             {
                 if (item.FeedIconUrl == previous.FeedIconUrl && item.FeedHomePageUrl == previous.FeedHomePageUrl
-                    && item.FeedUrl == previous.FeedUrl)
+                    && item.FeedUrl == previous.FeedUrl && item.FeedFaviconUrl == previous.FeedFaviconUrl)
                     item.FaviconPath = previous.FaviconPath;
                 if (!ReferenceEquals(item, previous))
                 {
@@ -1234,7 +1240,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     cached = (null, _feedIconVersion, null);
                     if (feedMap.TryGetValue(key, out var feed))
                     {
-                        cached.Source = new(feed.Url, feed.HomePageUrl, feed.FaviconUrl, feed.IconUrl);
+                        cached.Source = FeedImageSourceFor(feed);
                         cached.Path = await FaviconDownloader.Shared.ImagePathAsync(feed);
                     }
                     cache[key] = cached;
@@ -1266,13 +1272,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _feedImages.ImageDidBecomeAvailable -= FeedImageDidBecomeAvailable;
             _feedImages.FeedIconDidBecomeAvailable -= FeedIconDidBecomeAvailable;
+            _feedImages.FaviconDidBecomeAvailable -= FaviconDidBecomeAvailable;
         }
         _feedImages = service;
         _feedIconUpdates.Clear();
+        _faviconUpdates.Clear();
         if (service is not null)
         {
             service.ImageDidBecomeAvailable += FeedImageDidBecomeAvailable;
             service.FeedIconDidBecomeAvailable += FeedIconDidBecomeAvailable;
+            service.FaviconDidBecomeAvailable += FaviconDidBecomeAvailable;
         }
     }
 
@@ -1282,13 +1291,51 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!_dispatcher.TryEnqueue(() =>
         {
             if (_disposed || !ReferenceEquals(sender, _feedImages)) return;
-            _feedIconUpdates[recovered.Feed] = (++_feedIconVersion, recovered.Image.Path);
-            foreach (var item in ArticleItems)
-                if (item.FeedUrl == recovered.Feed.FeedUrl && item.FeedIconUrl == (recovered.Feed.IconUrl ?? "")
-                    && item.FeedHomePageUrl == recovered.Feed.HomePageUrl)
-                    item.FaviconPath = recovered.Image.Path;
+            ApplyFeedIconUpdate(recovered.Feed, recovered.Image.Path);
         }) && !_disposed)
             System.Diagnostics.Trace.TraceError($"Could not dispatch a recovered feed icon at {recovered.Image.Url}.");
+    }
+
+    private static Images.FeedImageSource FeedImageSourceFor(AccountNs.Feed feed)
+        => new(feed.Url, feed.HomePageUrl, feed.FaviconUrl, feed.IconUrl);
+
+    private void ApplyFeedIconUpdate(Images.FeedImageSource feed, string path)
+    {
+        _feedIconUpdates[feed] = (++_feedIconVersion, path);
+        foreach (var item in ArticleItems)
+            if (item.FeedUrl == feed.FeedUrl && item.FeedIconUrl == (feed.IconUrl ?? "")
+                && item.FeedHomePageUrl == feed.HomePageUrl && item.FeedFaviconUrl == feed.FaviconUrl)
+                item.FaviconPath = path;
+    }
+
+    private void FaviconDidBecomeAvailable(object? sender, Images.FeedIconImage recovered)
+    {
+        if (_disposed) return;
+        if (!_dispatcher.TryEnqueue(() =>
+        {
+            if (_disposed || sender is not Images.FeedImageDownloader service || !ReferenceEquals(service, _feedImages)) return;
+            _viewOperations.Add(new MainThreadAsyncOperation(async ct =>
+            {
+                if (_disposed || !ReferenceEquals(service, _feedImages)) return;
+                _faviconUpdates[recovered.Feed] = (++_feedIconVersion, recovered.Image.Path);
+                void UpdateSidebar(SidebarItem item)
+                {
+                    if (item.Tag is AccountNs.Feed feed && FeedImageSourceFor(feed) == recovered.Feed)
+                        item.FaviconPath = recovered.Image.Path;
+                    foreach (var child in item.Children) UpdateSidebar(child);
+                }
+                foreach (var item in SidebarItems) UpdateSidebar(item);
+                var version = _feedIconVersion;
+                var preferred = await service.IconAsync(recovered.Feed, ct);
+                ct.ThrowIfCancellationRequested();
+                if (_disposed || !ReferenceEquals(service, _feedImages)) return;
+                var path = preferred?.Path ?? recovered.Image.Path;
+                if (_feedIconUpdates.TryGetValue(recovered.Feed, out var updated) && updated.Version > version)
+                    path = updated.Path;
+                ApplyFeedIconUpdate(recovered.Feed, path);
+            }, "Recovering a feed favicon"));
+        }) && !_disposed)
+            System.Diagnostics.Trace.TraceError($"Could not dispatch a recovered favicon at {recovered.Image.Url}.");
     }
 
     private void FeedImageDidBecomeAvailable(object? sender, Images.DownloadedImage image)
@@ -1310,7 +1357,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             System.Diagnostics.Trace.TraceError($"Could not dispatch a changed feed image at {image.Url}.");
     }
 
-    private sealed record TimelineFeedMetadata(string Url, string? HomePageUrl, string IconUrl, string Name, IReadOnlySet<Author>? Authors);
+    private sealed record TimelineFeedMetadata(string Url, string? HomePageUrl, string IconUrl, string? FaviconUrl,
+        string Name, IReadOnlySet<Author>? Authors);
 
     private static FeedItem MapArticleToFeedItem(Article a, IReadOnlyDictionary<(string, string), TimelineFeedMetadata> feedMap)
     {
@@ -1323,6 +1371,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             FeedId = a.FeedID,
             FeedUrl = feed?.Url,
             FeedHomePageUrl = feed?.HomePageUrl,
+            FeedFaviconUrl = feed?.FaviconUrl,
             Content = a.ContentHtml ?? (a.ContentText is { } text ? $"<pre>{WebUtility.HtmlEncode(text)}</pre>" : a.Summary ?? ""),
             Link = a.RawLink ?? a.RawExternalLink ?? "",
             ExternalLink = a.RawExternalLink ?? "",

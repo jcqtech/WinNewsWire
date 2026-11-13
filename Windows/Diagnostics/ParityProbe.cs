@@ -156,6 +156,17 @@ internal static partial class ParityProbe
                 });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--favicon-recovery"))
+            {
+                await CheckAsync("Recovered favicons update native sidebar and timeline without replacing preferred icons", async () =>
+                {
+                    await CheckRecoveredFaviconsAsync(window, preferredIcon: false);
+                    await CheckRecoveredFaviconsAsync(window, preferredIcon: true);
+                    return new { NativeRecovery = true, SidebarRecovery = true, PreferredIconPreserved = true,
+                        DispatchedOnUI = true, UnrelatedRowsPreserved = true };
+                });
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnails"))
             {
                 await CheckAsync("Worker-decoded native thumbnails, mode caches and lifetime",

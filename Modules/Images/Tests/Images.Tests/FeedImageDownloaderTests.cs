@@ -20,6 +20,83 @@ public sealed class FeedImageDownloaderTests
     private static readonly byte[] Image = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZssAAAAASUVORK5CYII=");
 
     [Fact]
+    public async Task FaviconNetworkRecoveryPreservesServerRetryAfter()
+    {
+        int attempts = 0;
+        await using var fixture = new Fixture((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/") return Task.FromResult(HtmlResponse(""));
+            if (++attempts == 1)
+            {
+                var response = Response(HttpStatusCode.ServiceUnavailable);
+                response.Headers.RetryAfter = new(TimeSpan.FromMinutes(90));
+                return Task.FromResult(response);
+            }
+            return Task.FromResult(Response(HttpStatusCode.OK, Image));
+        });
+        var feed = new FeedImageSource(Feed, Home, FaviconUrl: Home + "own.png");
+        Assert.Null(await fixture.Images.FaviconAsync(feed));
+        var available = new TaskCompletionSource<FeedIconImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Images.FaviconDidBecomeAvailable += (_, image) => available.TrySetResult(image);
+        fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
+        fixture.Images.NetworkStatusChanged(null, true);
+        Assert.Equal(1, attempts);
+        Assert.False(available.Task.IsCompleted);
+        fixture.Clock.Advance(TimeSpan.FromMinutes(90));
+        fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
+        fixture.Images.NetworkStatusChanged(null, true);
+        Assert.Equal(feed.FaviconUrl, (await available.Task.WaitAsync(TimeSpan.FromSeconds(10))).Image.Url);
+        Assert.Equal(2, attempts);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FaviconFailuresRecoverOnConnectivityWithoutAnotherLookupOrDuplicateRetry(bool declared)
+    {
+        bool online = false;
+        int notifications = 0;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var available = new TaskCompletionSource<FeedIconImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/") return HtmlResponse("<link rel='icon' href='/home.png'>");
+            if (!online) return Response(HttpStatusCode.InternalServerError);
+            started.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return Response(HttpStatusCode.OK, Image);
+        });
+        var feed = new FeedImageSource(Feed, Home, FaviconUrl: declared ? Home + "own.png" : null);
+        Assert.Null(await fixture.Images.FaviconAsync(feed));
+        int requests = fixture.Requests.Count;
+        fixture.Images.FaviconDidBecomeAvailable += (_, image) =>
+        {
+            Interlocked.Increment(ref notifications);
+            available.TrySetResult(image);
+        };
+        try
+        {
+            fixture.Images.NetworkStatusChanged(null, false);
+            Assert.Equal(requests, fixture.Requests.Count);
+            online = true;
+            fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
+            fixture.Images.NetworkStatusChanged(null, true);
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            fixture.Images.NetworkStatusChanged(null, true);
+            Assert.Equal(requests + 1, fixture.Requests.Count);
+            release.TrySetResult();
+            var recovered = await available.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(feed, recovered.Feed);
+            Assert.Equal(Home + (declared ? "own.png" : "home.png"), recovered.Image.Url);
+            Assert.Equal(recovered.Image.Url, fixture.ImageDatabase.FaviconUrl(Home));
+            await fixture.Images.DisposeAsync();
+            Assert.Equal(1, notifications);
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Fact]
     public async Task ExplicitFaviconSkipsDiscoveryAndUsesTheNativeMd5Filename()
     {
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));
