@@ -393,8 +393,9 @@ public sealed partial class Account : IDisplayNameProvider, IOpmlRepresentable, 
     public Task RefreshAllAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
         => RunOperationAsync(async token =>
         {
+            using var combinedProgress = CombinedRefreshProgress.Shared.BeginRefresh(AccountID, progress);
             await Database.RemapFeedIDsAsync(_feedIDRedirects);
-            await Delegate.RefreshAllAsync(this, progress, token);
+            await Delegate.RefreshAllAsync(this, combinedProgress, token);
         }, ct);
 
     /// <summary>

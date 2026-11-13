@@ -8,6 +8,55 @@ public sealed class AccountLifecycleTests : IDisposable
     private readonly TestAccountManager _storage = new();
 
     [Fact]
+    public void RegisteredProgressReportersRemainUsableAfterReset()
+    {
+        var account = _storage.CreateAccount();
+        var combined = new CombinedRefreshProgress();
+        combined.AddAccount(account);
+        var reporter = combined.GetProgressReporter(account);
+        reporter.Report(new Core.ProgressInfo(0, 3, 3));
+        combined.Reset();
+        reporter.Report(new Core.ProgressInfo(2, 0, 2));
+        Assert.Equal(new Core.ProgressInfo(2, 0, 2), combined.Snapshot);
+        Assert.False(combined.IsComplete);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RefreshReportsCombinedProgressAndCompletesItsSessionEvenWhenCancelled(bool cancel)
+    {
+        var started = Signal();
+        var finish = Signal();
+        var forwarded = new TaskCompletionSource<Core.ProgressInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellation = new CancellationTokenSource();
+        var progress = new Progress<Core.ProgressInfo>(value => forwarded.TrySetResult(value));
+        var pending = new Core.ProgressInfo(2, 1, 3);
+        var account = _storage.CreateAccount(accountDelegate: new Delegate
+        {
+            OnProgress = reporter => reporter!.Report(pending),
+            OnRefresh = async (_, ct) => { started.TrySetResult(); await finish.Task.WaitAsync(ct); }
+        });
+        var refresh = account.RefreshAllAsync(progress, cancellation.Token);
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(pending, await forwarded.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(pending, CombinedRefreshProgress.Shared.Snapshot);
+            Assert.False(CombinedRefreshProgress.Shared.IsComplete);
+        }
+        finally
+        {
+            if (cancel) cancellation.Cancel();
+            else finish.TrySetResult();
+            if (cancel) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => refresh);
+            else await refresh;
+        }
+        Assert.True(CombinedRefreshProgress.Shared.IsComplete);
+        Assert.Equal(new Core.ProgressInfo(0, 3, 3), CombinedRefreshProgress.Shared.Snapshot);
+    }
+
+    [Fact]
     public async Task AsyncDisposalCancelsRefreshAndKeepsStorageAliveUntilItsCleanupFinishes()
     {
         var started = Signal();
@@ -178,6 +227,7 @@ public sealed class AccountLifecycleTests : IDisposable
     {
         public AccountType Type => AccountType.OnMyMac;
         public Func<Account, CancellationToken, Task>? OnRefresh { get; init; }
+        public Action<IProgress<Core.ProgressInfo>?>? OnProgress { get; init; }
         public Func<Account, CancellationToken, Task>? OnSend { get; init; }
         public Func<Account, CancellationToken, Task>? OnCreateFolder { get; init; }
         public Func<Task>? OnDisposeAsync { get; set; }
@@ -190,7 +240,10 @@ public sealed class AccountLifecycleTests : IDisposable
             Dispose();
         }
         public Task RefreshAllAsync(Account account, IProgress<Core.ProgressInfo>? progress, CancellationToken ct)
-            => OnRefresh?.Invoke(account, ct) ?? Task.CompletedTask;
+        {
+            OnProgress?.Invoke(progress);
+            return OnRefresh?.Invoke(account, ct) ?? Task.CompletedTask;
+        }
         public Task SendArticleStatusAsync(Account account, CancellationToken ct = default)
             => OnSend?.Invoke(account, ct) ?? Task.CompletedTask;
         public Task<Feed?> CreateFeedAsync(Account account, string urlOrSite, string? name, Folder? folder, CancellationToken ct)
