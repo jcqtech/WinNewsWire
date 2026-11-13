@@ -27,7 +27,7 @@ public static class RssParser
             FeedType.Rss, _title, _homepageUrl, feedUrl, _language,
             FeedDescription: null, NextUrl: null, IconUrl: _channelImageUrl, FaviconUrl: null,
             Authors: null, Expired: false, Hubs: null,
-            Items: _items.Select(item => item.ToParsedItem(feedUrl, LegacyArticleIdentity.Rss(item, _rdfAboutItems.Contains(item)))).ToHashSet());
+            Items: _items.Select(item => item.ToParsedItem(feedUrl, LegacyArticleIdentity.Rss(item, _rdfAboutItems.Contains(item)), _channelImageUrl)).ToHashSet());
 
         public void DidStartElement(XmlSaxParser parser, ReadOnlyMemory<byte> localName, XmlNamespace ns, XmlAttributes attributes)
         {

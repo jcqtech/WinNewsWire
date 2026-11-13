@@ -40,7 +40,7 @@ public static class AtomParser
                 FeedDescription: null, NextUrl: null, IconUrl: _logoUrl ?? _iconUrl, FaviconUrl: _iconUrl,
                 Authors: null, Expired: false, Hubs: null, Items: _items.Select(item =>
                     item.ToParsedItem(feedUrl, LegacyArticleIdentity.Atom(item,
-                        _legacyIdentities[item].Permalink, _legacyIdentities[item].Published))).ToHashSet());
+                        _legacyIdentities[item].Permalink, _legacyIdentities[item].Published), _logoUrl ?? _iconUrl)).ToHashSet());
         }
 
         public void DidStartElement(XmlSaxParser parser, ReadOnlyMemory<byte> localName, XmlNamespace ns, XmlAttributes attributes)

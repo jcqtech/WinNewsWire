@@ -12,6 +12,29 @@ public class RssParserTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void FeedArtworkIsNotAnArticleEnclosure(bool atom)
+    {
+        var xml = atom
+            ? """
+              <feed xmlns="http://www.w3.org/2005/Atom"><entry><id>1</id>
+              <link rel="enclosure" href="https://example.com/feed.jpg" type="image/jpeg"/>
+              <link rel="enclosure" href="https://example.com/photo.jpg" type="image/jpeg"/>
+              </entry><icon>https://example.com/icon.png</icon><logo>https://example.com/feed.jpg</logo></feed>
+              """
+            : """
+              <rss><channel><item><guid>1</guid>
+              <enclosure url="https://example.com/feed.jpg" type="image/jpeg"/>
+              <enclosure url="https://example.com/photo.jpg" type="image/jpeg"/>
+              </item><image><url>https://example.com/feed.jpg</url></image></channel></rss>
+              """;
+        var data = new ParserData("https://example.com/feed", System.Text.Encoding.UTF8.GetBytes(xml));
+        var item = Assert.Single((atom ? AtomParser.Parse(data) : RssParser.Parse(data)).Items);
+        Assert.Equal("https://example.com/photo.jpg", Assert.Single(item.Attachments!).Url);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void SingleGravatarCanUseAnAuthorsDifferentUsernameWithoutGuessingForMultipleAuthors(bool multipleAuthors)
     {
         var xml = """

@@ -39,7 +39,7 @@ internal sealed class RssItem
         }
     }
 
-    public ParsedItem ToParsedItem(string feedUrl, string? legacyUniqueId = null)
+    public ParsedItem ToParsedItem(string feedUrl, string? legacyUniqueId = null, string? feedImageUrl = null)
     {
         var contentHtml = Body;
         var summary = Summary;
@@ -71,20 +71,20 @@ internal sealed class RssItem
             contentHtml: contentHtml, contentText: contentText, markdown: Markdown, summary: summary,
             imageUrl: ImageUrl ?? ITunesImageUrl, bannerImageUrl: null, datePublished: DatePublished, dateModified: DateModified,
             authors: authors.Count == 0 ? null : authors, tags: null,
-            attachments: MergedAttachments(avatarUrls))
+            attachments: MergedAttachments(avatarUrls, feedImageUrl))
         {
             LegacyUniqueId = legacyUniqueId == UniqueId ? null : legacyUniqueId
         };
     }
 
-    private IReadOnlyList<ParsedAttachment>? MergedAttachments(IReadOnlySet<string> avatarUrls)
+    private IReadOnlyList<ParsedAttachment>? MergedAttachments(IReadOnlySet<string> avatarUrls, string? feedImageUrl)
     {
         if (Attachments.Count == 0) return null;
         var merged = new List<ParsedAttachment>();
         var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var attachment in Attachments)
         {
-            if (avatarUrls.Contains(attachment.Url)) continue;
+            if (avatarUrls.Contains(attachment.Url) || attachment.Url == feedImageUrl) continue;
             if (indexes.TryGetValue(attachment.Url, out var index))
             {
                 var existing = merged[index];
