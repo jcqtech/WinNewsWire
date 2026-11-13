@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using WinNewsWire.Articles;
 using WinNewsWire.Images;
+using WinNewsWire.Helpers;
 using WinNewsWire.Services;
 using WinNewsWire.Web;
 
@@ -70,18 +71,36 @@ internal static partial class ParityProbe
             "Decoded thumbnail LRU eviction or byte accounting failed.");
 
         var host = Descendants(window.ProbeContent).OfType<Grid>().First();
-        var image = new Image { Width = 160, Height = 80, Source = reloaded, Stretch = Stretch.Fill };
+        var image = new ThumbnailView { Width = 80, Height = 80, CornerRadius = new CornerRadius(12) };
         Grid.SetRowSpan(image, Math.Max(1, host.RowDefinitions.Count));
         host.Children.Add(image);
         try
         {
-            await WaitFor(() => Task.FromResult(image.IsLoaded && image.ActualWidth == 160), "Native thumbnail layout");
+            await WaitFor(() => Task.FromResult(image.IsLoaded && image.ActualWidth == 80), "Native thumbnail layout");
+            image.RequestedTheme = ElementTheme.Light;
+            await WaitFor(() => Task.FromResult(image.ActualTheme == ElementTheme.Light), "Light thumbnail placeholder");
             var raster = new RenderTargetBitmap();
-            await raster.RenderAsync(image, 160, 80);
+            await raster.RenderAsync(image, 80, 80);
+            var light = (await raster.GetPixelsAsync()).ToArray();
+            image.RequestedTheme = ElementTheme.Dark;
+            await WaitFor(() => Task.FromResult(image.ActualTheme == ElementTheme.Dark), "Dark thumbnail placeholder");
+            await raster.RenderAsync(image, 80, 80);
+            var dark = (await raster.GetPixelsAsync()).ToArray();
+            int center = (40 * raster.PixelWidth + 40) * 4;
+            Require(!light.AsSpan(center, 4).SequenceEqual(dark.AsSpan(center, 4)),
+                "The empty thumbnail placeholder did not follow its actual light/dark theme.");
+            image.ImageSource = reloaded;
+            await raster.RenderAsync(image, 80, 80);
             var pixels = (await raster.GetPixelsAsync()).ToArray();
-            int offset = (40 * raster.PixelWidth + 80) * 4;
+            int offset = (10 * raster.PixelWidth + 40) * 4;
             Require(pixels[offset] < 50 && pixels[offset + 1] < 50 && pixels[offset + 2] > 200 && pixels[offset + 3] == 255,
-                "The decoded thumbnail did not produce visible red image pixels.");
+                "The decoded thumbnail did not aspect-fill the square with visible red image pixels.");
+            Require(pixels[3] == 0, "The thumbnail image was not clipped to its rounded corner.");
+            image.ImageSource = null;
+            await raster.RenderAsync(image, 80, 80);
+            var reset = (await raster.GetPixelsAsync()).ToArray();
+            Require(reset.AsSpan(center, 4).SequenceEqual(dark.AsSpan(center, 4)),
+                "Recycling the thumbnail view did not restore its placeholder.");
         }
         finally { host.Children.Remove(image); }
 
@@ -99,7 +118,8 @@ internal static partial class ParityProbe
         Require(stopped, "A disposed thumbnail service accepted another request.");
         return new { InitializationOffUI = true, DecodingOffUI = true, NotificationsOnUI = true,
             CoalescedDiscoveryAndDecode = true, SeparateModes = true, DecodedLRUBudget = true,
-            VisibleNativePixels = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true };
+            VisibleNativePixels = true, AspectFill = true, RoundedClipping = true, ThemedPlaceholder = true,
+            RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true };
     }
 
     private static byte[] ThumbnailBitmap()
