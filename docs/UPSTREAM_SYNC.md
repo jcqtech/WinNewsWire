@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`e0096cd2a44231fdd1854d47afc9e39cb007c256`**. This synchronization is in progress.
+`3515b4a4457a014c3a8a40195d137c4db7ba029a`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is removal of prefetching, `35ae2068c155fc6de758fe8c45c39fdc045ae325`;
+is early discovery for the first 1,000 articles, `24ab32aa80c619d9039f4782df120bf2c5afc76a`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -99,7 +99,7 @@ early rows to appear before the whole list finishes. Cancellation retains each
 completed batch, including negative records, while remaining articles can retry.
 Standard timeline rows now display
 small thumbnails with local HTML discovery, persisted-failure notifications,
-automatic candidate fallback, and a one-screen download lookahead. Recycled
+automatic candidate fallback, and visible-only image downloads. Recycled
 views reject stale/canceled results and release their image references; models
 do not retain a decoded bitmap for every offscreen article. Visible downloads
 wait until native layout has settled. Column layout remains thumbnail-free.
@@ -110,7 +110,7 @@ Its initial responsive layout was ported separately, then refined to a fixed
 Both timeline modes fit the whole image on a theme-aware fill. The reusable view
 now always fits and centers images, removing the unused crop/fit option; native
 layout updates scaling on resize and clips rounded corners. Permanent failures refresh
-only matching rows; download lookahead waits for native layout to settle.
+only matching rows; visible download admission waits for native layout to settle.
 Shared **Small / Large / None** settings now replace the initial large-mode
 boolean. The localized View submenu and native Preferences picker stay in sync
 across windows. Hidden mode stops new discovery/download admission and retains
@@ -161,27 +161,25 @@ Derived copies follow source eviction/orphan cleanup and do not count toward
 the upstream original-source byte budget.
 A shared four-slot cancellation-safe LIFO
 scheduler limits thumbnail network requests, with at most two per IDN host.
-Release skips saturated hosts while preserving newest eligible visible work
-ahead of prefetch. Immediate readers bypass but count toward both limits.
+Release skips saturated hosts while preserving newest eligible work.
+Immediate readers bypass but count toward both limits.
 Cached images remain available
 offline; new downloads honor connectivity and Windows connection cost.
 Native decoding has its own independent four-active/60-waiting queue, with
-URL/mode coalescing, visible promotion and transient overflow. Downloading precedes
+URL/mode coalescing, explicit reprioritization and transient overflow. Downloading precedes
 decode admission, and shutdown cancels and drains both waiting and active work.
 At most 60 requests wait, newest-first; overflow drops the oldest request as
 transient without poisoning its URL or imposing a retry backoff. Successful
 thumbnail downloads no longer create activity entries or displace refresh/sync
 history; failures retain their article title, URL and error. Background
 icon checks bypass thumbnail slots so full thumbnail queues do not block them.
-Visible thumbnails now take precedence over newer next-screen prefetches.
-Queued sources promote by URL when their rows become visible, including
-coalesced downloads. Overflow drops prefetches before visible work; both tiers
-remain newest-first. Native timeline lookahead uses the low-priority path.
-Lookahead follows scroll direction for one screen above or below the viewport,
-requests nearest rows last for newest-first admission, and requests only newly
-added lookahead rows after overlapping moves. Unchanged viewports are skipped.
-Queue leases carry the current promoted priority. After waiting,
-downloads recheck cooldown and priority-specific network/Energy Saver policy,
+Offscreen thumbnail prefetching and priority tiers have been removed by their
+later upstream commits. Only visible rows request image bytes; HTML metadata
+discovery still includes offscreen articles. A settled-layout viewport relay
+handles recycled WinUI templates whose Loaded event precedes visible-index updates.
+Queued sources and decodes move to the newest end when matching visible rows
+request them again, including coalesced work. After waiting,
+downloads recheck cooldown and the current network/connection-cost policy,
 except when a reader explicitly starts the shared source immediately.
 Visible rows reuse their already resolved URL during loading; failed candidates
 still trigger fresh lookup and fallback rather than freezing a bad choice.
@@ -197,8 +195,7 @@ usable. Rejection marks thumbnail-only lifetime unsuitability rather than
 blocking reader/icon access for five days. Shared work becomes unlimited when
 a reader joins; a caller arriving just after rejection retries safely. The
 independent pre-existing 64-MiB transport safety limit remains.
-New prefetch admission also respects Windows Energy Saver. Visible work remains
-independent of that prefetch restriction. Windows retains its existing stricter
+The obsolete Energy Saver prefetch restriction has been removed. Windows retains its existing stricter
 connection-cost policy for visible downloads rather than silently permitting
 metered traffic to match Apple's visible-image policy.
 Stored source byte counts, pixel dimensions, last access, ETag and Last-Modified
@@ -206,13 +203,12 @@ are persisted. Known unsuitable thumbnails are skipped using those dimensions,
 independently of transient download failures or their expiry. Native decoding
 still checks dimensions; unreadable thumbnails are excluded for that finder's
 lifetime without suppressing otherwise usable feed icons. Nonempty unreadable
-HTTP-200 sources are excluded in the shared source downloader until a network
-notification, not just an elapsed retry delay, without a persisted five-day
+HTTP-200 sources now receive a timed 37-minute retry in the shared source
+downloader, without a persisted five-day
 failure. Candidate fallback receives the transient decoding verdict.
 Network notifications reset decoding exclusions and chosen URL caches, enabling
-the same article instance to retry. Once a feed icon is known to be a non-image,
-subsequent requests may use homepage icon metadata; ordinary transient errors
-still do not cause premature fallback.
+the same article instance to retry. Subsequent requests for a feed icon waiting
+to retry may use homepage icon metadata, including URL-only transient failures.
 Favicons share the same disk source and conditional-update policy, retaining
 only their small display representation in memory. Windows repairs missing
 display paths through the shared downloader without replacing full-size source
@@ -224,11 +220,12 @@ Retired Images/FeedIcons/favicon folders are removed once,
 retaining atomic preference markers. The independent resizing purge and periodic
 legacy mapping flush are removed; completed retirement never repeats deletion
 because of an obsolete date/marker. Shared sources now use the upstream desktop disk
-budget instead of periodic folder purges: 300 MiB soft, 1 GiB hard, and
-80-percent eviction targets. Three-day recent-use and one-minute save protection
-preserve active images. Startup/download-triggered passes reconcile orphan
-files/records; subsequent passes wait for another quarter-budget of growth when
-recent images remain protected. Failed folder listing, including a missing
+budget instead of periodic folder purges: startup pruning removes least-recently
+used sources until they total at most 300 MiB. Downloads may exceed that budget
+until the next launch. Soft/hard thresholds, the 80-percent target, the three-day
+use exemption and recurring passes are removed. One-minute save and active-work
+protection remain. Startup also reconciles orphan files/records.
+Failed folder listing, including a missing
 folder, is reported and aborts cleanup without deleting metadata. Database usage
 query failures already propagate before any deletion. Disk hits update access
 dates at most daily. Source disk
@@ -240,7 +237,7 @@ share the disk gate without recursively acquiring it. The session throttle is
 bounded to 10,000 URLs; clearing it never removes persisted usage or image data.
 Retired-folder deletion runs on a worker through tracked startup, retains its
 completion markers/error reporting, and drains before shutdown completes.
-Soft and hard eviction also protect actual pending reads/downloads and active
+Eviction also protects actual pending reads/downloads and active
 conditional revalidations, including work that outlives individual canceled
 waiters. Protection ends on completion so old sources can be removed later.
 Due icon reads now return cached bytes immediately and revalidate their source
@@ -271,23 +268,22 @@ are remembered so a late-bound row cannot revive cached old pixels. Windows has
 no separate author-avatar cache corresponding to the Apple avatar invalidation
 and cache-precedence changes.
 
-Transient source failures now use one-minute per-URL retry delays, doubling to a
-one-hour maximum. Only HTTP 429, 503 or no response also pause the entire host;
+Transient source failures now use fixed 37-minute per-URL retry waits.
+Only HTTP 429, 503 or no response also pause the entire host;
 other transient responses and non-image successes affect only their URL.
-Overlapping failures preserve active retry deadlines rather than repeatedly
-doubling/restarting them, unless a later server hint extends the wait.
+Overlapping failures choose the later of the existing deadline and a new wait.
 HTTP 408 and 429 are transient, not five-day
 failures. A longer valid server `Retry-After` in seconds takes precedence, even
-beyond one hour; unrepresentable intervals are reported and ignored.
+beyond 37 minutes; unrepresentable intervals are reported and ignored.
 Disk hits and unrelated hosts remain usable. Only a real non-transient network
 response clears a host pause. Connectivity changes reset automatic URL/host
-backoff but retain valid server-directed Retry-After deadlines, including short
-hints and extensions of an active wait. Admission rechecks cooldowns after
+backoff and short hints; only deadlines more than 37 minutes in the future survive.
+Admission rechecks cooldowns after
 waiting for a thumbnail slot. Local source-write failures also log and use
 transient URL-only backoff without recording absent sources or favicon mappings;
 cancellation still propagates.
 Nonempty unreadable HTTP-200 sources are transient, allowing captive-portal
-recovery instead of a five-day failure or premature declared-icon fallback.
+recovery after the cooldown instead of a five-day or session-long exclusion.
 Unreadable revalidations preserve the good original and validators but reschedule
 the next check; empty successes remain permanent failures. Windows requires a
 native-decodable source rather than trusting an SVG MIME label alone.
@@ -345,8 +341,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **189 Ported, 67 Covered, 83 Skipped, and 166 Pending**
-source commits, backed by **204 source-attributed Windows port commits**.
+The inventory currently has **193 Ported, 67 Covered, 83 Skipped, and 162 Pending**
+source commits, backed by **208 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -386,14 +382,23 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **220 tests** after batched discovery, lazy
-candidate selection, host-aware admission, retry recovery, write/listing safety,
-sidecar invalidation and failure-only thumbnail logging. All six focused cache
-retirement tests pass. Each new behavioral regression was also run against its
-original implementation and failed before the implementation was restored.
-The overlapping native lookahead probe passes in both scroll directions and
-fails with the pristine loop; the current production x64 build is warning-free.
+The current image suite passes **218 tests** after visible-only loading,
+priority-free newest-first queues, fixed retry dates and launch-only pruning.
+Three obsolete tier cases and the recurring-prune cadence case were removed;
+retry reset/fallback coverage was updated and expanded. The timer, connectivity,
+non-image and icon-fallback controls produce seven failures on the pristine
+implementation; three pruning controls fail the pristine algorithm with
+signature-only adapters. Restored implementations pass.
+The native viewport and decode probes pass after priority removal. The real HTTP
+viewport check covers overlapping moves in both directions, unchanged viewports
+and never-visible metadata discovery, and fails with the original lookahead.
+The current production x64 build is warning-free. All six focused cache retirement
+tests passed at their port checkpoint.
 These targeted results do not replace the full UI-gate results below.
+
+The following verification history records earlier port stages; superseded
+prefetch, priority-tier, exponential-retry and recurring-pruning assertions are
+historical, not the current policy.
 
 The last reader/header/sidebar/navigation gate passes **159 image tests and
 32 of 33 UI groups** after scaled-icon persistence and signed-resource integration.
