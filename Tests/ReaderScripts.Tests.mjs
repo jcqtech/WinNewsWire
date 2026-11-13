@@ -8,6 +8,21 @@ function script(name) {
     return readFileSync(join(import.meta.dirname, "..", "Shared", "Resources", name), "utf8");
 }
 
+function frame(src, lazySrc) {
+    return {
+        src,
+        getAttribute(name) { return name === "src" ? this.src : lazySrc; }
+    };
+}
+
+function mainScript(frames) {
+    const context = vm.createContext({
+        document: { addEventListener() {}, querySelectorAll: () => frames }
+    });
+    vm.runInContext(script("main.js"), context);
+    return context;
+}
+
 function openFootnote({ articleLeft = 100, articleWidth = 600, referenceLeft = 380 } = {}) {
     const listeners = new Map();
     const resizeListeners = new Set();
@@ -87,4 +102,30 @@ test("each resize updates the open footnote, including the final rapid resize", 
     fixture.resize(220, 280);
     assert.equal(fixture.popover.style.width, "280px");
     assert.equal(fixture.popover.style.left, "-160px");
+});
+
+test("Optimole iframe placeholders load their HTTP or HTTPS source", () => {
+    const frames = [frame(null, "https://example.test/a"), frame("", "http://example.test/b"),
+        frame("about:blank", "HTTPS://example.test/c")];
+    mainScript(frames).loadLazyIframes();
+    assert.deepEqual(frames.map(item => item.src), ["https://example.test/a", "http://example.test/b", "HTTPS://example.test/c"]);
+});
+
+test("iframe lazy loading preserves active frames and rejects non-web sources", () => {
+    const frames = [frame("https://example.test/current", "https://example.test/other"),
+        ...["javascript:alert(1)", "data:text/html,test", "file:///test", "//example.test/video", "/video", null]
+            .map(source => frame("about:blank", source))];
+    const before = frames.map(item => item.src);
+    mainScript(frames).loadLazyIframes();
+    assert.deepEqual(frames.map(item => item.src), before);
+});
+
+test("page processing resolves lazy iframes before wrapping them", () => {
+    const item = frame("about:blank", "https://example.test/video");
+    const context = mainScript([item]);
+    for (const name of ["stripStyles", "wrapTables", "inlineVideos", "sizeTailwindSVGs",
+        "constrainBodyRelativeIframes", "convertImgSrc", "flattenPreElements", "styleLocalFootnotes",
+        "removeWpSmiley", "removeInstapaperIgnoreElements", "postRenderProcessing"]) context[name] = () => {};
+    context.wrapFrames = () => assert.equal(item.src, "https://example.test/video");
+    context.processPage();
 });

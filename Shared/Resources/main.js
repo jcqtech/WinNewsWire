@@ -15,6 +15,17 @@ function wrapFrames() {
 	});
 }
 
+// Optimole keeps the real iframe URL in data-opt-src until its script runs.
+function loadLazyIframes() {
+	document.querySelectorAll("iframe[data-opt-src]").forEach(element => {
+		const src = element.getAttribute("src");
+		const lazySrc = element.getAttribute("data-opt-src");
+		if ((!src || src === "about:blank") && /^https?:\/\//i.test(lazySrc)) {
+			element.src = lazySrc;
+		}
+	});
+}
+
 // The stylesheet clamps iframes to the article width with max-width: 100%,
 // which leaves an attribute-sized iframe with its full height — distorted,
 // and a huge blank box when the embed fails to load. Let the height follow
@@ -220,6 +231,7 @@ function removeInstapaperIgnoreElements() {
 function processPage() {
 	// stripStyles must run first — wrapFrames sets aspect-ratio on fixed-size iframes, which stripStyles would remove.
 	stripStyles();
+	loadLazyIframes();
 	wrapFrames();
 	wrapTables();
 	inlineVideos();
