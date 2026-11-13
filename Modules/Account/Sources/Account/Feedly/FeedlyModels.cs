@@ -109,9 +109,9 @@ public sealed class FeedlyEntryParser(FeedlyEntry entry)
     public IReadOnlySet<ParsedAuthor>? Authors => entry.Author is { } name
         ? new HashSet<ParsedAuthor> { new(name, null, null, null) } : null;
     public IReadOnlySet<string>? Tags => entry.Tags?.Where(t => t.Label is not null).Select(t => t.Label!).ToHashSet() is { Count: > 0 } tags ? tags : null;
-    public IReadOnlySet<ParsedAttachment>? Attachments => entry.Enclosure?
+    public IReadOnlyList<ParsedAttachment>? Attachments => entry.Enclosure?
         .Select(link => ParsedAttachment.Create(link.Href, link.Type, null, null, null))
-        .OfType<ParsedAttachment>().ToHashSet() is { Count: > 0 } attachments ? attachments : null;
+        .OfType<ParsedAttachment>().ToArray() is { Length: > 0 } attachments ? attachments : null;
 
     public ParsedItem? ParsedItemRepresentation => FeedUrl is { } feedUrl
         ? new(ID, ID, feedUrl, null, ExternalUrl, Title, null, ContentHtml, null, null, Summary, null, null,

@@ -10,6 +10,22 @@ public class ArticleUpdateTests : IDisposable
     private readonly ArticlesDatabaseStore _database = new(":memory:", "test");
 
     [Fact]
+    public async Task AttachmentFeedOrderRoundTripsAndReorderingReportsAnUpdate()
+    {
+        var first = new ParsedAttachment("https://example.com/z.mp3", "audio/mpeg", null, null, null);
+        var second = new ParsedAttachment("https://example.com/a.mp3", "audio/mpeg", null, null, null);
+        ParsedItem MediaItem(params ParsedAttachment[] media) => new(null, "ordered", "feed1", null, null, "Title", null,
+            "<p>Body</p>", null, null, null, null, null, null, null, null, null, media);
+        await _database.UpdateAsync([MediaItem(first, second)], "feed1");
+        _database.EmptyCaches();
+        Assert.Equal(new[] { first.Url, second.Url }, Assert.Single(await _database.FetchArticlesAsync("feed1")).Attachments!.Select(a => a.URL));
+        Assert.Single((await _database.UpdateAsync([MediaItem(second, first)], "feed1")).Updated!);
+        _database.EmptyCaches();
+        Assert.Equal(new[] { second.Url, first.Url }, Assert.Single(await _database.FetchArticlesAsync("feed1")).Attachments!.Select(a => a.URL));
+        Assert.Null((await _database.UpdateAsync([MediaItem(second, first)], "feed1")).Updated);
+    }
+
+    [Fact]
     public async Task AttachmentMetadataIsArticleScopedAndUpdatesWithoutChangingArticleBody()
     {
         ParsedItem MediaItem(string id, long width) => new(null, id, "feed1", null, null, "Title", null,

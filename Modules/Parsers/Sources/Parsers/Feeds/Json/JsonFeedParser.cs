@@ -179,10 +179,10 @@ public static class JsonFeedParser
 
     private static DateTime? ParseDate(string? s) => string.IsNullOrEmpty(s) ? null : DateParser.Parse(s);
 
-    private static IReadOnlySet<ParsedAttachment>? ParseAttachments(JsonElement it)
+    private static IReadOnlyList<ParsedAttachment>? ParseAttachments(JsonElement it)
     {
         if (!JsonUtilities.TryObjectArray(it, "attachments", out var arr)) return null;
-        var set = new HashSet<ParsedAttachment>();
+        var set = new List<ParsedAttachment>();
         foreach (var a in arr.EnumerateArray())
         {
             var url = GetString(a, "url");

@@ -8,6 +8,15 @@ namespace WinNewsWire.AppShared.Tests;
 
 public sealed class ArticleRendererTests
 {
+    [Fact]
+    public void EnclosuresPreserveFeedOrderInsteadOfSortingUrls()
+    {
+        var first = Attachment.Create(null, "https://example.com/z.mp3", "audio/mpeg", null, null, null)!;
+        var second = Attachment.Create(null, "https://example.com/a.mp3", "audio/mpeg", null, null, null)!;
+        var html = ArticleRenderer.Render(Article(attachments: [first, second]), theme: Theme()).Html;
+        Assert.True(html.IndexOf(first.URL!, StringComparison.Ordinal) < html.IndexOf(second.URL!, StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("audio/mpeg", true)]
     [InlineData("video/mp4", false)]
@@ -263,7 +272,7 @@ public sealed class ArticleRendererTests
         => new("(test)", isAppTheme: true) { TemplateHtml = template, StylesheetCss = style };
     private static Feed Feed() => new("account", "feed", "https://example.com/feed") { Name = "My Feed", HomePageUrl = "https://example.com/" };
     private static Article Article(string? title = "Article", string? body = "<p>Body</p>", string? url = "https://example.com/article", string? external = null, string? text = null,
-        IReadOnlySet<Attachment>? attachments = null)
+        IEnumerable<Attachment>? attachments = null)
         => new("account", "article", "feed", "unique", title, body, text, null, url, external, null, null,
             DateTime.UnixEpoch, null, null, attachments, new ArticleStatus("article", false, false, DateTime.UnixEpoch));
     private static string Resource(string name)

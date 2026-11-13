@@ -23,7 +23,7 @@ public sealed class ParsedItem : IEquatable<ParsedItem>
     public DateTime? DateModified { get; }
     public IReadOnlySet<ParsedAuthor>? Authors { get; }
     public IReadOnlySet<string>? Tags { get; }
-    public IReadOnlySet<ParsedAttachment>? Attachments { get; }
+    public IReadOnlyList<ParsedAttachment>? Attachments { get; }
     internal string? LegacyUniqueId { get; init; }
 
     public ParsedItem(
@@ -44,7 +44,7 @@ public sealed class ParsedItem : IEquatable<ParsedItem>
         DateTime? dateModified,
         IReadOnlySet<ParsedAuthor>? authors,
         IReadOnlySet<string>? tags,
-        IReadOnlySet<ParsedAttachment>? attachments)
+        IEnumerable<ParsedAttachment>? attachments)
     {
         SyncServiceId = syncServiceId;
         UniqueId = uniqueId;
@@ -64,7 +64,7 @@ public sealed class ParsedItem : IEquatable<ParsedItem>
         DateModified = dateModified;
         Authors = authors;
         Tags = tags;
-        Attachments = attachments;
+        Attachments = attachments?.ToArray();
     }
 
     public bool Equals(ParsedItem? other)

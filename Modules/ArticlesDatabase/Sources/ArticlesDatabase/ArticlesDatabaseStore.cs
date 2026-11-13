@@ -256,11 +256,11 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
         }
 
         Dictionary<string, HashSet<Author>>? authorsByArticle = null;
-        Dictionary<string, IReadOnlySet<Attachment>?>? attachmentsByArticle = null;
+        Dictionary<string, IReadOnlyList<Attachment>?>? attachmentsByArticle = null;
         if (staged.Count > 0 && cmd.Connection is { } conn)
         {
             authorsByArticle = new Dictionary<string, HashSet<Author>>();
-            attachmentsByArticle = new Dictionary<string, IReadOnlySet<Attachment>?>();
+            attachmentsByArticle = new Dictionary<string, IReadOnlyList<Attachment>?>();
             foreach (var batch in staged.Chunk(500))
             {
                 var placeholders = string.Join(",", batch.Select((_, i) => $"@a{i}"));
@@ -303,7 +303,7 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
         {
             HashSet<Author>? authors = null;
             authorsByArticle?.TryGetValue(s.articleID, out authors);
-            IReadOnlySet<Attachment>? attachments = null;
+            IReadOnlyList<Attachment>? attachments = null;
             attachmentsByArticle?.TryGetValue(s.articleID, out attachments);
             var article = new Article(
                 AccountID, s.articleID, s.feedID, s.uniqueID,

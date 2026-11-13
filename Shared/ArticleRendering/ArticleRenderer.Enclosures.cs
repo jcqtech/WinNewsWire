@@ -9,7 +9,7 @@ public static partial class ArticleRenderer
     {
         var enclosures = new List<string>();
         bool hasVisual = false;
-        foreach (var attachment in (attachments ?? []).OrderBy(a => a.URL, StringComparer.Ordinal))
+        foreach (var attachment in attachments ?? [])
         {
             if (BodyContainsUrl(body, attachment.URL) || EnclosureHtml(attachment, posterUrl, baseUrl) is not { } html) continue;
             enclosures.Add(html);

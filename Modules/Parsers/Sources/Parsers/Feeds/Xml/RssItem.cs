@@ -65,14 +65,17 @@ internal sealed class RssItem
         };
     }
 
-    private IReadOnlySet<ParsedAttachment>? MergedAttachments()
+    private IReadOnlyList<ParsedAttachment>? MergedAttachments()
     {
         if (Attachments.Count == 0) return null;
-        var byUrl = new Dictionary<string, ParsedAttachment>(StringComparer.Ordinal);
+        var merged = new List<ParsedAttachment>();
+        var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var attachment in Attachments)
         {
-            byUrl[attachment.Url] = byUrl.TryGetValue(attachment.Url, out var existing)
-                ? existing with
+            if (indexes.TryGetValue(attachment.Url, out var index))
+            {
+                var existing = merged[index];
+                merged[index] = existing with
                 {
                     MimeType = existing.MimeType ?? attachment.MimeType,
                     Title = existing.Title ?? attachment.Title,
@@ -81,13 +84,19 @@ internal sealed class RssItem
                     Width = existing.Width ?? attachment.Width,
                     Height = existing.Height ?? attachment.Height,
                     Medium = existing.Medium ?? attachment.Medium
-                } : attachment;
+                };
+            }
+            else
+            {
+                indexes[attachment.Url] = merged.Count;
+                merged.Add(attachment);
+            }
         }
-        return byUrl.Values.Select(attachment => attachment.DurationInSeconds is null
+        return merged.Select(attachment => attachment.DurationInSeconds is null
             && ITunesDurationInSeconds is { } duration
             && (attachment.Medium is ParsedAttachment.AttachmentMedium.Audio or ParsedAttachment.AttachmentMedium.Video
                 || attachment.MimeType?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true
                 || attachment.MimeType?.StartsWith("video/", StringComparison.OrdinalIgnoreCase) == true)
-                ? attachment with { DurationInSeconds = duration } : attachment).ToHashSet();
+                ? attachment with { DurationInSeconds = duration } : attachment).ToArray();
     }
 }

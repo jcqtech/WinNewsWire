@@ -9,6 +9,23 @@ public class RssParserTests
 {
     private static ParserData Load(string f, string ext, string url) => TestResources.Load($"{f}.{ext}", url);
 
+    [Fact]
+    public void DuplicateMediaMetadataMergesInPlaceWithoutReordering()
+    {
+        const string xml = """
+            <rss xmlns:m="http://search.yahoo.com/mrss/"><channel><item><guid>1</guid>
+            <enclosure url="https://example.com/z.mp3" type="audio/mpeg"/>
+            <enclosure url="https://example.com/a.mp3" type="audio/mpeg"/>
+            <m:content url="https://example.com/z.mp3" duration="180" medium="audio"/>
+            </item></channel></rss>
+            """;
+        var attachments = Assert.Single(RssParser.Parse(new ParserData("https://example.com/feed",
+            System.Text.Encoding.UTF8.GetBytes(xml))).Items).Attachments!;
+        Assert.Equal(new[] { "https://example.com/z.mp3", "https://example.com/a.mp3" }, attachments.Select(a => a.Url));
+        Assert.Equal(180, attachments[0].DurationInSeconds);
+        Assert.Equal("audio/mpeg", attachments[0].MimeType);
+    }
+
     [Theory]
     [InlineData(false, "https://example.com/podcast.jpg")]
     [InlineData(true, "https://example.com/preview.jpg")]

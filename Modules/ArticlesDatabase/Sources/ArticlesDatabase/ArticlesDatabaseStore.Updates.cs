@@ -55,11 +55,11 @@ public sealed partial class ArticlesDatabaseStore
                         ParsedAttachment.AttachmentMedium.Executable => Attachment.AttachmentMedium.Executable,
                         _ => (Attachment.AttachmentMedium?)null
                     }))
-                    .OfType<Attachment>().ToHashSet();
+                    .OfType<Attachment>().ToArray();
                 incoming.Add(new Article(AccountID, id, feedID, item.UniqueId,
                     item.Title, item.ContentHtml, item.ContentText, item.Markdown, item.Url, item.ExternalUrl,
                     item.Summary, item.ImageUrl, published ?? previous?.DatePublished, modified ?? previous?.DateModified,
-                    authors is { Count: > 0 } ? authors : null, attachments is { Count: > 0 } ? attachments : null, status));
+                    authors is { Count: > 0 } ? authors : null, attachments is { Length: > 0 } ? attachments : null, status));
             }
 
             var added = incoming.Where(a => !existing.ContainsKey(a.ArticleID)).ToHashSet();

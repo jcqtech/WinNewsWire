@@ -18,7 +18,7 @@ public sealed class Article : IEquatable<Article>
     public DateTime? DatePublished { get; }
     public DateTime? DateModified { get; }
     public IReadOnlySet<Author>? Authors { get; }
-    public IReadOnlySet<Attachment>? Attachments { get; }
+    public IReadOnlyList<Attachment>? Attachments { get; }
     public ArticleStatus Status { get; }
 
     public Article(
@@ -26,7 +26,7 @@ public sealed class Article : IEquatable<Article>
         string? title, string? contentHtml, string? contentText, string? markdown,
         string? url, string? externalURL, string? summary, string? imageURL,
         DateTime? datePublished, DateTime? dateModified,
-        IReadOnlySet<Author>? authors, IReadOnlySet<Attachment>? attachments, ArticleStatus status)
+        IReadOnlySet<Author>? authors, IEnumerable<Attachment>? attachments, ArticleStatus status)
     {
         AccountID = accountID;
         FeedID = feedID;
@@ -42,7 +42,7 @@ public sealed class Article : IEquatable<Article>
         DatePublished = datePublished;
         DateModified = dateModified;
         Authors = authors;
-        Attachments = attachments;
+        Attachments = attachments?.ToArray();
         Status = status;
         ArticleID = articleID ?? CalculatedArticleID(feedID, uniqueID);
     }
@@ -61,7 +61,7 @@ public sealed class Article : IEquatable<Article>
            && o.Summary == Summary && o.RawImageLink == RawImageLink
            && o.DatePublished == DatePublished && o.DateModified == DateModified
            && (Authors is null ? o.Authors is null : o.Authors is not null && Authors.SetEquals(o.Authors))
-           && (Attachments is null ? o.Attachments is null : o.Attachments is not null && Attachments.SetEquals(o.Attachments));
+           && (Attachments is null ? o.Attachments is null : o.Attachments is not null && Attachments.SequenceEqual(o.Attachments));
 
 }
 

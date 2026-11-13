@@ -76,14 +76,14 @@ public sealed class Attachment : IEquatable<Attachment>
         => attachments is null ? null : JsonSerializer.Serialize(attachments.Select(a => new StoredAttachment(
             a.AttachmentID, a.URL, a.MimeType, a.Title, a.SizeInBytes, a.DurationInSeconds, a.Width, a.Height, a.Medium)), JsonOptions);
 
-    public static IReadOnlySet<Attachment>? FromJson(string? json)
+    public static IReadOnlyList<Attachment>? FromJson(string? json)
     {
         if (json is null) return null;
         var stored = JsonSerializer.Deserialize<StoredAttachment[]>(json, JsonOptions)
             ?? throw new JsonException("Stored article attachments must be an array.");
         return stored.Select(a => a is null ? throw new JsonException("Stored attachment must be an object.")
             : Create(a.AttachmentID, a.Url, a.MimeType, a.Title, a.SizeInBytes, a.DurationInSeconds, a.Width, a.Height, a.Medium)
-                ?? throw new JsonException("Stored attachment URL must not be empty.")).ToHashSet();
+                ?? throw new JsonException("Stored attachment URL must not be empty.")).ToArray();
     }
 
     public enum AttachmentMedium

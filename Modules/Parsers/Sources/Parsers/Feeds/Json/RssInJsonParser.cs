@@ -99,7 +99,7 @@ public static class RssInJsonParser
             }
         }
 
-        IReadOnlySet<ParsedAttachment>? attachments = null;
+        IReadOnlyList<ParsedAttachment>? attachments = null;
         if (item.TryGetProperty("enclosure", out var enc) && enc.ValueKind == JsonValueKind.Object)
         {
             var url = GetString(enc, "url");
@@ -113,7 +113,7 @@ public static class RssInJsonParser
                 }
                 var mime = GetString(enc, "type");
                 var att = ParsedAttachment.Create(url, mime, null, size, null);
-                if (att is not null) attachments = new HashSet<ParsedAttachment> { att };
+                if (att is not null) attachments = [att];
             }
         }
 
