@@ -24,6 +24,7 @@ public sealed partial class PreferencesWindow : Window
     public PreferencesWindow()
     {
         InitializeComponent();
+        VersionText.Text = $"WinNewsWire {App.DisplayVersion}";
         void OnClosed(object sender, WindowEventArgs args)
         {
             Closed -= OnClosed;

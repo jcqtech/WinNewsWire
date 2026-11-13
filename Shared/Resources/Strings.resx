@@ -17,6 +17,8 @@
   <data name="StatusBarHide" xml:space="preserve"><value>Hide Status Bar</value></data>
   <data name="StatusBarShowThemes" xml:space="preserve"><value>Show Status Bar Theme Menu</value></data>
   <data name="StatusBarCopyLink" xml:space="preserve"><value>Copy</value></data>
+  <data name="Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="CopyTextError" xml:space="preserve"><value>Could not copy text</value></data>
   <data name="StatusBarMultipleFeeds" xml:space="preserve"><value>Multiple feeds</value></data>
   <data name="StatusBarMultipleFolders" xml:space="preserve"><value>Multiple folders</value></data>
   <data name="StatusBarMultipleSmartFeeds" xml:space="preserve"><value>Multiple smart feeds</value></data>

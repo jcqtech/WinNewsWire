@@ -3,6 +3,7 @@
     x:Class="WinNewsWire.AppWindows.PreferencesWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:helpers="using:WinNewsWire.Helpers"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -354,6 +355,8 @@
                     <TextBlock TextWrapping="Wrap"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="WinNewsWire is a free, native Windows feed reader for keeping up with your favorite news sources via RSS, Atom, and JSON feeds. It can sync with services like Feedbin, Feedly, NewsBlur, and other Reader API providers." />
+                    <helpers:CopyableLabel x:Name="VersionText" FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
                     <TextBlock Text="Acknowledgements" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,4,0,0" />
                     <TextBlock TextWrapping="Wrap"

@@ -39,6 +39,8 @@ namespace WinNewsWire
         private readonly bool _runtimeFirstChanceDiagnostics =
             Environment.GetEnvironmentVariable("WINNEWSWIRE_TRACE_FIRST_CHANCE") == "1";
         public static Window? MainWindow => (Application.Current as App)?._window;
+        internal static string DisplayVersion => typeof(App).Assembly.GetName().Version?.ToString()
+            ?? throw new InvalidOperationException("The application version is missing.");
         public static bool IsShuttingDown => Application.Current is App app && (app._shuttingDown || app._quitRequested);
         public static IReadOnlyList<MainWindow> MainWindows => Application.Current is App app
             ? app._mainWindows.Where(window => !app._closingMainWindows.Contains(window)).ToArray() : Array.Empty<MainWindow>();

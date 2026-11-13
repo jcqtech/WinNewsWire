@@ -115,6 +115,11 @@ internal static partial class ParityProbe
                         "The probe did not load the installed Windows App Runtime used by normal Debug.");
             }
 
+            if (Environment.GetCommandLineArgs().Contains("--version-labels"))
+            {
+                await CheckAsync("Copyable application version labels", CheckVersionLabelsAsync);
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--status-bar"))
             {
                 await CheckAsync("Desktop status bar commands, links, progress and shared visibility",
