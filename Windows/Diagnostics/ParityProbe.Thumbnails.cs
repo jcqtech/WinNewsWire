@@ -516,7 +516,8 @@ internal static partial class ParityProbe
             model.SelectedArticle = null;
             content.ProbeSetThumbnailService(service);
             model.ArticleItems = rows;
-            foreach (var (target, up) in new[] { (0, false), (70, false), (40, true) })
+            (int Start, int End)? previousLookahead = null;
+            foreach (var (target, up) in new[] { (0, false), (70, false), (73, false), (40, true), (37, true) })
             {
                 scheduled.Clear();
                 list.ScrollIntoView(rows[target], ScrollIntoViewAlignment.Leading);
@@ -525,7 +526,7 @@ internal static partial class ParityProbe
                     if (list.ItemsPanelRoot is not ItemsStackPanel panel) return Task.FromResult(false);
                     return Task.FromResult(panel.FirstVisibleIndex >= Math.Max(0, target - 1)
                         && panel.FirstVisibleIndex <= target && content.ProbeThumbnailWorkIsIdle
-                        && scheduled.Any(item => item.First == panel.FirstVisibleIndex && item.Last == panel.LastVisibleIndex));
+                        && content.ProbeThumbnailPrefetchPosition?.FirstVisibleRow == panel.FirstVisibleIndex);
                 }, "Directional prefetch after native viewport settles");
                 var settled = (ItemsStackPanel)list.ItemsPanelRoot;
                 Require(Volatile.Read(ref savedLoads) > 0 && !savedOnUI,
@@ -534,10 +535,13 @@ internal static partial class ParityProbe
                 int count = last - first + 1;
                 int start = up ? Math.Max(0, first - count) : last + 1;
                 int end = up ? first : Math.Min(rows.Count, start + count);
-                var expected = Enumerable.Range(start, end - start);
+                var previous = previousLookahead;
+                var expected = Enumerable.Range(start, end - start)
+                    .Where(index => !(previous is { } position && index >= position.Start && index < position.End));
                 if (!up) expected = expected.Reverse();
                 Require(scheduled.Where(item => item.First == first && item.Last == last).Select(item => item.Row)
-                    .SequenceEqual(expected), "Thumbnail lookahead did not request exactly one screen in scroll direction, nearest last.");
+                    .SequenceEqual(expected), "Thumbnail lookahead did not request only newly added rows in scroll direction, nearest last.");
+                previousLookahead = (start, end);
                 int before = scheduled.Count;
                 list.UpdateLayout();
                 var pulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
