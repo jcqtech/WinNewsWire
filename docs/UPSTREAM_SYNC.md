@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`2c17fb77c97c4101fe1bda7e072901494bade2a3`**. This synchronization is in progress.
+`97ad41dc86381a8b7b072a36553ccc8b86fb0072`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is thumbnail support, `96f307911dcc266f64cfbda7889c306e9556b71b`;
+is thumbnail downloading, `7c9b0cd1c8dea1187fb890f90a59bc68bc758613`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -46,6 +46,8 @@ of already embedded YouTube videos. Modern templates are selected through
 Separate thumbnail URLs now survive parsing, article equality,
 database migration, and cold-cache reads. Feedbin, Feedly, NewsBlur, and Reader API
 media metadata is incorporated, including NewsBlur's ordered secure-image mapping.
+RSS and Atom now route Media RSS thumbnails to that separate field while keeping
+iTunes full artwork independent.
 
 Other ports include feed-title OPML autosave, feed/theme protocol links, and
 consistent successful-refresh completion dates. Windows-specific shared adapters
@@ -59,8 +61,18 @@ partial malformed addresses and unsupported schemes.
 HTML image discovery now has the final upstream lazy-source priority, significant
 image filtering, ordered unique candidates, CSS/hidden-image handling, and
 bandwidth-aware responsive-image selection. It rejects tracking pixels, sharing
-buttons, avatars, and decorative strips. Its integration with the thumbnail
-finder, metadata tables, and shared local-image routes is still pending.
+buttons, avatars, and decorative strips. The new finder selects provided images
+by thumbnail mode, discovers HTML images off the caller thread, and persists up
+to three ordered candidates plus negative results. Queries are bounded, writes
+transactional, and results expire after 33 days. Failed URLs fall through to the
+next candidate after warm or cold reads. Actual thumbnail downloading, timeline
+display, and shared local-image routes remain pending.
+
+Native WIC scaling now supports JPEG quality options for opaque images while
+retaining PNG for source formats with an alpha channel. Small single-frame
+images keep their original bytes. Header-only largest-frame dimensions avoid a
+full managed pixel-buffer allocation. Both named thumbnail cache folders are
+included in image-cache cleanup, and Current Activity recognizes thumbnail URLs.
 
 Timeline navigation now measures the viewport below pinned toolbar and column
 headings. Rows above it scroll minimally; rows below it are centered. Adjacent-row
@@ -81,8 +93,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **79 Ported, 24 Covered, 65 Skipped, and 337 Pending**
-source commits, backed by **94 source-attributed Windows port commits**. Five
+The inventory currently has **89 Ported, 25 Covered, 67 Skipped, and 324 Pending**
+source commits, backed by **102 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -95,8 +107,8 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are the image-cache/thumbnail
-finder/storage/downloading rewrite, shared local-image routing, appearance
+Still pending are the remaining image-cache and thumbnail
+downloading/display rewrites, later finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
 
@@ -144,6 +156,15 @@ About without writing the real clipboard. Restoring each original window fails
 the corresponding assertion. Seven plain-text address assertions also fail
 after restoring the exact original explicit-link-only implementation; the
 restored port passes all 18 targeted plain-text cases.
+
+The image suite passes 45 tests, including thumbnail priority, recent-failure
+fallback, metadata restart/batching/expiry, atomic-write rollback, HTML discovery,
+and ordered fallback after cold reads. Restoring the exact single-image finder
+with record-shape compatibility only fails both multi-candidate regressions.
+The Core suite passes 332 tests, including 43 native image cases; restoring the
+original PNG encoder path fails the opaque-JPEG assertion while the alpha-channel
+case remains PNG. Original cache-cleaner and Current Activity implementations
+fail their new thumbnail assertions.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
