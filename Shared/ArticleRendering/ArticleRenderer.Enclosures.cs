@@ -1,24 +1,24 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using WinNewsWire.Articles;
+using WinNewsWire.Parsers;
 
 namespace WinNewsWire.AppShared.ArticleRendering;
 
 public static partial class ArticleRenderer
 {
-    private static string EnclosuresHtml(IEnumerable<Attachment>? attachments, string body, string? posterUrl, string baseUrl)
+    private static readonly Regex WordPressImageSize = new(@"-\d+x\d+(?=\.[A-Za-z0-9]+$)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static string EnclosuresHtml(IEnumerable<Attachment>? attachments, string body, IReadOnlySet<string> bodyImageIdentities,
+        string? posterUrl, string baseUrl)
     {
         var enclosures = new List<string>();
-        bool hasVisual = false;
         foreach (var attachment in attachments ?? [])
         {
-            if (BodyContainsUrl(body, attachment.URL) || EnclosureHtml(attachment, posterUrl, baseUrl) is not { } html) continue;
+            if (BodyContainsMedia(body, attachment.URL, bodyImageIdentities, baseUrl)
+                || EnclosureHtml(attachment, posterUrl, baseUrl) is not { } html) continue;
             enclosures.Add(html);
-            hasVisual |= attachment.DisplayMedium is Attachment.AttachmentMedium.Image or Attachment.AttachmentMedium.Video
-                || ArticleRenderingSpecialCases.YouTubeEmbedUrl(attachment.URL) is not null;
         }
-        if (!hasVisual && MediaUrl(posterUrl, baseUrl) is { } image && !BodyContainsUrl(body, image)
-            && !new[] { "<img", "<picture", "<video", "<iframe" }.Any(tag => body.Contains(tag, StringComparison.OrdinalIgnoreCase)))
-            enclosures.Insert(0, "<div class=\"nnw-enclosure nnw-enclosure-image\"><img src=\"" + Html(image) + "\" alt=\"\"></div>");
         return enclosures.Count == 0 ? "" : "<div class=\"nnw-enclosures\">\n" + string.Join("\n", enclosures) + "\n</div>";
     }
 
@@ -26,8 +26,7 @@ public static partial class ArticleRenderer
     {
         if (MediaUrl(attachment.URL, baseUrl) is not { } url) return null;
         var src = Html(url);
-        var dimensions = attachment.Width is > 0 && attachment.Height is > 0
-            ? $" width=\"{attachment.Width.Value.ToString(CultureInfo.InvariantCulture)}\" height=\"{attachment.Height.Value.ToString(CultureInfo.InvariantCulture)}\"" : "";
+        var dimensions = DimensionAttributes(attachment);
         if (ArticleRenderingSpecialCases.YouTubeEmbedUrl(url) is { } youtube)
             return "<div class=\"nnw-enclosure nnw-enclosure-video\"><iframe src=\"" + Html(youtube) + "\"" + dimensions
                 + " allowfullscreen></iframe></div>";
@@ -57,9 +56,35 @@ public static partial class ArticleRenderer
     private static string? MediaUrl(string? value, string baseUrl)
     {
         if (string.IsNullOrEmpty(value)) return null;
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var url)
-            && !(Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) && Uri.TryCreate(baseUri, value, out url))) return null;
+        Uri? url;
+        if (!(Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) && Uri.TryCreate(baseUri, value, out url))
+            && !Uri.TryCreate(value, UriKind.Absolute, out url)) return null;
         return url.Scheme is "http" or "https" ? url.AbsoluteUri : null;
+    }
+
+    private static string DimensionAttributes(Attachment attachment)
+        => attachment.Width is > 0 && attachment.Height is > 0
+            ? $" width=\"{attachment.Width.Value.ToString(CultureInfo.InvariantCulture)}\" height=\"{attachment.Height.Value.ToString(CultureInfo.InvariantCulture)}\"" : "";
+
+    private static HashSet<string> BodyImageIdentities(string body, string baseUrl)
+        => HtmlImageParser.SignificantImageUrlStrings(body,
+            Uri.TryCreate(baseUrl, UriKind.Absolute, out var url) ? url : null, int.MaxValue)
+            .Select(ImageIdentity).OfType<string>().ToHashSet(StringComparer.Ordinal);
+
+    private static bool BodyContainsMedia(string body, string? url, IReadOnlySet<string> imageIdentities, string baseUrl)
+    {
+        var resolved = MediaUrl(url, baseUrl);
+        return BodyContainsUrl(body, url) || BodyContainsUrl(body, resolved)
+            || (ImageIdentity(resolved) is { } identity && imageIdentities.Contains(identity));
+    }
+
+    private static string? ImageIdentity(string? value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var url)) return null;
+        var components = Uri.UnescapeDataString(url.AbsolutePath).Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (components.Length == 0) return null;
+        components[^1] = WordPressImageSize.Replace(components[^1], "");
+        return string.Join("/", components.TakeLast(2)).ToLowerInvariant();
     }
 
     private static bool BodyContainsUrl(string body, string? url)

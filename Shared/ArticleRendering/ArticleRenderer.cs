@@ -70,7 +70,20 @@ public static partial class ArticleRenderer
             ["styleSheet"] = style
         };
         AddDateSubstitutions(substitutions, article.LogicalDatePublished());
-        var enclosures = EnclosuresHtml(article.Attachments, body, article.RawImageLink, baseUrl);
+        var bodyImageIdentities = BodyImageIdentities(body, baseUrl);
+        var attachments = article.Attachments?.ToList() ?? [];
+        var primaryImageHtml = "";
+        if (PrimaryImage(article.RawImageLink, attachments, body, bodyImageIdentities, baseUrl) is { } primaryImage)
+        {
+            if (theme.TemplateHtml.Contains("[[primary_image]]", StringComparison.Ordinal))
+            {
+                primaryImageHtml = PrimaryImageHtml(primaryImage, article.Title, baseUrl);
+                attachments.RemoveAll(attachment => attachment.URL == primaryImage.URL);
+            }
+            else if (!attachments.Contains(primaryImage)) attachments.Insert(0, primaryImage);
+        }
+        substitutions["primary_image"] = primaryImageHtml;
+        var enclosures = EnclosuresHtml(attachments, body, bodyImageIdentities, article.RawImageLink, baseUrl);
         if (theme.TemplateHtml.Contains("[[enclosures]]", StringComparison.Ordinal))
             substitutions["enclosures"] = enclosures;
         else substitutions["body"] = enclosures.Length == 0 ? body : "<div>" + body + "</div>" + enclosures;

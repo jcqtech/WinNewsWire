@@ -9,6 +9,40 @@ namespace WinNewsWire.AppShared.Tests;
 public sealed class ArticleRendererTests
 {
     [Fact]
+    public void PrimaryImageUsesAttachmentCaptionAndDimensionsWithoutRepeatingIt()
+    {
+        var image = Attachment.Create(null, "https://example.com/photo.jpg", "image/jpeg", "Photo & <caption>", null, null, 640, 480)!;
+        var html = ArticleRenderer.Render(Article(image: image.URL, attachments: [image]),
+            theme: Theme("[[primary_image]]|[[body]]|[[enclosures]]")).Html;
+        Assert.StartsWith("<div class=\"nnw-primary-image\">", html);
+        Assert.Contains("width=\"640\" height=\"480\"", html);
+        Assert.Contains("<div class=\"nnw-primary-image-caption\">Photo &amp; &lt;caption&gt;</div>", html);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<img "));
+    }
+
+    [Fact]
+    public void PrimaryImageCaptionDoesNotRepeatArticleTitle()
+    {
+        var image = Attachment.Create(null, "https://example.com/photo.jpg", "image/jpeg", " MACBOOK\u00a0Pro ", null, null)!;
+        var html = ArticleRenderer.Render(Article(title: "MacBook Pro", attachments: [image]),
+            theme: Theme("[[primary_image]]|[[body]]|[[enclosures]]")).Html;
+        Assert.Contains("nnw-primary-image", html);
+        Assert.DoesNotContain("nnw-primary-image-caption", html);
+    }
+
+    [Theory]
+    [InlineData("[[primary_image]]|[[body]]|[[enclosures]]")]
+    [InlineData("[[body]]")]
+    public void ResizedBodyImagesAreNotRepeatedAsMedia(string template)
+    {
+        var image = Attachment.Create(null, "https://original.example/2026/bird.jpg", "image/jpeg", null, null, null)!;
+        var html = ArticleRenderer.Render(Article(image: image.URL, attachments: [image],
+            body: "<img src=\"https://cdn.example/2026/bird-1024x683.jpg?width=1024\">"), theme: Theme(template)).Html;
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<img "));
+        Assert.DoesNotContain("nnw-primary-image", html);
+    }
+
+    [Fact]
     public void EnclosuresPreserveFeedOrderInsteadOfSortingUrls()
     {
         var first = Attachment.Create(null, "https://example.com/z.mp3", "audio/mpeg", null, null, null)!;
@@ -18,17 +52,17 @@ public sealed class ArticleRendererTests
     }
 
     [Theory]
-    [InlineData("audio/mpeg", true)]
-    [InlineData("video/mp4", false)]
-    [InlineData("image/jpeg", false)]
-    public void ArticleImageAppearsOnlyWhenThereIsNoOtherVisualMedia(string mime, bool expectedImage)
+    [InlineData("audio/mpeg")]
+    [InlineData("video/mp4")]
+    [InlineData("image/jpeg")]
+    public void LegacyTemplatesRetainLeadImagesAlongsideOtherMedia(string mime)
     {
         var attachment = Attachment.Create(null, "https://example.com/media", mime, null, null, null)!;
         var article = new Article("account", "article", "feed", "unique", "Title", "<p>Body</p>", null, null,
             "https://example.com/article", null, null, "https://example.com/poster.jpg",
             null, null, null, new HashSet<Attachment> { attachment }, new ArticleStatus("article", false, false, DateTime.UnixEpoch));
         var html = ArticleRenderer.Render(article, theme: Theme()).Html;
-        Assert.Equal(expectedImage, html.Contains("<img src=\"https://example.com/poster.jpg\"", StringComparison.Ordinal));
+        Assert.Contains("<img src=\"https://example.com/poster.jpg\"", html);
         if (mime == "video/mp4") Assert.Contains("poster=\"https://example.com/poster.jpg\"", html);
     }
 
@@ -293,9 +327,9 @@ public sealed class ArticleRendererTests
         => new("(test)", isAppTheme: true) { TemplateHtml = template, StylesheetCss = style };
     private static Feed Feed() => new("account", "feed", "https://example.com/feed") { Name = "My Feed", HomePageUrl = "https://example.com/" };
     private static Article Article(string? title = "Article", string? body = "<p>Body</p>", string? url = "https://example.com/article", string? external = null, string? text = null,
-        IEnumerable<Attachment>? attachments = null)
-        => new("account", "article", "feed", "unique", title, body, text, null, url, external, null, null,
-            DateTime.UnixEpoch, null, null, attachments, new ArticleStatus("article", false, false, DateTime.UnixEpoch));
+        IEnumerable<Attachment>? attachments = null, string? image = null, string? thumbnail = null)
+        => new("account", "article", "feed", "unique", title, body, text, null, url, external, null, image,
+            DateTime.UnixEpoch, null, null, attachments, new ArticleStatus("article", false, false, DateTime.UnixEpoch), thumbnail);
     private static string Resource(string name)
     {
         var assembly = typeof(ArticleRenderer).Assembly;

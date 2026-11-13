@@ -63,6 +63,19 @@ img.twemoji, img.emoji {
 	width: auto;
 }
 
+.nnw-primary-image {
+	margin: 1em 0;
+}
+
+.nnw-primary-image img {
+	height: auto;
+}
+
+.nnw-primary-image-caption {
+	margin: 0.5em 0 0;
+	font-size: 0.9em;
+}
+
 .nnw-enclosures {
 	margin-top: 1.5em;
 }
