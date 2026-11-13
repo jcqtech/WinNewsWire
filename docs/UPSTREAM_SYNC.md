@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`ebfa6ed0e445cac7ce1cf3e6a0fd10e9597d8477`**. This synchronization is in progress.
+`b4de29a32d4132b1eee05a471255e2496f62afbc`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is periodic icon/avatar revalidation, `b4de29a32d4132b1eee05a471255e2496f62afbc`;
+is favicon source-cache integration, `beea83ce1b0b7336c832689328cd66382e55e5c4`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -122,6 +122,14 @@ budget instead of periodic folder purges: 300 MiB soft, 1 GiB hard, and
 preserve active images. Startup/download-triggered passes reconcile orphan
 files/records, and disk hits update access dates at most daily. Source disk
 reads/saves and pruning are serialized without serializing network downloads.
+Due icon reads now return cached bytes immediately and revalidate their source
+in tracked background work, using ETag/Last-Modified and the same limited network
+scheduler. Thumbnail reads do not initiate checks. Validator-backed checks use
+an eight-day default and clamp server max-age to 3-30 days; sources without
+validators wait 30 days. Windows reuses its connectivity/connection-cost policy.
+304 responses retain the source and validators; invalid/failed replacements do
+not poison a valid cached copy. Background checks cancel and drain on shutdown.
+Existing metadata databases gain the validation-date column through a migration.
 
 The WinUI thumbnail service initializes and decodes on workers, creates native
 presentation sources and availability notifications on the UI dispatcher, and
@@ -155,8 +163,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **102 Ported, 29 Covered, 70 Skipped, and 304 Pending**
-source commits, backed by **118 source-attributed Windows port commits**. Two
+The inventory currently has **103 Ported, 29 Covered, 70 Skipped, and 303 Pending**
+source commits, backed by **119 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -169,7 +177,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are icon/avatar revalidation and later image-cache rewrites,
+Still pending are favicon source-cache integration and later image-cache rewrites,
 finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
@@ -315,6 +323,14 @@ control detects deletion of a freshly replaced file with an old metadata row.
 Restored native thumbnails and regular/probe builds pass. The first broad reader
 run timed out in unchanged peer-window sidebar ordering; the repeat passes all
 77 image tests and 33 reader/header/sidebar/navigation groups.
+
+Conditional revalidation brings the image suite to 94 passing tests; all 134 Web
+tests also pass. Cases cover immediate cached display during a held request,
+conditional headers, 304 retention, replacement, transport/HTTP/decoder failures,
+thumbnail/network exclusions, shutdown cancellation, schema migration and
+freshness bounds. Removing icon-check wiring, date selection and the migration
+fails eight assertions. Restored native thumbnails, the 94-image/33-group reader
+gate and warning-free regular/probe builds pass.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
