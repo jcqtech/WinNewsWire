@@ -18,6 +18,7 @@ public sealed class ParsedItem : IEquatable<ParsedItem>
     public string? Markdown { get; }
     public string? Summary { get; }
     public string? ImageUrl { get; }
+    public string? ThumbnailUrl { get; }
     public string? BannerImageUrl { get; }
     public DateTime? DatePublished { get; }
     public DateTime? DateModified { get; }
@@ -44,7 +45,8 @@ public sealed class ParsedItem : IEquatable<ParsedItem>
         DateTime? dateModified,
         IReadOnlySet<ParsedAuthor>? authors,
         IReadOnlySet<string>? tags,
-        IEnumerable<ParsedAttachment>? attachments)
+        IEnumerable<ParsedAttachment>? attachments,
+        string? thumbnailUrl = null)
     {
         SyncServiceId = syncServiceId;
         UniqueId = uniqueId;
@@ -59,6 +61,7 @@ public sealed class ParsedItem : IEquatable<ParsedItem>
         Markdown = markdown;
         Summary = summary;
         ImageUrl = imageUrl;
+        ThumbnailUrl = thumbnailUrl;
         BannerImageUrl = bannerImageUrl;
         DatePublished = datePublished;
         DateModified = dateModified;
