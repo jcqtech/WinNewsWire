@@ -306,11 +306,11 @@ public sealed partial class MainContent
         QueueVisibleThumbnailRefresh();
     }
 
-    private void TimelineThumbnailDownloadFailed(object? sender, string url)
+    private void TimelineThumbnailDownloadFailed(object? sender, ThumbnailUrlFailure failure)
     {
         if (!ShowsTimelineThumbnails) return;
         foreach (var pair in _timelineThumbnails.ToArray())
-            if (string.Equals(pair.Value.Url, url, StringComparison.Ordinal)) RefreshTimelineThumbnail(pair.Key);
+            if (string.Equals(pair.Value.Url, failure.Url, StringComparison.Ordinal)) RefreshTimelineThumbnail(pair.Key);
         _thumbnailLookahead = null;
         QueueVisibleThumbnailRefresh();
     }

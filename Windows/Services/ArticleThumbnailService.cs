@@ -30,6 +30,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         : Exception($"Thumbnail dimensions are too small or too narrow ({width}x{height}).");
     private readonly DispatcherQueue _dispatcher;
     private readonly Lazy<Task<(ArticleThumbnailFinder Finder, ThumbnailDownloader Downloads)>> _backend;
+    private ArticleThumbnailFinder? _finder;
     private readonly long _cacheByteLimit;
     private readonly Func<bool> _networkAllowsDownloads;
     private readonly Func<bool> _networkAllowsPrefetch;
@@ -46,7 +47,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 
     internal event EventHandler<string>? ThumbnailAvailable;
     internal event EventHandler<IReadOnlySet<string>>? ThumbnailUrlsAvailable;
-    internal event EventHandler<string>? ThumbnailDownloadFailed;
+    internal event EventHandler<ThumbnailUrlFailure>? ThumbnailDownloadFailed;
     internal event EventHandler? NetworkStatusChanged;
     internal bool NetworkDownloadsAllowed { get; private set; }
 #if PARITY_PROBE
@@ -77,7 +78,9 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         _backend = new(() => Task.Run(() =>
         {
             var backend = (createBackend ?? CreateBackend)();
+            _finder = backend.Finder;
             backend.Finder.ThumbnailUrlsAvailable += FinderUrlsAvailable;
+            backend.Finder.ThumbnailDownloadFailed += FinderDownloadFailed;
             backend.Downloads.DownloadFailed += BackendDownloadFailed;
             return backend;
         }));
@@ -242,7 +245,10 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         => DispatchNotification(() => ThumbnailUrlsAvailable?.Invoke(this, ids));
 
     private void BackendDownloadFailed(object? sender, string url)
-        => DispatchNotification(() => ThumbnailDownloadFailed?.Invoke(this, url));
+        => (_finder ?? throw new InvalidOperationException("The thumbnail finder is not initialized.")).ThumbnailUrlDidFail(url);
+
+    private void FinderDownloadFailed(object? sender, ThumbnailUrlFailure failure)
+        => DispatchNotification(() => ThumbnailDownloadFailed?.Invoke(this, failure));
 
     private void DispatchNotification(Action notification)
     {
@@ -284,7 +290,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         {
             Trace.TraceWarning($"Could not decode thumbnail {url}: {error.Message}");
             finder.RecordDecodingFailure(url);
-            DispatchNotification(() => ThumbnailDownloadFailed?.Invoke(this, url));
             return null;
         }
         using var bitmap = decoded;
@@ -422,6 +427,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
                 {
                     var backend = await _backend.Value;
                     backend.Finder.ThumbnailUrlsAvailable -= FinderUrlsAvailable;
+                    backend.Finder.ThumbnailDownloadFailed -= FinderDownloadFailed;
                     backend.Downloads.DownloadFailed -= BackendDownloadFailed;
                     await backend.Downloads.DisposeAsync();
                 }
