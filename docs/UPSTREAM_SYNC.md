@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`9655f1660c2268070229db3f3694d7018df0a150`**. This synchronization is in progress.
+`3e962e641f96f812d47880c5694d30a996583f54`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is the shared feed-icon display enum/settings, `0611366ad2a80fd068dc8dffbdeada07d59b4cbe`;
+is the shared downloaded-image cache, `6831d31fc911c1b13a2ebf49a537eeaee8fff8af`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -84,8 +84,19 @@ boolean. The localized View submenu and native Preferences picker stay in sync
 across windows. Hidden mode stops new discovery/download admission and retains
 compact rows; switching modes restores the selected row to view. Windows retains
 an existing large preference until the user explicitly picks a new mode.
-Preference-save failures restore the picker and display the error. Shared
-local-image routes remain pending.
+Preference-save failures restore the picker and display the error.
+Shared **Automatic / Always / Never** feed-icon settings now have a native
+Preferences picker and localized Automatic explanation. Automatic shows icons
+for mixed containers, or single feeds whose articles include both a byline and
+an author avatar (not necessarily on the same article). Standard rows follow
+the choice; columns retain feed icons. Coalesced realized-row updates and
+thumbnail geometry respect hidden icons without changing selection.
+Shared thumbnail availability now fills idle matching visible placeholders
+after another consumer downloads their images. Active/unrelated requests and
+already displayed images are left alone. UIKit-only preview collections,
+their assets/headings, and Swift access-control corrections are assessed
+separately rather than reproduced in Windows Preferences.
+Shared local-image routes remain pending.
 
 Thumbnail downloading now shares the existing icon resource pipeline without
 duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
@@ -127,8 +138,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **96 Ported, 25 Covered, 67 Skipped, and 317 Pending**
-source commits, backed by **112 source-attributed Windows port commits**. Two
+The inventory currently has **98 Ported, 29 Covered, 70 Skipped, and 308 Pending**
+source commits, backed by **114 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -141,7 +152,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are the shared feed-icon display settings and later image-cache
+Still pending are the shared downloaded-image cache and later image-cache
 rewrites, finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
@@ -155,7 +166,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 ## Verification at this checkpoint
 
 The x64 Windows application builds with zero warnings/errors. The complete parser
-suite passes 532 tests, and the shared application suite passes 485. Earlier
+suite passes 532 tests, and the shared application suite passes 494. Earlier
 related checks covered remote-account synchronization, OPML autosave, attachment
 and thumbnail storage/migration, and NewsBlur model decoding.
 
@@ -236,6 +247,21 @@ predicate fails native hidden-mode propagation. Restored native checks verify
 menu/Preferences round trips, None persistence, no request for a newly realized
 hidden row, locked-file UI recovery and selected-row visibility. The subsequent
 60-image/33-group reader gate and regular build pass.
+
+Feed-icon coverage adds nine policy/invalid-value cases, native Automatic
+single-feed suppression, Always/Never behavior, the column exception, shared
+Preferences updates, save-failure recovery and icon-aware thumbnail alignment.
+The original row icon wiring fails the new Never assertion. The first broad
+gate exposed two older favicon-pixel checks that assumed Always; those checks
+now select that mode explicitly, and the restored 60-image/33-group gate passes.
+
+The availability regression renders the actual offline placeholder and drains
+its requests before another consumer loads the image. Rendering is essential:
+deferred WinUI binding phases can otherwise rebind the cell and accidentally
+hide a missing availability subscription. After that precondition, restoring
+the original missing subscriptions fails the no-scroll recovery assertion.
+The restored native suite, 60-image/33-group reader gate, and regular/probe
+builds pass. All temporary tracing and negative-control changes were removed.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
