@@ -135,9 +135,13 @@ public sealed class DownloadedImageCacheTests
         cache.DownloadedImageChanged += (_, url) =>
         {
             Assert.Equal(replacement, File.ReadAllBytes(fixture.PathFor("icon")));
+            Assert.False(File.Exists(fixture.PathFor("icon") + "-48-Png"));
+            Assert.False(File.Exists(fixture.PathFor("icon") + "-144-Png"));
             changes.Add(url);
         };
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
+        await cache.SaveDerivedImageDataAsync(Url("icon"), "48-Png", [1]);
+        await cache.SaveDerivedImageDataAsync(Url("icon"), "144-Png", [2]);
         var originalCheck = Assert.IsType<DownloadedImageValidation>(
             await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon"))).NextCheck;
         fixture.Clock.Advance(TimeSpan.FromDays(10));
@@ -146,6 +150,8 @@ public sealed class DownloadedImageCacheTests
         await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         var expected = status == 200 && !corrupt ? replacement : Fixture.Image;
         Assert.Equal(expected, File.ReadAllBytes(fixture.PathFor("icon")));
+        Assert.Equal(status != 200 || corrupt, File.Exists(fixture.PathFor("icon") + "-48-Png"));
+        Assert.Equal(status != 200 || corrupt, File.Exists(fixture.PathFor("icon") + "-144-Png"));
         if (status == 200 && !corrupt) Assert.Equal([Url("icon")], changes);
         else Assert.Empty(changes);
         Assert.False(fixture.Database.RecentlyFailed(Url("icon")));
