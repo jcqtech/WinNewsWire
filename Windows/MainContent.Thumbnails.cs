@@ -310,7 +310,8 @@ public sealed partial class MainContent
     {
         if (!ShowsTimelineThumbnails) return;
         foreach (var pair in _timelineThumbnails.ToArray())
-            if (string.Equals(pair.Value.Url, failure.Url, StringComparison.Ordinal)) RefreshTimelineThumbnail(pair.Key);
+            if (pair.Key.Tag is Article article && failure.ArticleIds.Contains(article.ArticleID))
+                RefreshTimelineThumbnail(pair.Key);
         _thumbnailLookahead = null;
         QueueVisibleThumbnailRefresh();
     }
