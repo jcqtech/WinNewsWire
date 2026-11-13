@@ -6,6 +6,25 @@ namespace WinNewsWire.Images.Tests;
 public sealed class ArticleThumbnailFinderTests
 {
     [Theory]
+    [InlineData("https://article.test/with spaces/post#section", "https://home.test/", "https://feed.test/rss", "https://article.test/with%20spaces/photo.jpg")]
+    [InlineData(null, "https://home.test/posts/#section", "https://feed.test/rss", "https://home.test/posts/photo.jpg")]
+    [InlineData(null, null, "https://feed.test/rss/feed.xml#section", "https://feed.test/rss/photo.jpg")]
+    [InlineData("magnet:unsupported", "https://home.test/posts/", "https://feed.test/rss", "https://home.test/posts/photo.jpg")]
+    [InlineData(null, null, null, null)]
+    public async Task DiscoverySharesReaderBaseUrlsAndDoesNotUseUnrelatedExternalLinks(
+        string? link, string? homePage, string? feed, string? expected)
+    {
+        using var database = new ImageDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        var article = Article(html: "<img src='photo.jpg'>", link: link, external: "https://external.test/unrelated");
+        await finder.DiscoverThumbnailUrlsAsync([article], baseUrlResolver: item => item.BaseUrl(homePage, feed));
+        Assert.Equal(expected, finder.ThumbnailUrl(article, ThumbnailMode.Small));
+        var reopened = new ArticleThumbnailFinder(database);
+        await reopened.DiscoverThumbnailUrlsAsync([article]);
+        Assert.Equal(expected, reopened.ThumbnailUrl(article, ThumbnailMode.Small));
+    }
+
+    [Theory]
     [InlineData(ThumbnailMode.Small, "thumbnail.jpg")]
     [InlineData(ThumbnailMode.Large, "image.jpg")]
     public void ModesUseTheirOwnProvidedImagePriority(ThumbnailMode mode, string expected)
@@ -159,7 +178,8 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     private static Article Article(string id = "1", string? html = null, string? image = null,
-        string? thumbnail = null, IEnumerable<Attachment>? attachments = null)
-        => new("account", id, "feed", id, null, html, null, null, "https://example.com/posts/" + id, null,
+        string? thumbnail = null, IEnumerable<Attachment>? attachments = null,
+        string? link = "https://example.com/posts/1", string? external = null)
+        => new("account", id, "feed", id, null, html, null, null, link, external,
             null, image, null, null, null, attachments, new ArticleStatus(id, false, false, DateTime.UnixEpoch), thumbnail);
 }

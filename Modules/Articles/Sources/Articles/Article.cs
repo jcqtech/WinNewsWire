@@ -49,6 +49,16 @@ public sealed class Article : IEquatable<Article>
         ArticleID = articleID ?? CalculatedArticleID(feedID, uniqueID);
     }
 
+    public Uri? BaseUrl(string? feedHomePageUrl = null, string? feedUrl = null)
+    {
+        foreach (var candidate in new[] { RawLink, feedHomePageUrl, feedUrl })
+        {
+            if (!Uri.TryCreate(candidate, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https")) continue;
+            return new UriBuilder(url) { Fragment = "" }.Uri;
+        }
+        return null;
+    }
+
     public static string CalculatedArticleID(string feedID, string uniqueID)
         => DatabaseID.For($"{feedID} {uniqueID}");
 

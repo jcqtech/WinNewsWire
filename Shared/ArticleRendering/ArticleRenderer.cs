@@ -153,7 +153,7 @@ public static partial class ArticleRenderer
 
     private static string BaseUrl(Article article, Account.Feed? feed, string? extractedUrl)
     {
-        foreach (var candidate in new[] { extractedUrl, article.RawLink, feed?.HomePageUrl, feed?.Url })
+        foreach (var candidate in new[] { extractedUrl, article.BaseUrl(feed?.HomePageUrl, feed?.Url)?.AbsoluteUri })
         {
             if (!Uri.TryCreate(candidate, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https")) continue;
             var withoutFragment = new UriBuilder(url) { Fragment = "" }.Uri;

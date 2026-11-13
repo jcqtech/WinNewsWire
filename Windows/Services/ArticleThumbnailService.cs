@@ -95,21 +95,24 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(article);
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
-        return RunOperationAsync(token => FindImageAsync(article, mode, DownloadPriority.Visible, token, resolvedUrl), ct);
+        var baseUrl = ArticleBaseUrl(article);
+        return RunOperationAsync(token => FindImageAsync(article, mode, DownloadPriority.Visible, baseUrl, token, resolvedUrl), ct);
     }
 
     internal Task PrefetchThumbnailAsync(Article article, ThumbnailMode mode, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(article);
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
-        return RunOperationAsync(token => FindImageAsync(article, mode, DownloadPriority.Prefetch, token), ct);
+        var baseUrl = ArticleBaseUrl(article);
+        return RunOperationAsync(token => FindImageAsync(article, mode, DownloadPriority.Prefetch, baseUrl, token), ct);
     }
 
     internal Task<string?> ThumbnailUrlAsync(Article article, ThumbnailMode mode, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(article);
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
-        return RunOperationAsync(token => ResolveUrlAsync(article, mode, token), ct);
+        var baseUrl = ArticleBaseUrl(article);
+        return RunOperationAsync(token => ResolveUrlAsync(article, mode, baseUrl, token), ct);
     }
 
     internal Task<(byte[] Data, string MimeType)?> FullSizeImageAsync(string url, CancellationToken ct = default)
@@ -133,12 +136,23 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal Task DiscoverAsync(IEnumerable<Article> articles, CancellationToken ct = default)
     {
         var snapshot = articles.ToArray();
+        var baseUrls = snapshot.DistinctBy(article => article.ArticleID)
+            .ToDictionary(article => article.ArticleID, ArticleBaseUrl, StringComparer.Ordinal);
         return RunOperationAsync(async token =>
         {
             var backend = await _backend.Value.ConfigureAwait(false);
-            await backend.Finder.DiscoverThumbnailUrlsAsync(snapshot, token).ConfigureAwait(false);
+            await backend.Finder.DiscoverThumbnailUrlsAsync(snapshot, token, article => baseUrls[article.ArticleID]).ConfigureAwait(false);
             return true;
         }, ct);
+    }
+
+    private Uri? ArticleBaseUrl(Article article)
+    {
+        VerifyAccess();
+        if (article.BaseUrl() is { } baseUrl) return baseUrl;
+        var account = AppRuntime.AppService.Shared.Accounts.Accounts.FirstOrDefault(candidate => candidate.AccountID == article.AccountID);
+        var feed = account?.FlattenedFeeds().FirstOrDefault(candidate => candidate.FeedID == article.FeedID);
+        return article.BaseUrl(feed?.HomePageUrl, feed?.Url);
     }
 
     private Task<T> RunOperationAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken ct)
@@ -158,7 +172,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         }
     }
 
-    private async Task<string?> ResolveUrlAsync(Article article, ThumbnailMode mode, CancellationToken ct)
+    private async Task<string?> ResolveUrlAsync(Article article, ThumbnailMode mode, Uri? baseUrl, CancellationToken ct)
     {
 #if PARITY_PROBE
         Interlocked.Increment(ref ProbeUrlResolutions);
@@ -168,7 +182,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         if (backend.Finder.ThumbnailUrl(article, mode) is null)
         {
             var discovery = _discovering.GetOrAdd(article.ArticleID,
-                _ => new(() => backend.Finder.DiscoverThumbnailUrlsAsync([article], ct)));
+                _ => new(() => backend.Finder.DiscoverThumbnailUrlsAsync([article], ct, _ => baseUrl)));
             try { await discovery.Value.ConfigureAwait(false); }
             finally { _discovering.TryRemove(new KeyValuePair<string, Lazy<Task>>(article.ArticleID, discovery)); }
         }
@@ -176,10 +190,10 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     }
 
     private async Task<SoftwareBitmapSource?> FindImageAsync(Article article, ThumbnailMode mode, DownloadPriority priority,
-        CancellationToken ct, string? resolvedUrl = null)
+        Uri? baseUrl, CancellationToken ct, string? resolvedUrl = null)
     {
         var tried = new HashSet<string>(StringComparer.Ordinal);
-        var url = resolvedUrl ?? await ResolveUrlAsync(article, mode, ct).ConfigureAwait(false);
+        var url = resolvedUrl ?? await ResolveUrlAsync(article, mode, baseUrl, ct).ConfigureAwait(false);
         while (url is not null && tried.Add(url))
         {
             var backend = await _backend.Value.ConfigureAwait(false);
@@ -193,7 +207,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
                 if (await pending.Value.ConfigureAwait(false) is { } image) return image;
             }
             finally { _pending.TryRemove(new KeyValuePair<(string, ThumbnailMode), Lazy<Task<SoftwareBitmapSource?>>>(key, pending)); }
-            url = await ResolveUrlAsync(article, mode, ct).ConfigureAwait(false);
+            url = await ResolveUrlAsync(article, mode, baseUrl, ct).ConfigureAwait(false);
         }
         return null;
     }

@@ -219,6 +219,24 @@ internal static partial class ParityProbe
         networkAllowed = true;
         await CheckTimelineThumbnailsAsync(window, service, requested, heldStarted, releaseHeld, releaseMissing,
             allowed => networkAllowed = allowed);
+        var account = AppRuntime.AppService.Shared.Accounts.Accounts.First();
+        var baseFeed = account.AddFeed("https://thumbnail.test/base/rss/feed.xml", "Thumbnail base fixture");
+        Article WithoutLink(string id) => new(account.AccountID, id, baseFeed.FeedID, id, "Relative image fixture",
+            "<img src='relative.bmp'>", null, null, null, "https://external.test/unrelated", null, null,
+            null, null, null, null, new ArticleStatus(id, false, false, DateTime.UnixEpoch));
+        try
+        {
+            baseFeed.HomePageUrl = "https://thumbnail.test/base/home/";
+            var homePageLookup = service.ThumbnailUrlAsync(WithoutLink("homepage-base"), ThumbnailMode.Small);
+            baseFeed.HomePageUrl = null;
+            Require(await homePageLookup == "https://thumbnail.test/base/home/relative.bmp",
+                "Thumbnail discovery did not snapshot feed homepage metadata on the UI thread.");
+            var feedArticle = WithoutLink("feed-base");
+            Require(await service.ThumbnailUrlAsync(feedArticle, ThumbnailMode.Small) == "https://thumbnail.test/base/rss/relative.bmp"
+                && await service.ThumbnailAsync(feedArticle, ThumbnailMode.Small) is not null,
+                "Thumbnail discovery did not resolve and display an image relative to the feed URL.");
+        }
+        finally { account.RemoveFeed(baseFeed); }
         Require(failureOnUI && failures == 4, "Permanent thumbnail failures were not dispatched once to the UI.");
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
@@ -232,6 +250,7 @@ internal static partial class ParityProbe
             ReaderUsesOriginalSharedImage = true,
             RenderedImagesUseSharedSources = true, FailedLocalImagesFallBackWithoutPublisherScripts = true,
             HiddenModeLeavesReaderImagesRemote = true,
+            ReaderAndDiscoveryShareBaseUrls = true, FeedBasesCapturedOnUI = true,
             DecoderFailureStopsRetriesWithoutSuppressingIcons = true,
             VisibleNativePixels = true, RoundedClipping = true, ThemedPlaceholder = true,
             RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,

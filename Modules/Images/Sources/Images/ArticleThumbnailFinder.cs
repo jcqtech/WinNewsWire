@@ -26,7 +26,8 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             return _htmlUrls.TryGetValue(article.ArticleID, out var urls) ? urls.FirstOrDefault(IsUsable) : null;
     }
 
-    public async Task DiscoverThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default)
+    public async Task DiscoverThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default,
+        Func<Article, Uri?>? baseUrlResolver = null)
     {
         ArgumentNullException.ThrowIfNull(articles);
         ct.ThrowIfCancellationRequested();
@@ -43,6 +44,8 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         if (pending.Length == 0) return;
         try
         {
+            var baseUrls = pending.ToDictionary(article => article.ArticleID,
+                article => baseUrlResolver is null ? article.BaseUrl() : baseUrlResolver(article), StringComparer.Ordinal);
             var saved = await _database.FetchArticleThumbnailsAsync(pending.Select(article => article.ArticleID)).ConfigureAwait(false);
             var savedIds = saved.Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
             var parsed = await Task.Run(() =>
@@ -53,8 +56,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
                     ct.ThrowIfCancellationRequested();
                     var html = article.ContentHtml ?? article.Summary;
                     if (string.IsNullOrEmpty(html)) continue;
-                    Uri.TryCreate(article.RawLink ?? article.RawExternalLink, UriKind.Absolute, out var baseUrl);
-                    records.Add(new(article.ArticleID, HtmlImageParser.SignificantImageUrlStrings(html, baseUrl, 3)));
+                    records.Add(new(article.ArticleID, HtmlImageParser.SignificantImageUrlStrings(html, baseUrls[article.ArticleID], 3)));
                 }
                 return records;
             }, ct).ConfigureAwait(false);
