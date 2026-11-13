@@ -127,8 +127,10 @@ public sealed class FeedImageDownloaderTests
         Assert.NotNull(await fixture.Images.FaviconAsync(new(Feed, Home)));
     }
 
-    [Fact]
-    public async Task DeclaredIconWinsWithoutAnEarlyHomepageFallback()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DeclaredIconWinsWithoutAnEarlyHomepageFallbackOrSavingADiscoveredMapping(bool hasDiscoveredIcon)
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -139,14 +141,14 @@ public sealed class FeedImageDownloaderTests
             await release.Task.WaitAsync(ct);
             return Response(HttpStatusCode.OK, Image);
         });
-        await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, Home + "old.png");
+        if (hasDiscoveredIcon) await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, Home + "old.png");
         var pending = fixture.Images.IconAsync(new(Feed, Home, IconUrl: Home + "declared.png"));
         await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.False(pending.IsCompleted);
         Assert.Single(fixture.Requests);
         release.TrySetResult();
         Assert.Equal(Home + "declared.png", (await pending)?.Url);
-        Assert.Equal(Home + "declared.png", fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(hasDiscoveredIcon ? Home + "old.png" : null, fixture.ImageDatabase.IconUrl(Feed));
     }
 
     [Theory]
@@ -194,7 +196,7 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal(3, fixture.Requests.Count);
         fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
         Assert.Equal(icon, (await fixture.Images.IconAsync(feed with { IconUrl = icon }))?.Url);
-        Assert.Equal(icon, fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
         Assert.False(fixture.ImageDatabase.RecentlyFailed(icon));
         Assert.Equal(2, requests);
     }

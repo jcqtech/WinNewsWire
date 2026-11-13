@@ -165,10 +165,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         {
             var declared = await FetchImageAsync(SanitizedIconUrl(iconUrl), favicon: false, ct).ConfigureAwait(false);
             if (declared.Image is { } image)
-            {
-                await _database.SaveFeedIconUrlAsync(feed.FeedUrl, image.Url).ConfigureAwait(false);
                 return image;
-            }
             if (declared.IsTransient) return null;
         }
         else if (_database.IconUrl(feed.FeedUrl) is { } known)
