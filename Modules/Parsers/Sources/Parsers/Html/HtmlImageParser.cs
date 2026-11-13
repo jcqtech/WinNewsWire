@@ -31,8 +31,11 @@ public static class HtmlImageParser
                 return;
             }
             if (!XmlAscii.EqualsCaseInsensitive(name.Span, "img"u8)) return;
-            var width = PixelDimension(attributes["width"]);
-            var height = PixelDimension(attributes["height"]);
+            var style = StyleProperties(attributes["style"]);
+            if (attributes["hidden"] is not null
+                || style.GetValueOrDefault("display")?.StartsWith("none", StringComparison.OrdinalIgnoreCase) == true) return;
+            var width = PixelDimension(style.GetValueOrDefault("width")) ?? PixelDimension(attributes["width"]);
+            var height = PixelDimension(style.GetValueOrDefault("height")) ?? PixelDimension(attributes["height"]);
             foreach (var source in ImageSources(attributes))
             {
                 var url = ResolveUrl(source);
@@ -123,5 +126,17 @@ public static class HtmlImageParser
         if (dimension is null) return null;
         if (dimension.EndsWith("px", StringComparison.OrdinalIgnoreCase)) dimension = dimension[..^2];
         return int.TryParse(dimension, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) ? number : null;
+    }
+
+    private static Dictionary<string, string> StyleProperties(string? style)
+    {
+        var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var declaration in style?.Split(';') ?? [])
+        {
+            var separator = declaration.IndexOf(':');
+            if (separator < 0) continue;
+            properties[declaration[..separator].Trim()] = declaration[(separator + 1)..].Trim();
+        }
+        return properties;
     }
 }

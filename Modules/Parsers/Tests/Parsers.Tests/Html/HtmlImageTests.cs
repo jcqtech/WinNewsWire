@@ -135,6 +135,18 @@ public class HtmlImageTests
     public void FindsLazySrcsetsAndOriginalSources(string html)
         => Assert.Equal("https://example.com/photo.jpg", First(html)?.Url);
 
+    [Theory]
+    [InlineData("""hidden""")]
+    [InlineData("""style=" DISPLAY : NONE !important; " """)]
+    [InlineData("""width="640" height="480" style="width: 1px; height: 1px" """)]
+    public void HiddenAndCssSizedTrackingImagesAreSkipped(string attributes)
+        => Assert.Equal("https://example.com/photo.jpg",
+            First($"""<img src="/hidden.jpg" {attributes}><img src="/photo.jpg">""")?.Url);
+
+    [Fact]
+    public void CssDimensionsOverrideTinyHtmlAttributes()
+        => Assert.NotNull(First("""<img src="/photo.jpg" width="1" height="1" style="width: 640PX; height: 480px">"""));
+
     [Fact]
     public void MultipleCandidatesRemainUniqueAndInDocumentOrderWithinLimit()
     {
