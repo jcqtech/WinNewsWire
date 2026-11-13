@@ -110,6 +110,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         }, ct);
 
     internal static string DerivedDiskKey(string url, string suffix) => url.Md5Hex() + "-" + suffix;
+    internal string SourcePath(string url) => _diskCache.PathForKey(url.Md5Hex());
 
     private static string BaseDiskKey(string key)
     {

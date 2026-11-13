@@ -29,6 +29,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly SemaphoreSlim? _sourceDiskGate;
     private readonly Func<string, ImageResourceRequest, Task>? _sourceWasRead;
     private readonly Func<string, long, Task>? _sourceWasSaved;
+    private string ScaledCopySuffix => FormattableString.Invariant($"{_configuration.MaxPixelSize}-{_configuration.Format}");
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, Task<ImageResourceResult>> _pending = new(StringComparer.Ordinal);
@@ -280,6 +281,22 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
 
     private async Task<ImageResourceResult> ImageFromSourceAsync(string url, ImageResourceRequest request, CancellationToken ct)
     {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Images require the Windows image decoder.");
+        var scaled = await _sourceCache!.DerivedImageDataAsync(url, ScaledCopySuffix, ct).ConfigureAwait(false);
+        if (scaled is not null)
+        {
+            try
+            {
+                _ = WindowsImage.LargestFramePixelSize(scaled);
+                await _sourceCache.ImageWasUsedAsync(url, checksForUpdates: true, ct).ConfigureAwait(false);
+                return Cache(new(url, _sourceCache.SourcePath(url), scaled));
+            }
+            catch (InvalidDataException error)
+            {
+                Trace.TraceWarning($"Could not decode scaled icon {url}; rebuilding from its original: {error}");
+                await _sourceCache.DeleteDerivedImageDataAsync(url, ScaledCopySuffix, ct).ConfigureAwait(false);
+            }
+        }
         var result = await _sourceCache!.FetchAsync(url, request with { ChecksForUpdates = true }, ct).ConfigureAwait(false);
         if (result.Image is not { } source) return result;
         try
@@ -287,6 +304,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             var image = source with { Data = ProcessImage(source.Data) };
             ct.ThrowIfCancellationRequested();
+            await _sourceCache.SaveDerivedImageDataAsync(url, ScaledCopySuffix, image.Data, ct).ConfigureAwait(false);
             return Cache(image);
         }
         catch (InvalidDataException error)
@@ -436,6 +454,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         lock (_gate) _pending.TryGetValue(url, out pending);
         // An older decode must finish before invalidation, or it can cache stale pixels again.
         if (pending is not null) await pending.WaitAsync(ct).ConfigureAwait(false);
+        if (_sourceCache is not null)
+            await _sourceCache.DeleteDerivedImageDataAsync(url, ScaledCopySuffix, ct).ConfigureAwait(false);
         lock (_gate)
         {
             ct.ThrowIfCancellationRequested();

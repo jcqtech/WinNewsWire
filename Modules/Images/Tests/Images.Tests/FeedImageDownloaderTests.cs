@@ -256,10 +256,11 @@ public sealed class FeedImageDownloaderTests
     [Fact]
     public async Task CorruptDiskImageIsDiscardedAndReplacedByARealImage()
     {
-        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)), maxPixelSize: 48);
         var source = new FeedImageSource(Feed, Home, Home + "cached.png");
         var first = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
         await File.WriteAllBytesAsync(first.Path, "corrupt cached bytes"u8.ToArray());
+        await fixture.Images.DownloadedImages.DeleteDerivedImageDataAsync(source.FaviconUrl!, "48-Png");
         fixture.Images.EmptyCache();
         fixture.Clock.Advance(TimeSpan.FromHours(1));
         var repaired = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
@@ -488,6 +489,44 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
+    public async Task ScaledIconsSurviveMemoryEvictionAndColdServicesWithoutRescaling()
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native icon decoding requires Windows.");
+        await using var fixture = new Fixture((_, _) =>
+            Task.FromResult(Response(HttpStatusCode.OK, Bitmap(1600, 800))), maxPixelSize: 48);
+        const string url = Home + "scaled.bmp";
+        var feed = new FeedImageSource(Feed, Home, IconUrl: url);
+        var image = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(feed));
+        var scaled = await fixture.Images.DownloadedImages.DerivedImageDataAsync(url, "48-Png");
+        Assert.Equal(image.Data, scaled);
+        // A valid distinguishable representation proves hits do not silently rescale the original.
+        var saved = Bitmap(40, 20);
+        await fixture.Images.DownloadedImages.SaveDerivedImageDataAsync(url, "48-Png", saved);
+        fixture.Images.EmptyCache();
+        Assert.Equal(saved, (await fixture.Images.IconAsync(feed))?.Data);
+        await fixture.ReopenImagesAsync();
+        Assert.Equal(saved, (await fixture.Images.IconAsync(feed))?.Data);
+        Assert.Equal((1600u, 800u), WindowsImage.LargestFramePixelSize(await File.ReadAllBytesAsync(image.Path)));
+        Assert.Single(fixture.Requests);
+    }
+
+    [Fact]
+    public async Task CorruptScaledIconsRebuildFromTheOriginalWithoutPoisoningTheUrl()
+    {
+        await using var fixture = new Fixture((_, _) =>
+            Task.FromResult(Response(HttpStatusCode.OK, Bitmap(1600, 800))), maxPixelSize: 48);
+        const string url = Home + "corrupt-scaled.bmp";
+        var feed = new FeedImageSource(Feed, Home, IconUrl: url);
+        var original = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(feed));
+        await fixture.Images.DownloadedImages.SaveDerivedImageDataAsync(url, "48-Png", "invalid image"u8.ToArray());
+        fixture.Images.EmptyCache();
+        Assert.Equal(original.Data, (await fixture.Images.IconAsync(feed))?.Data);
+        Assert.Equal(original.Data, await fixture.Images.DownloadedImages.DerivedImageDataAsync(url, "48-Png"));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+        Assert.Single(fixture.Requests);
+    }
+
+    [Fact]
     public async Task ChangedIconSourcesKeepTheOriginalFullSizeReplacement()
     {
         int requests = 0;
@@ -700,7 +739,10 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal(original, Assert.IsType<DownloadedImage>(await fullSize).Data);
         Assert.Equal((64u, 32u), WindowsImage.LargestFramePixelSize(iconImage.Data));
         Assert.Equal(largeImage.Data, await File.ReadAllBytesAsync(largeImage.Path));
-        Assert.Single(Directory.GetFiles(Path.Combine(fixture.CacheDirectory, "DownloadedImages")));
+        var files = Directory.GetFiles(Path.Combine(fixture.CacheDirectory, "DownloadedImages"));
+        Assert.Equal(2, files.Length);
+        Assert.Contains(largeImage.Path, files);
+        Assert.Equal(iconImage.Data, await fixture.Images.DownloadedImages.DerivedImageDataAsync(url, "64-Png"));
         Assert.Single(fixture.Requests);
         Assert.Single(fixture.Activity.CompletedActivities);
     }
