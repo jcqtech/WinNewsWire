@@ -196,7 +196,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             bool transient = (int)response.StatusCode is >= 500 and <= 599 or 408 or 429;
             _log.DidFail(activity, new HttpRequestException("Image request returned HTTP " + (int)response.StatusCode
                 + (response.Success ? " with no image bytes." : "."), null, response.StatusCode));
-            if (transient) NoteTransientFailure(url, response.RetryAfter);
+            if (transient) NoteTransientFailure(url, response.RetryAfter, (int)response.StatusCode);
             else
             {
                 ClearRetryDelay(url);
@@ -229,7 +229,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             if (_configuration.StoresSourceData)
             {
-                NoteTransientFailure(url);
+                NoteTransientFailure(url, statusCode: (int)response.StatusCode);
                 return new(null, IsTransient: true, DecodingFailed: true);
             }
             ClearRetryDelay(url);
@@ -396,7 +396,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
     }
 
-    private void NoteTransientFailure(string url, TimeSpan? retryAfter = null)
+    private void NoteTransientFailure(string url, TimeSpan? retryAfter = null, int? statusCode = null)
     {
         lock (_gate)
         {
@@ -423,9 +423,12 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             }
             _retryDelays.TryGetValue(url, out var previous);
             _retryDelays[url] = NextDelay(previous);
-            string host = new Uri(url).IdnHost;
-            _hostRetryDelays.TryGetValue(host, out var previousHost);
-            _hostRetryDelays[host] = NextDelay(previousHost);
+            if (statusCode is null or 429 or 503)
+            {
+                string host = new Uri(url).IdnHost;
+                _hostRetryDelays.TryGetValue(host, out var previousHost);
+                _hostRetryDelays[host] = NextDelay(previousHost);
+            }
         }
     }
 

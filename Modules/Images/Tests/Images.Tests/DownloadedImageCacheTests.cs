@@ -715,6 +715,41 @@ public sealed class DownloadedImageCacheTests
         finally { release.TrySetResult(); }
     }
 
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(429, true)]
+    [InlineData(503, true)]
+    [InlineData(200, false)]
+    [InlineData(408, false)]
+    [InlineData(500, false)]
+    [InlineData(502, false)]
+    [InlineData(504, false)]
+    [InlineData(599, false)]
+    public async Task OnlyRateLimitsOverloadAndTransportFailuresPauseTheEntireHost(int statusCode, bool blocksHost)
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((request, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            if (request.RequestUri!.AbsolutePath != "/failed.png")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Fixture.Image) });
+            if (statusCode == 0) throw new HttpRequestException("The host did not respond.");
+            return Task.FromResult(new HttpResponseMessage((HttpStatusCode)statusCode)
+            {
+                Content = new ByteArrayContent(statusCode == 200 ? "<html>Sign in</html>"u8.ToArray() : [])
+            });
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.Null(await fixture.FetchAsync(cache, "failed"));
+        Assert.Null(await fixture.FetchAsync(cache, "failed"));
+        Assert.Equal(1, requests);
+        var peer = await fixture.FetchAsync(cache, "peer");
+        Assert.Equal(blocksHost, peer is null);
+        Assert.Equal(blocksHost ? 1 : 2, requests);
+        Assert.Null(await fixture.FetchAsync(cache, "failed"));
+        Assert.Equal(blocksHost ? 1 : 2, requests);
+    }
+
     [Fact]
     public async Task ConsecutiveTransientFailuresOnDifferentUrlsDoubleTheirHostDelay()
     {
