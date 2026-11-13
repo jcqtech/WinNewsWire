@@ -92,6 +92,17 @@ public sealed class ArticleRendererTests
         Assert.Equal("https://reader.example/post", rendering.BaseUrl);
     }
 
+    [Fact]
+    public void MacRumorsCleanupAppliesOnlyToFeedContent()
+    {
+        var feed = new Feed("account", "feed", "https://feeds.macrumors.com/MacRumors-All");
+        const string body = "<ul><br/><li>Item</li><br/></ul>";
+        Assert.Equal("<ul><li>Item</li></ul>",
+            ArticleRenderer.Render(Article(body: body), feed: feed, theme: Theme()).Html);
+        var extracted = new ExtractedArticle(null, null, null, body, "https://macrumors.com/post");
+        Assert.Equal(body, ArticleRenderer.Render(Article(body: body), extracted, feed: feed, theme: Theme()).Html);
+    }
+
     [Theory]
     [InlineData(ArticleTextSize.Small, "smallText")]
     [InlineData(ArticleTextSize.Medium, "mediumText")]

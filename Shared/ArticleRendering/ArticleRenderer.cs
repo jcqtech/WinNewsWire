@@ -35,6 +35,7 @@ public static class ArticleRenderer
         if (extracted?.Content is null)
         {
             body = ArticleRenderingSpecialCases.InsertParagraphTagsIfNeeded(body, feed?.Url, feed?.HomePageUrl);
+            body = ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(body, feed?.Url, feed?.HomePageUrl);
             if (!string.IsNullOrEmpty(article.RawImageLink) && !body.Contains("<img", StringComparison.OrdinalIgnoreCase))
                 body = "<p><img src=\"" + Html(article.RawImageLink) + "\" alt=\"\"></p>" + body;
         }

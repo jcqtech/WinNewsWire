@@ -175,4 +175,38 @@ public class ArticleRenderingSpecialCasesTests
         var hackaday = new Uri("https://hackaday.com/2025/12/01/necroprinting-isnt-as-bad-as-it-sounds/");
         Assert.Equal(hackaday, ArticleRenderingSpecialCases.BaseUrlForRendering(hackaday));
     }
+
+    [Fact]
+    public void MacRumorsListsLoseStrayBreaksButKeepSurroundingContent()
+    {
+        const string html = "Intro<br/><ul>\n<br/>\n<li>Item</li>\n<br/>\n</ul>After.";
+        Assert.Equal("Intro<br/><ul>\n<li>Item</li>\n</ul>After.",
+            ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(html, "https://feeds.macrumors.com/MacRumors-All", null));
+    }
+
+    [Fact]
+    public void MacRumorsTablesKeepBreaksInsideCells()
+    {
+        const string html = "<table class=\"specs\">\n<br/>\n<tr>\n<br/>\n<th>Height</th>\n<br/>\n<td>closed<br/>open</td>\n<br/>\n</tr>\n<br/>\n</table><br/>After.";
+        const string expected = "<table class=\"specs\">\n<tr>\n<th>Height</th>\n<td>closed<br/>open</td>\n</tr>\n</table><br/>After.";
+        Assert.Equal(expected, ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(html, null, "https://www.macrumors.com/"));
+    }
+
+    [Theory]
+    [InlineData("https://example.com/feed.xml")]
+    [InlineData("https://notmacrumors.com/feed.xml")]
+    public void OtherFeedsKeepStrayBreaks(string feedUrl)
+    {
+        const string html = "<ul><br/><li>Item</li><br/></ul>";
+        Assert.Equal(html, ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(html, feedUrl, null));
+    }
+
+    [Fact]
+    public void MacRumorsKeepsBreaksAtStartOfListItemsAndCells()
+    {
+        const string html = "<ul><li><br/>Item</li></ul><table><tr><td><br/>Cell</td></tr></table>";
+        Assert.Equal(html, ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(html, "https://macrumors.com/", null));
+        Assert.Equal("<UL><LI>Item</LI></UL>", ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(
+            "<UL><BR /><br><LI>Item</LI><Br/></UL>", "https://macrumors.com/", null));
+    }
 }

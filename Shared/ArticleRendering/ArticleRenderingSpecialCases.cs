@@ -20,6 +20,9 @@ public static class ArticleRenderingSpecialCases
     private static readonly Regex RedirectScript = new(@"<script[^>]*>[^<]*location\.href\s*=(?!=)[^<]*</script>",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex ConsecutiveReturns = new(@"(?:\r?\n[ \t]*){2,}", RegexOptions.Compiled);
+    private static readonly Regex StrayLineBreaks = new(
+        @"(<(?:ul|ol|table|thead|tbody|tfoot|tr)\b[^>]*>|</(?:li|tr|td|th|thead|tbody|tfoot)>)(?:\s*<br\s*/?>)+",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static bool ShouldDisableJavaScript(IEnumerable<string?> urls)
         => urls.Any(url => url is not null && SpecialCases.UrlStringMatchesDomain(url, ["slashdot.org"]));
@@ -30,6 +33,11 @@ public static class ArticleRenderingSpecialCases
 
     public static Uri BaseUrlForRendering(Uri url)
         => url.IsYouTubeUrl() ? new Uri("https://netnewswire.com/") : url;
+
+    public static string RemoveStrayLineBreaksIfNeeded(string html, string? feedUrl, string? homePageUrl)
+        => new[] { feedUrl, homePageUrl }.Any(url => url is not null
+            && SpecialCases.UrlStringMatchesDomain(url, ["macrumors.com"]))
+            ? StrayLineBreaks.Replace(html, "$1") : html;
 
     public static string RemoveLocationHrefRedirectScripts(string html)
         => html.Contains("location.href", StringComparison.Ordinal) ? RedirectScript.Replace(html, "") : html;
