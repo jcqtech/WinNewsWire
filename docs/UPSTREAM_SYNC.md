@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`c655a0d6590e190ab72646cda8c03f4a28f909b4`**. This synchronization is in progress.
+`a7a1c43e7ba32145c2a1c58923d7e0f9920f5f00`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is image-field-only choice caching, `eb22462a06aee2260f407a1e551070a67abae8d1`;
+is revalidation network/retry gating, `1b6b3b072f4540515ab7d4ee1dd31019f4730379`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -76,20 +76,24 @@ indexed traversal, avoiding both byte-array and boxed-enumerator allocations;
 long and non-ASCII names retain the full UTF-8 fallback.
 Contentless articles are excluded before database discovery, avoiding stale
 HTML thumbnails while permitting discovery if content arrives later.
-Chosen URLs, including negative selections, are now cached per immutable article
-instance and thumbnail mode, bounded to 50,000 entries per mode. Replacing an
-article instance recomputes its selection. Failure notifications invalidate both
+Chosen URLs, including negative selections, are cached by article ID and image
+fields per thumbnail mode, bounded to 50,000 entries per mode. Only raw image
+links and ordered value-equal attachments are retained, never the article/HTML.
+Replacing an article reuses the choice unless its image fields change.
+Failure notifications invalidate both
 modes first and carry only affected article IDs, allowing native rows to refresh
 without relying on stale per-view URL snapshots. New HTML records invalidate
 dependent choices too; clearing the HTML cache also clears its dependent choices,
 so cached selections cannot accidentally prevent a persistent-record reload.
-The finder can now preload saved positive/negative URLs without parsing HTML or
-publishing availability events. Windows exposes an awaited database operation
-rather than blocking WinUI. Missing records remain eligible for later discovery.
-Windows awaits this preload before applying initial Large rows and before
-mode/layout geometry changes. Generation checks reject superseded loads, and
+The combined finder loads saved positive/negative URLs, signals readiness without
+availability events, then parses and notifies only missing HTML records.
+Windows awaits database readiness rather than blocking WinUI, while the full
+remaining parse is tracked, reported on failure, canceled and drained.
+Initial Small and Large rows and mode/layout geometry changes await saved
+readiness. Generation checks reject superseded loads, and
 selection reconciliation happens after the await to preserve intervening user
-changes. Small rows do not have a variable-height thumbnail decision.
+changes. The superseded public preload/discovery APIs are removed; the final
+finder uses one database pass and the existing asynchronous Windows queue.
 Standard timeline rows now display
 small thumbnails with local HTML discovery, persisted-failure notifications,
 automatic candidate fallback, and a one-screen download lookahead. Recycled
@@ -142,7 +146,7 @@ duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
 The new shared `DownloadedImages` cache coalesces reads/downloads across feed
 icons, reader images and both thumbnail sizes. It stores original full-size encoded
 bytes, including animation, per URL without a second raw HTTP-body cache. Native thumbnails decode
-those bytes directly at 256/1200 pixels, respect EXIF orientation, and retain no
+those bytes directly at up to 256/1200 pixels, respect EXIF orientation, and retain no
 per-size encoded thumbnail copies. Scaled icon/favicon representations now also
 persist beside the original, keyed by size and encoding, avoiding repeated
 resizing after memory eviction or service recreation. Corrupt copies are rebuilt
@@ -191,8 +195,13 @@ are persisted. Known unsuitable thumbnails are skipped using those dimensions,
 independently of transient download failures or their expiry. Native decoding
 still checks dimensions; unreadable thumbnails are excluded for that finder's
 lifetime without suppressing otherwise usable feed icons. Nonempty unreadable
-HTTP-200 sources also exclude the candidate for the session, without a persisted
-five-day URL failure; network notifications reset those decode exclusions.
+HTTP-200 sources are excluded in the shared source downloader until a network
+notification, not just an elapsed retry delay, without a persisted five-day
+failure. Candidate fallback receives the transient decoding verdict.
+Network notifications reset decoding exclusions and chosen URL caches, enabling
+the same article instance to retry. Once a feed icon is known to be a non-image,
+subsequent requests may use homepage icon metadata; ordinary transient errors
+still do not cause premature fallback.
 Favicons share the same disk source and conditional-update policy, retaining
 only their small display representation in memory. Windows repairs missing
 display paths through the shared downloader without replacing full-size source
@@ -278,6 +287,11 @@ bounds decoded images by URL/mode to 128 MiB, accounting actual bitmap stride.
 Memory pressure clears the caches, and shutdown drains work before closing the
 metadata database. The native thumbnail control supports whole-image fitting,
 rounded clipping, themed placeholders, and recycling to an empty image.
+Memory pressure also clears finder HTML and chosen URL caches without
+cold-initializing its backend. Native Large images now decode to the fixed
+180-logical-pixel displayed height at Windows display scale, while retaining the
+1200-pixel longest-side cap. Oriented dimensions constrain rotation correctly;
+landscape, rotated, wide and portrait native fixtures verify actual sizes.
 Native decoding now selects the first largest-dimension frame before both
 significance checks and decoding, rather than validating a large frame but
 decoding a tiny first frame. Unreadable frame headers are reported and skipped;
@@ -309,8 +323,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **167 Ported, 58 Covered, 79 Skipped, and 201 Pending**
-source commits, backed by **182 source-attributed Windows port commits**.
+The inventory currently has **176 Ported, 61 Covered, 79 Skipped, and 189 Pending**
+source commits, backed by **191 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
