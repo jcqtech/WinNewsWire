@@ -34,6 +34,12 @@ public class HtmlImageTests
         => Assert.Equal("https://example.com/1536.jpg",
             First("""<img srcset="/2048.jpg 2048w, /640.jpg 640w, /1536.jpg 1536w">""")?.Url);
 
+    [Theory]
+    [InlineData("/small.jpg 400w 300h, /photo.jpg 800w 600h")]
+    [InlineData("\n/small.jpg 400w,\n/photo.jpg 800w\n")]
+    public void SrcsetAcceptsHeightDescriptorsAndLineBreaks(string srcset)
+        => Assert.Equal("https://example.com/photo.jpg", First($"""<img srcset="{srcset}">""")?.Url);
+
     [Fact]
     public void SharingButtonsAndGravatarsDoNotDisplaceArticlePhoto()
     {

@@ -97,6 +97,9 @@ public static class HtmlImageParser
                 descriptor = remaining[..descriptorLength].Trim();
                 remaining = remaining[descriptorLength..];
             }
+            var sizeDescriptorLength = 0;
+            while (sizeDescriptorLength < descriptor.Length && !char.IsWhiteSpace(descriptor[sizeDescriptorLength])) sizeDescriptorLength++;
+            descriptor = descriptor[..sizeDescriptorLength];
             var size = descriptor.Length > 0 && double.TryParse(descriptor[..^1], NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var parsed) ? parsed : 1;
             if (url.IsEmpty) continue;
