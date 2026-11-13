@@ -27,13 +27,16 @@ public static class HtmlImageParser
                 return;
             }
             if (!XmlAscii.EqualsCaseInsensitive(name.Span, "img"u8)) return;
-            var source = ImageSource(attributes);
-            var url = ResolveUrl(source);
             var width = PixelDimension(attributes["width"]);
             var height = PixelDimension(attributes["height"]);
-            if (url is null || !SignificantImageFilter.IsSignificant(url, width, height, attributes["class"], _enclosingLinkUrl)) return;
-            Image = new(url, width, height);
-            scanner.StopParsing();
+            foreach (var source in ImageSources(attributes))
+            {
+                var url = ResolveUrl(source);
+                if (url is null || !SignificantImageFilter.IsSignificant(url, width, height, attributes["class"], _enclosingLinkUrl)) continue;
+                Image = new(url, width, height);
+                scanner.StopParsing();
+                return;
+            }
         }
 
         public void DidEndTag(HtmlScanner scanner, ReadOnlyMemory<byte> name)
@@ -43,17 +46,19 @@ public static class HtmlImageParser
 
         private string? ResolveUrl(string? value)
         {
-            if (value is null) return null;
+            value = value?.Trim();
+            if (string.IsNullOrEmpty(value) || value.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return null;
             if (baseUrl is not null && Uri.TryCreate(baseUrl, value, out var resolved)) return resolved.AbsoluteUri;
             if (Uri.TryCreate(value, UriKind.Absolute, out var absolute)) return absolute.AbsoluteUri;
             return null;
         }
 
-        private static string? ImageSource(HtmlAttributes attributes)
+        private static IEnumerable<string?> ImageSources(HtmlAttributes attributes)
         {
-            var src = attributes["src"]?.Trim();
-            return !string.IsNullOrEmpty(src) && !src.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
-                ? src : LargestSrcsetCandidate(attributes["srcset"]);
+            yield return attributes["data-lazy-src"];
+            yield return attributes["data-src"];
+            yield return attributes["src"];
+            yield return LargestSrcsetCandidate(attributes["srcset"]);
         }
     }
 

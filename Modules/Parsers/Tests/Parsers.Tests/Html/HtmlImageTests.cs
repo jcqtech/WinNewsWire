@@ -88,6 +88,14 @@ public class HtmlImageTests
     public void RepresentativeSmallerAndRectangularImagesAreAccepted(int width, int height)
         => Assert.NotNull(First($"""<img src="/photo.jpg" width="{width}" height="{height}">"""));
 
+    [Theory]
+    [InlineData("""<img data-lazy-src="/photo.jpg" src="/placeholder.svg">""")]
+    [InlineData("""<img data-src="/photo.jpg" src="/placeholder.svg">""")]
+    [InlineData("""<img data-lazy-src="/placeholder.svg" data-src="/photo.jpg" src="/other.jpg">""")]
+    [InlineData("""<img src="/placeholder.svg" srcset="/photo.jpg 1024w">""")]
+    public void TriesLazySourcesAndRejectsPlaceholdersBeforeFallback(string html)
+        => Assert.Equal("https://example.com/photo.jpg", First(html)?.Url);
+
     private static HtmlImage? First(string html)
         => HtmlImageParser.FirstSignificantImage(new ParserData("https://example.com/posts/1", Encoding.UTF8.GetBytes(html)));
 }
