@@ -115,6 +115,34 @@ internal static partial class ParityProbe
             Require(gearMenu.Items.OfType<MenuFlyoutItem>().Any(item => item.Text == "New Feed\u2026")
                 && gearMenu.Items.OfType<MenuFlyoutItem>().Any(item => !item.IsEnabled && item.Text == model.SelectedSidebarItem!.Title),
                 "Gear menu lost creation commands or the selected-subscription heading.");
+            Require(gearMenu.Items[0] is MenuFlyoutItem { Text: "Refresh", IsEnabled: true },
+                "Gear menu lost the available Refresh command.");
+            var gearClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void GearClosed(object? sender, object args) => gearClosed.TrySetResult();
+            gearMenu.Closed += GearClosed;
+            try
+            {
+                InvokeMenuItem(gearMenu.Items.OfType<MenuFlyoutItem>().Single(item => item.Text == "Hide Sidebar"));
+                await WaitFor(() => Task.FromResult(!model.IsSidebarVisible && gear.ActualWidth > 0),
+                    "Gear menu sidebar hiding");
+                gearMenu.Hide();
+                await gearClosed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            finally { gearMenu.Closed -= GearClosed; }
+            gearMenu.ShowAt(gear);
+            try
+            {
+                await WaitFor(() => Task.FromResult(gearMenu.Items.OfType<MenuFlyoutItem>()
+                    .Any(item => item.Text == "Show Sidebar" && item.IsLoaded)), "Gear menu sidebar restoration command");
+            }
+            catch (TimeoutException error)
+            {
+                throw new InvalidOperationException($"Sidebar={model.IsSidebarVisible}, gear={gear.IsLoaded}/{gear.ActualWidth}, "
+                    + $"status={surface.Visibility}/{surface.ActualWidth}, menu={HasMenuPopup(window)}, "
+                    + $"items={string.Join("; ", gearMenu.Items.OfType<MenuFlyoutItem>().Select(item => $"{item.Text}/{item.IsLoaded}"))}.", error);
+            }
+            InvokeMenuItem(gearMenu.Items.OfType<MenuFlyoutItem>().Single(item => item.Text == "Show Sidebar"));
+            await WaitFor(() => Task.FromResult(model.IsSidebarVisible), "Gear menu sidebar restoration");
             gearMenu.Hide();
             var themes = (MenuFlyout)theme.Flyout;
             themes.ShowAt(theme);

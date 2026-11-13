@@ -94,6 +94,8 @@ public sealed partial class MainContent
                 ScheduleStatusBarMidnight();
             }
             UpdateStatusBar();
+            QueueToolbarUpdate();
+            (App.WindowForXamlRoot(XamlRoot) as MainWindow)?.UpdateRefreshAvailability();
         })) Interlocked.Exchange(ref _statusBarUpdateQueued, 0);
     }
 
@@ -181,6 +183,12 @@ public sealed partial class MainContent
     {
         var menu = (MenuFlyout)sender;
         menu.Items.Clear();
+        if (AppRuntime.AppService.Shared.Accounts.CanRefresh)
+            menu.Items.Add(MakeMenuItem(AppStrings.Get("Refresh"), "\uE72C", ReloadButton_Click,
+                isEnabled: !ViewModel.IsLoading));
+        menu.Items.Add(MakeMenuItem(AppStrings.Get(ViewModel.IsSidebarVisible ? "ToolbarHideSidebar" : "ToolbarShowSidebar"),
+            null, ToggleSidebarButton_Click, isEnabled: !ViewModel.IsUnifiedLayout));
+        menu.Items.Add(new MenuFlyoutSeparator());
         BuildSidebarMenuForNoSelection(menu);
         var selection = ViewModel.SelectedSidebarItems;
         if (selection.Count == 0) return;

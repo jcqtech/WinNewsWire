@@ -25,6 +25,11 @@ public sealed class CombinedRefreshProgress
 
     public event EventHandler<ProgressInfo>? ProgressChanged;
 
+    internal bool IsRefreshing(string accountID)
+    {
+        lock (_gate) return _refreshingAccounts.Contains(accountID);
+    }
+
     /// <summary>Begin tracking progress for <paramref name="account"/>.</summary>
     public void AddAccount(Account account)
     {

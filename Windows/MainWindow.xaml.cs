@@ -833,9 +833,17 @@ public sealed partial class MainWindow : Window
 
     private bool _menuTogglesHooked;
 
+    internal void UpdateRefreshAvailability()
+    {
+        if (_closed) return;
+        MenuRefreshAll.IsEnabled = MenuRefresh.IsEnabled =
+            !MainContentControl.ViewModel.IsLoading && AppRuntime.AppService.Shared.Accounts.CanRefresh;
+    }
+
     private void SyncMenuToggles()
     {
         var vm = MainContentControl.ViewModel;
+        UpdateRefreshAvailability();
         MenuShowStatusBar.Text = AppStrings.Get("StatusBarShow");
         MenuShowStatusBar.IsChecked = Core.AppDefaults.Shared.ShowStatusBar;
         MenuShowStatusBarThemes.Text = AppStrings.Get("StatusBarShowThemes");
@@ -883,7 +891,7 @@ public sealed partial class MainWindow : Window
                 or nameof(vm.IsReadFiltered) or nameof(vm.IsSidebarReadFiltered) or nameof(vm.CanToggleReadFilter) or nameof(vm.SearchAllAccounts)
                 or nameof(vm.SelectedArticles) or nameof(vm.SelectedArticle)
                 or nameof(vm.ArticleListUnreadCount) or nameof(vm.ArticleItems)
-                or nameof(vm.CanUndo) or nameof(vm.CanRedo) or nameof(vm.UndoTitle) or nameof(vm.RedoTitle))
+                or nameof(vm.CanUndo) or nameof(vm.CanRedo) or nameof(vm.UndoTitle) or nameof(vm.RedoTitle) or nameof(vm.IsLoading))
                 SyncMenuToggles();
         };
     }

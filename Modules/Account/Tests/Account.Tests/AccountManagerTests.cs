@@ -14,6 +14,25 @@ public class AccountManagerTests : IDisposable
     private readonly TestAccountManager _storage = new();
 
     [Fact]
+    public void RefreshAvailabilityTracksTheEntireActiveAccountSession()
+    {
+        using var manager = new AccountManager();
+        Assert.True(manager.CanRefresh);
+        manager.DefaultAccount.IsActive = false;
+        Assert.False(manager.CanRefresh);
+        manager.DefaultAccount.IsActive = true;
+        using (var refresh = CombinedRefreshProgress.Shared.BeginRefresh(manager.DefaultAccount.AccountID))
+        {
+            Assert.True(manager.RefreshInProgress);
+            Assert.False(manager.CanRefresh);
+            refresh.Report(new ProgressInfo(0, 1, 1));
+            Assert.False(manager.CanRefresh);
+        }
+        Assert.False(manager.RefreshInProgress);
+        Assert.True(manager.CanRefresh);
+    }
+
+    [Fact]
     public void LastRefreshIncludesOnlyActiveAccountsWithCompletedRefreshes()
     {
         using var manager = new AccountManager();

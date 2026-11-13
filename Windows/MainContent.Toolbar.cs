@@ -265,7 +265,7 @@ public sealed partial class MainContent
 #endif
         bool selected = ViewModel.HasSelectedArticles;
         ToggleSidebarButton.IsEnabled = !ViewModel.IsUnifiedLayout;
-        ReloadButton.IsEnabled = !ViewModel.IsLoading;
+        ReloadButton.IsEnabled = !ViewModel.IsLoading && AppRuntime.AppService.Shared.Accounts.CanRefresh;
         MarkAllReadButton.IsEnabled = ViewModel.ArticleItems.Any(article => !article.IsRead);
         ToolbarMarkReadButton.IsEnabled = ViewModel.CanToggleSelectedRead;
         StarButton.IsEnabled = selected;

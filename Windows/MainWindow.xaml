@@ -257,7 +257,7 @@
                                           Click="Menu_AppearanceDark" />
                 </MenuFlyoutSubItem>
                 <MenuFlyoutSeparator />
-                <MenuFlyoutItem Text="Refresh All" AccessKey="A" Click="Menu_Refresh">
+                <MenuFlyoutItem x:Name="MenuRefreshAll" Text="Refresh All" AccessKey="A" Click="Menu_Refresh">
                     <MenuFlyoutItem.KeyboardAccelerators>
                         <KeyboardAccelerator Modifiers="Control" Key="R" />
                     </MenuFlyoutItem.KeyboardAccelerators>
@@ -332,7 +332,7 @@
                         <KeyboardAccelerator Modifiers="Control" Key="K" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
-                <MenuFlyoutItem Text="Refresh" AccessKey="F" Click="Menu_Refresh" />
+                <MenuFlyoutItem x:Name="MenuRefresh" Text="Refresh" AccessKey="F" Click="Menu_Refresh" />
             </MenuBarItem>
 
             <MenuBarItem Title="Window" AccessKey="W">
