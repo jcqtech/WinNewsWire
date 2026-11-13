@@ -6,6 +6,50 @@ namespace WinNewsWire.Images.Tests;
 public sealed class ArticleThumbnailFinderTests
 {
     [Fact]
+    public async Task SavedUrlsLoadBeforeDiscoveryWithoutParsingMissingArticlesOrNotifying()
+    {
+        using var database = new ImageDatabase(":memory:");
+        await database.SaveArticleThumbnailsAsync([
+            new("saved", ["https://example.com/saved.jpg"]), new("negative", []),
+            new("empty", ["https://example.com/stale.jpg"])
+        ]);
+        var finder = new ArticleThumbnailFinder(database);
+        var saved = Article("saved", html: "<img src='/changed.jpg'>");
+        var negative = Article("negative", html: "<img src='/not-parsed.jpg'>");
+        var missing = Article("missing", html: "<img src='/not-discovered.jpg'>");
+        var empty = Article("empty");
+        int notifications = 0;
+        finder.ThumbnailUrlsAvailable += (_, _) => notifications++;
+        Assert.Null(finder.ThumbnailUrl(saved, ThumbnailMode.Large));
+        await finder.LoadSavedThumbnailUrlsAsync([saved, negative, missing, empty]);
+        Assert.Equal("https://example.com/saved.jpg", finder.ThumbnailUrl(saved, ThumbnailMode.Large));
+        Assert.Null(finder.ThumbnailUrl(negative, ThumbnailMode.Small));
+        Assert.Null(finder.ThumbnailUrl(missing, ThumbnailMode.Small));
+        Assert.Null(finder.ThumbnailUrl(empty, ThumbnailMode.Small));
+        Assert.Empty(await database.FetchArticleThumbnailsAsync(["missing"]));
+        Assert.Equal(0, notifications);
+        await finder.DiscoverThumbnailUrlsAsync([saved, negative, missing]);
+        Assert.Equal("https://example.com/not-discovered.jpg", finder.ThumbnailUrl(missing, ThumbnailMode.Small));
+        Assert.Null(finder.ThumbnailUrl(negative, ThumbnailMode.Small));
+        Assert.Equal(1, notifications);
+    }
+
+    [Fact]
+    public async Task CanceledSavedUrlLoadingDoesNotConsumeLaterPreload()
+    {
+        using var database = new ImageDatabase(":memory:");
+        await database.SaveArticleThumbnailsAsync([new("1", ["https://example.com/saved.jpg"])]);
+        var finder = new ArticleThumbnailFinder(database);
+        var article = Article(html: "<img src='/changed.jpg'>");
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finder.LoadSavedThumbnailUrlsAsync([article], canceled.Token));
+        Assert.Null(finder.ThumbnailUrl(article, ThumbnailMode.Small));
+        await finder.LoadSavedThumbnailUrlsAsync([article]);
+        Assert.Equal("https://example.com/saved.jpg", finder.ThumbnailUrl(article, ThumbnailMode.Small));
+    }
+
+    [Fact]
     public async Task ChosenUrlsStayCachedUntilFailureAndInvalidateAffectedArticlesInBothModes()
     {
         using var database = new ImageDatabase(":memory:");

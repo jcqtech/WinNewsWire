@@ -39,6 +39,20 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         }
     }
 
+    public async Task LoadSavedThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(articles);
+        ct.ThrowIfCancellationRequested();
+        string[] ids;
+        lock (_gate)
+            ids = articles.DistinctBy(article => article.ArticleID).Where(NeedsHtmlDiscovery)
+                .Select(article => article.ArticleID).ToArray();
+        if (ids.Length == 0) return;
+        var records = await _database.FetchArticleThumbnailsAsync(ids).WaitAsync(ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        CacheRecords(records);
+    }
+
     public async Task DiscoverThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default,
         Func<Article, Uri?>? baseUrlResolver = null)
     {
@@ -52,10 +66,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
                 _htmlUrls.Clear();
                 _chosenUrls.Clear();
             }
-            pending = articles.DistinctBy(article => article.ArticleID)
-                .Where(article => !string.IsNullOrEmpty(article.ContentHtml ?? article.Summary)
-                    && !_htmlUrls.ContainsKey(article.ArticleID) && !_discovering.Contains(article.ArticleID)
-                    && ThumbnailUrl(article, ThumbnailMode.Small) is null).ToArray();
+            pending = articles.DistinctBy(article => article.ArticleID).Where(NeedsHtmlDiscovery).ToArray();
             foreach (var article in pending) _discovering.Add(article.ArticleID);
         }
         if (pending.Length == 0) return;
@@ -80,11 +91,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             ct.ThrowIfCancellationRequested();
             if (parsed.Count > 0) await _database.SaveArticleThumbnailsAsync(parsed).ConfigureAwait(false);
             var records = saved.Concat(parsed).ToArray();
-            lock (_gate)
-            {
-                ForgetChosenUrls(records.Select(record => record.ArticleId));
-                foreach (var record in records) _htmlUrls[record.ArticleId] = record.ThumbnailUrls;
-            }
+            CacheRecords(records);
             var found = records.Where(record => record.ThumbnailUrls.Count > 0)
                 .Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
             if (found.Count > 0) ThumbnailUrlsAvailable?.Invoke(this, found);
@@ -93,6 +100,20 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         {
             lock (_gate)
                 foreach (var article in pending) _discovering.Remove(article.ArticleID);
+        }
+    }
+
+    private bool NeedsHtmlDiscovery(Article article)
+        => !string.IsNullOrEmpty(article.ContentHtml ?? article.Summary)
+            && !_htmlUrls.ContainsKey(article.ArticleID) && !_discovering.Contains(article.ArticleID)
+            && ThumbnailUrl(article, ThumbnailMode.Small) is null;
+
+    private void CacheRecords(IReadOnlyList<ArticleThumbnailRecord> records)
+    {
+        lock (_gate)
+        {
+            ForgetChosenUrls(records.Select(record => record.ArticleId));
+            foreach (var record in records) _htmlUrls[record.ArticleId] = record.ThumbnailUrls;
         }
     }
 
