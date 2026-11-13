@@ -9,6 +9,8 @@ public static class SignificantImageFilter
         { "1x1", "blank", "pixel", "spacer", "transparent" };
     private static readonly HashSet<string> BlockedPathComponents = new(StringComparer.OrdinalIgnoreCase)
         { "open", "track" };
+    private static readonly HashSet<string> PhotoFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+        { ".avif", ".heic", ".jpeg", ".jpg", ".png", ".webp" };
 
     private static readonly (string Host, string Path)[] BlockedImagePrefixes =
     [
@@ -47,7 +49,7 @@ public static class SignificantImageFilter
         var path = Uri.UnescapeDataString(url.AbsolutePath);
         return Path.GetExtension(path).Equals(".svg", StringComparison.OrdinalIgnoreCase)
             || BlockedFileNames.Contains(Path.GetFileNameWithoutExtension(path))
-            || path.Split('/').Any(BlockedPathComponents.Contains)
+            || (!PhotoFileExtensions.Contains(Path.GetExtension(path)) && path.Split('/').Any(BlockedPathComponents.Contains))
             || Matches(url, BlockedImagePrefixes) || MediaRss.IsGravatar(url);
     }
 

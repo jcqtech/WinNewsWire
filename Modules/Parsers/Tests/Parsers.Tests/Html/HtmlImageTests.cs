@@ -90,6 +90,12 @@ public class HtmlImageTests
     public void TrackingNamesAreRejectedWithoutDeclaredDimensions(string url)
         => Assert.Null(First($"""<img src="{url}">"""));
 
+    [Theory]
+    [InlineData("https://example.com/track/racing.jpg")]
+    [InlineData("https://example.com/open/landscape.PNG")]
+    public void TrackingPathWordsDoNotExcludeRealPhotographs(string url)
+        => Assert.Equal(url, First($"""<img src="{url}">""")?.Url);
+
     [Fact]
     public void UndeclaredDimensionsAreAccepted()
         => Assert.Equal(new HtmlImage("https://example.com/photo.jpg", null, null), First("""<img src="/photo.jpg">"""));
