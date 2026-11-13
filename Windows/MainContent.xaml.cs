@@ -901,6 +901,12 @@ public sealed partial class MainContent : UserControl
         try
         {
             var uri = new Uri(args.Request.Uri);
+            if (uri.AbsolutePath == AppShared.ArticleRendering.ArticleImageResource.ResourcePath)
+            {
+                var deferral = args.GetDeferral();
+                TrackBrowserTask(ServeArticleImageAsync(sender, args, uri, deferral, _articleNavigationId));
+                return;
+            }
             if (uri.AbsolutePath == "/article-icon")
             {
                 var article = ViewModel.SelectedArticle;

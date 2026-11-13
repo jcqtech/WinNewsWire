@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -109,6 +110,24 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(article);
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
         return RunOperationAsync(token => ResolveUrlAsync(article, mode, token), ct);
+    }
+
+    internal Task<(byte[] Data, string MimeType)?> FullSizeImageAsync(string url, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        return RunOperationAsync<(byte[] Data, string MimeType)?>(async token =>
+        {
+            var backend = await _backend.Value.ConfigureAwait(false);
+            var source = await backend.Downloads.FullSizeImageAsync(url, token).ConfigureAwait(false);
+            if (source is null) return null;
+            using var stream = new InMemoryRandomAccessStream();
+            await stream.WriteAsync(source.Data.AsBuffer()).AsTask(token).ConfigureAwait(false);
+            stream.Seek(0);
+            var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(token).ConfigureAwait(false);
+            string mimeType = decoder.DecoderInformation.MimeTypes.FirstOrDefault(type => type.StartsWith("image/", StringComparison.Ordinal))
+                ?? throw new InvalidDataException("The image decoder did not identify an image MIME type.");
+            return (source.Data, mimeType);
+        }, ct);
     }
 
     internal Task DiscoverAsync(IEnumerable<Article> articles, CancellationToken ct = default)

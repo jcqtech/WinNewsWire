@@ -229,6 +229,7 @@ internal static partial class ParityProbe
         return new { InitializationOffUI = true, DecodingOffUI = true, NotificationsOnUI = true,
             CoalescedDiscoveryAndDecode = true, SeparateModes = true, DecodedLRUBudget = true,
             DisplaySizeDecode = true, ExifOrientation = true, NativeDimensionRejection = true,
+            ReaderUsesOriginalSharedImage = true,
             DecoderFailureStopsRetriesWithoutSuppressingIcons = true,
             VisibleNativePixels = true, RoundedClipping = true, ThemedPlaceholder = true,
             RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
@@ -377,6 +378,26 @@ internal static partial class ParityProbe
                 "Small row before mode change");
             var originalSmall = Descendants(list).OfType<ThumbnailView>().Single(view =>
                 view.Tag is Article { ArticleID: "timeline-thumbnail-0" }).ImageSource;
+            await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Article ready for shared image resource");
+            string readerImageUrl = AppShared.ArticleRendering.ArticleImageResource.Url("https://thumbnail.test/photo.bmp");
+            int previousImageRequests = requests.Count(path => path == "/photo.bmp");
+            setNetworkAllowed(false);
+            try
+            {
+                await content.ProbeWebView.ExecuteScriptAsync("(() => { const image = new Image(); image.id = 'shared-source-probe';"
+                    + "image.src = " + System.Text.Json.JsonSerializer.Serialize(readerImageUrl) + "; document.body.append(image); })()");
+                await WaitFor(() => ScriptBool(content,
+                    "document.getElementById('shared-source-probe')?.naturalWidth === 1600"
+                    + " && document.getElementById('shared-source-probe')?.naturalHeight === 800"),
+                    "Original full-size image served from the shared offline source");
+                Require(requests.Count(path => path == "/photo.bmp") == previousImageRequests,
+                    "The article reader downloaded its cached timeline image again.");
+            }
+            finally
+            {
+                setNetworkAllowed(true);
+                await content.ProbeWebView.ExecuteScriptAsync("document.getElementById('shared-source-probe')?.remove()");
+            }
             await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large));
             await WaitFor(() => Task.FromResult(modeNotifications > 0 && peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
                 && largeMenu.IsChecked && largeMenu.IsEnabled), "Shared large-thumbnail mode");
