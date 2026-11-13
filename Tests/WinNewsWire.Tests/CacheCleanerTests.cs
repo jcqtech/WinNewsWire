@@ -29,7 +29,7 @@ public sealed class CacheCleanerTests : IDisposable
         var feedIcon = AddFile("Caches\\FeedIcons", "feed.png");
         var browser = AddFile("Caches\\WebView2", "browser-data");
         var article = AddFile("Accounts\\Test", "DB.sqlite3");
-        CacheCleaner.PurgeIfNecessary(_defaults, Now);
+        CacheCleaner.PurgeIfNecessary(_defaults);
         Assert.False(File.Exists(favicon));
         Assert.False(File.Exists(nativeFavicon));
         Assert.True(File.Exists(downloaded));
@@ -41,37 +41,31 @@ public sealed class CacheCleanerTests : IDisposable
         Assert.True(File.Exists(article));
         var reopened = new AppDefaults(Path.Combine(_directory, "defaults.json"));
         Assert.True(reopened.GetValue(CacheCleaner.DownloadedImagesPurgeKey, false));
-        Assert.Equal(Now, reopened.GetValue<DateTime?>(CacheCleaner.LastFlushKey));
     }
 
     [Fact]
-    public void PeriodicFlushIsStrictlyAfterThreeDaysAndKeepsSharedSourcesAndRetiredFolders()
+    public void CompletedCleanupIgnoresAnExpiredLegacyFlushDateAndPreservesCaches()
     {
-        CacheCleaner.PurgeIfNecessary(_defaults, Now);
+        CacheCleaner.PurgeIfNecessary(_defaults);
         var favicon = AddFile("Favicons", "icon.png");
         var nativeFavicon = AddFile("Caches\\Favicons", "native-icon");
         var downloaded = AddFile("Caches\\DownloadedImages", "source");
         var feedIcon = AddFile("Caches\\FeedIcons", "feed.png");
         var mapping = AddFile("Caches", "FeedURLToIconURLCache.plist");
-        CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(3));
+        _defaults.SetValue("lastImageCacheFlushDate", Now);
+        CacheCleaner.PurgeIfNecessary(_defaults);
         Assert.True(File.Exists(favicon));
         Assert.True(File.Exists(nativeFavicon));
         Assert.True(File.Exists(downloaded));
         Assert.True(File.Exists(mapping));
-        CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(3).AddTicks(1));
-        Assert.True(File.Exists(favicon));
-        Assert.True(File.Exists(nativeFavicon));
-        Assert.True(File.Exists(downloaded));
-        Assert.False(File.Exists(mapping));
         Assert.True(File.Exists(feedIcon));
-        Assert.Equal(Now.AddDays(3).AddTicks(1), _defaults.GetValue<DateTime?>(CacheCleaner.LastFlushKey));
+        Assert.Equal(Now, _defaults.GetValue<DateTime?>("lastImageCacheFlushDate"));
     }
 
     [Fact]
     public void UpgradingRemovesAllRetiredImageFoldersOnceWithoutDeletingSharedSources()
     {
         _defaults.SetValue("didPurgeImageCachesForResizing-2026-03-30", true);
-        _defaults.SetValue(CacheCleaner.LastFlushKey, Now);
         _defaults.SetValue("didRemoveFoldersReplacedByDownloadedImageCache-2026-10-26", true);
         var old = new[] { "Favicons", "Images", "FeedIcons", "Thumbnails", "LargeThumbnails" }
             .Select(folder => AddFile("Caches\\" + folder, "retired")).ToArray();
@@ -79,14 +73,14 @@ public sealed class CacheCleanerTests : IDisposable
         var favicon = AddFile("Caches\\Favicons", "icon");
         var legacyFavicon = AddFile("Favicons", "legacy");
         var browser = AddFile("Caches\\WebView2", "data");
-        CacheCleaner.PurgeIfNecessary(_defaults, Now);
+        CacheCleaner.PurgeIfNecessary(_defaults);
         Assert.All(old, path => Assert.False(File.Exists(path)));
         Assert.True(File.Exists(source));
         Assert.False(File.Exists(favicon));
         Assert.False(File.Exists(legacyFavicon));
         Assert.True(File.Exists(browser));
         var laterFile = AddFile("Caches\\Images", "not-from-the-upgrade");
-        CacheCleaner.PurgeIfNecessary(_defaults, Now.AddHours(1));
+        CacheCleaner.PurgeIfNecessary(_defaults);
         Assert.True(File.Exists(laterFile));
     }
 
@@ -96,36 +90,35 @@ public sealed class CacheCleanerTests : IDisposable
         _defaults.SetValue(CacheCleaner.DownloadedImagesPurgeKey, true);
         var favicon = AddFile("Caches\\Favicons", "not-from-the-upgrade");
         var feedIcon = AddFile("Caches\\FeedIcons", "not-from-the-upgrade");
-        CacheCleaner.PurgeIfNecessary(_defaults, Now);
+        CacheCleaner.PurgeIfNecessary(_defaults);
         Assert.True(File.Exists(favicon));
         Assert.True(File.Exists(feedIcon));
     }
 
     [Fact]
-    public void AReadOnlyCacheFailureDoesNotAdvanceTheFlushDate()
+    public void AReadOnlyRetiredFileDoesNotAdvanceTheCompletionMarker()
     {
-        CacheCleaner.PurgeIfNecessary(_defaults, Now);
-        var path = AddFile("Caches", "FeedURLToIconURLCache.plist");
+        var path = AddFile("Caches\\FeedIcons", "retired");
         File.SetAttributes(path, FileAttributes.ReadOnly);
         try
         {
-            var error = Record.Exception(() => CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(4)));
+            var error = Record.Exception(() => CacheCleaner.PurgeIfNecessary(_defaults));
             Assert.True(error is IOException or UnauthorizedAccessException);
-            Assert.Equal(Now, _defaults.GetValue<DateTime?>(CacheCleaner.LastFlushKey));
+            Assert.False(_defaults.GetValue(CacheCleaner.DownloadedImagesPurgeKey, false));
         }
         finally { File.SetAttributes(path, FileAttributes.Normal); }
-        CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(4));
+        CacheCleaner.PurgeIfNecessary(_defaults);
         Assert.False(File.Exists(path));
-        Assert.Equal(Now.AddDays(4), _defaults.GetValue<DateTime?>(CacheCleaner.LastFlushKey));
+        Assert.True(_defaults.GetValue(CacheCleaner.DownloadedImagesPurgeKey, false));
     }
 
     [Fact]
     public void MissingCachePathsAreAnIdempotentSuccess()
     {
-        CacheCleaner.PurgeIfNecessary(_defaults, Now);
-        CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(4));
-        CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(4));
-        Assert.Equal(Now.AddDays(4), _defaults.GetValue<DateTime?>(CacheCleaner.LastFlushKey));
+        CacheCleaner.PurgeIfNecessary(_defaults);
+        CacheCleaner.PurgeIfNecessary(_defaults);
+        CacheCleaner.PurgeIfNecessary(_defaults);
+        Assert.True(_defaults.GetValue(CacheCleaner.DownloadedImagesPurgeKey, false));
     }
 
     private string AddFile(string folder, string name)

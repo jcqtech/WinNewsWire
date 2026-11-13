@@ -1,37 +1,25 @@
 using System.Diagnostics;
-using System.Text.Json;
 using WinNewsWire.Core;
 
 namespace WinNewsWire.AppShared.Extensions;
 
 public static class CacheCleaner
 {
-    internal const string LastFlushKey = "lastImageCacheFlushDate";
     internal const string DownloadedImagesPurgeKey = "didRemoveFoldersReplacedByDownloadedImageCache-2026-10-27";
 
-    public static void PurgeIfNecessary(AppDefaults defaults, DateTime? now = null)
+    public static void PurgeIfNecessary(AppDefaults defaults)
     {
-        var date = now ?? DateTime.UtcNow;
-        bool removedOldFolders = defaults.GetValue(DownloadedImagesPurgeKey, false);
-        var last = defaults.GetValue<DateTime?>(LastFlushKey);
-        bool periodicFlush = last is { } previous && date - previous > TimeSpan.FromDays(3);
+        if (defaults.GetValue(DownloadedImagesPurgeKey, false)) return;
         var caches = AppConfig.CachesDirectory;
-        var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!removedOldFolders)
+        var targets = new[]
         {
-            targets.Add(Path.Combine(AppConfig.DataDirectory, "Favicons"));
-            targets.Add(Path.Combine(caches, "Favicons"));
-            targets.Add(Path.Combine(caches, "Images"));
-            targets.Add(Path.Combine(caches, "FeedIcons"));
-            targets.Add(Path.Combine(caches, "Thumbnails"));
-            targets.Add(Path.Combine(caches, "LargeThumbnails"));
-        }
-        if (periodicFlush)
-        {
-            targets.Add(Path.Combine(caches, "FeedURLToIconURLCache.plist"));
-            targets.Add(Path.Combine(caches, "HomePageToIconURLCache.plist"));
-            targets.Add(Path.Combine(caches, "HomePagesWithNoIconURLCache.plist"));
-        }
+            Path.Combine(AppConfig.DataDirectory, "Favicons"),
+            Path.Combine(caches, "Favicons"),
+            Path.Combine(caches, "Images"),
+            Path.Combine(caches, "FeedIcons"),
+            Path.Combine(caches, "Thumbnails"),
+            Path.Combine(caches, "LargeThumbnails")
+        };
         foreach (var path in targets)
         {
             try { DeleteCachePath(path); }
@@ -41,10 +29,7 @@ public static class CacheCleaner
                 throw;
             }
         }
-        var changes = new Dictionary<string, JsonElement>();
-        if (!removedOldFolders) changes[DownloadedImagesPurgeKey] = JsonSerializer.SerializeToElement(true);
-        if (last is null || periodicFlush) changes[LastFlushKey] = JsonSerializer.SerializeToElement(date);
-        defaults.SetValues(changes);
+        defaults.SetValue(DownloadedImagesPurgeKey, true);
     }
 
     private static void DeleteCachePath(string path)
