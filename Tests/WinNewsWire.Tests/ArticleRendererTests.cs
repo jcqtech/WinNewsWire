@@ -103,6 +103,17 @@ public sealed class ArticleRendererTests
         Assert.Equal(body, ArticleRenderer.Render(Article(body: body), extracted, feed: feed, theme: Theme()).Html);
     }
 
+    [Fact]
+    public void FreshRssRestoresFootnoteAttributesOnlyForItsFeedContent()
+    {
+        const string body = "<div data-sanitized-class=\"footnotes\"><li data-sanitized-id=\"fn1\">data-sanitized-class</li></div>";
+        const string expected = "<div class=\"footnotes\"><li id=\"fn1\">data-sanitized-class</li></div>";
+        Assert.Equal(expected, ArticleRenderer.Render(Article(body: body), theme: Theme(), accountType: AccountType.FreshRSS).Html);
+        Assert.Equal(body, ArticleRenderer.Render(Article(body: body), theme: Theme(), accountType: AccountType.Feedbin).Html);
+        var extracted = new ExtractedArticle(null, null, null, body, "https://example.com/article");
+        Assert.Equal(body, ArticleRenderer.Render(Article(body: body), extracted, theme: Theme(), accountType: AccountType.FreshRSS).Html);
+    }
+
     [Theory]
     [InlineData(ArticleTextSize.Small, "smallText")]
     [InlineData(ArticleTextSize.Medium, "mediumText")]

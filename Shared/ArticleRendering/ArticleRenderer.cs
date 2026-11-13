@@ -23,7 +23,8 @@ public static class ArticleRenderer
     public static string BrowserScripts => Scripts.Value;
 
     public static ArticleRendering Render(Article? article, ExtractedArticle? extracted = null,
-        ArticleTextSize size = ArticleTextSize.Medium, Account.Feed? feed = null, ArticleTheme? theme = null, string? avatarUrl = null)
+        ArticleTextSize size = ArticleTextSize.Medium, Account.Feed? feed = null, ArticleTheme? theme = null, string? avatarUrl = null,
+        Account.AccountType? accountType = null)
     {
         theme ??= ArticleThemesManager.Shared.CurrentTheme;
         if (article is null) return NoSelection(theme, size);
@@ -36,6 +37,8 @@ public static class ArticleRenderer
         {
             body = ArticleRenderingSpecialCases.InsertParagraphTagsIfNeeded(body, feed?.Url, feed?.HomePageUrl);
             body = ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(body, feed?.Url, feed?.HomePageUrl);
+            if (accountType == Account.AccountType.FreshRSS)
+                body = ArticleRenderingSpecialCases.DesanitizeFreshRssContent(body);
             if (!string.IsNullOrEmpty(article.RawImageLink) && !body.Contains("<img", StringComparison.OrdinalIgnoreCase))
                 body = "<p><img src=\"" + Html(article.RawImageLink) + "\" alt=\"\"></p>" + body;
         }

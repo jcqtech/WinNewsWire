@@ -1570,11 +1570,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private string BuildArticleHtml(FeedItem item, ExtractedArticle? extracted = null)
     {
         var article = item.SourceArticle ?? throw new InvalidOperationException("The selected article has no backing model.");
-        var feed = AppService.Shared.Accounts.Accounts.FirstOrDefault(account => account.AccountID == article.AccountID)?
-            .FlattenedFeeds().FirstOrDefault(candidate => candidate.FeedID == article.FeedID);
+        var account = AppService.Shared.Accounts.Accounts.FirstOrDefault(candidate => candidate.AccountID == article.AccountID);
+        var feed = account?.FlattenedFeeds().FirstOrDefault(candidate => candidate.FeedID == article.FeedID);
         // Loading an icon must not change the document when the same article is rebound.
         var avatar = ArticleIconIdentityUrl(item);
-        CurrentRendering = ArticleRenderer.Render(article, extracted, CurrentArticleTextSize, feed, avatarUrl: avatar);
+        CurrentRendering = ArticleRenderer.Render(article, extracted, CurrentArticleTextSize, feed, avatarUrl: avatar, accountType: account?.Type);
         var token = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(CurrentRendering.Style)));
         var stylesheet = CurrentRendering.ThemeFolder is { } folder &&
             System.IO.File.Exists(System.IO.Path.Combine(folder, AppShared.ArticleThemes.ArticleTheme.StylesheetFilename))

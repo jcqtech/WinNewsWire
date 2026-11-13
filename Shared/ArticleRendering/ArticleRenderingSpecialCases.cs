@@ -23,6 +23,8 @@ public static class ArticleRenderingSpecialCases
     private static readonly Regex StrayLineBreaks = new(
         @"(<(?:ul|ol|table|thead|tbody|tfoot|tr)\b[^>]*>|</(?:li|tr|td|th|thead|tbody|tfoot)>)(?:\s*<br\s*/?>)+",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex SanitizedFreshRssClass = new(@"(<[^>]*?)data-sanitized-class([^<]*?>)", RegexOptions.Compiled);
+    private static readonly Regex SanitizedFreshRssId = new(@"(<[^>]*?)data-sanitized-id([^<]*?>)", RegexOptions.Compiled);
 
     public static bool ShouldDisableJavaScript(IEnumerable<string?> urls)
         => urls.Any(url => url is not null && SpecialCases.UrlStringMatchesDomain(url, ["slashdot.org"]));
@@ -38,6 +40,9 @@ public static class ArticleRenderingSpecialCases
         => new[] { feedUrl, homePageUrl }.Any(url => url is not null
             && SpecialCases.UrlStringMatchesDomain(url, ["macrumors.com"]))
             ? StrayLineBreaks.Replace(html, "$1") : html;
+
+    public static string DesanitizeFreshRssContent(string html)
+        => SanitizedFreshRssId.Replace(SanitizedFreshRssClass.Replace(html, "$1class$2"), "$1id$2");
 
     public static string RemoveLocationHrefRedirectScripts(string html)
         => html.Contains("location.href", StringComparison.Ordinal) ? RedirectScript.Replace(html, "") : html;
