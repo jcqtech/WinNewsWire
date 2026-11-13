@@ -52,7 +52,10 @@ public class FeedbinApiContractTests
         var requested = new List<long>();
         using var http = new HttpClient(new Handler(request =>
         {
-            var batch = request.RequestUri!.Query["?ids=".Length..].Split(',').Select(long.Parse).ToList();
+            var query = request.RequestUri!.Query.TrimStart('?').Split('&');
+            Assert.Contains("mode=extended", query);
+            var batch = query.Single(part => part.StartsWith("ids=", StringComparison.Ordinal))["ids=".Length..]
+                .Split(',').Select(long.Parse).ToList();
             Assert.InRange(batch.Count, 1, 100);
             requested.AddRange(batch);
             return Json("[]");
