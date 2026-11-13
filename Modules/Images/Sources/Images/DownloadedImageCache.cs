@@ -210,6 +210,17 @@ public sealed class DownloadedImageCache : IAsyncDisposable
                 UserAgentStyle.Browser, cachesResponse: false).ConfigureAwait(false);
             if (response.Success && response.Data is { Length: > 0 } data)
             {
+                byte[]? stored;
+                await _diskGate.WaitAsync(ct).ConfigureAwait(false);
+                try { stored = await _diskCache.GetAsync(url.Md5Hex(), ct).ConfigureAwait(false); }
+                finally { _diskGate.Release(); }
+                if (stored is not null && data.AsSpan().SequenceEqual(stored))
+                {
+                    await _database.SaveDownloadedImageNextCheckAsync(url,
+                        CalculateNextCheck(response.CacheMaxAge, validation.ConditionalGet is not null, _clock.GetUtcNow()))
+                        .ConfigureAwait(false);
+                    return;
+                }
                 try { await _downloads.StoreUpdatedSourceAsync(url, data, response, ct).ConfigureAwait(false); }
                 catch (InvalidDataException error)
                 {

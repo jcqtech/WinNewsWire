@@ -81,19 +81,28 @@ public sealed class DownloadedImageCacheTests
         Assert.True(dates.Distinct().Count() > 1, "Sources checked together must not all receive the same next-check date.");
     }
 
-    [Fact]
-    public async Task CachedIconsReturnImmediatelyAndA304KeepsTheSourceAndItsValidators()
+    [Theory]
+    [InlineData(HttpStatusCode.NotModified, true)]
+    [InlineData(HttpStatusCode.OK, true)]
+    [InlineData(HttpStatusCode.OK, false)]
+    public async Task CachedIconsReturnImmediatelyAndUnchangedResponsesKeepSourcesValidatorsAndDerivedCopies(
+        HttpStatusCode status, bool hasValidators)
     {
         int requests = 0;
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var fixture = new Fixture(async (request, ct) =>
         {
-            if (Interlocked.Increment(ref requests) == 1) return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
-            Assert.Equal("\"v1\"", request.Headers.IfNoneMatch.ToString());
+            if (Interlocked.Increment(ref requests) == 1)
+            {
+                var initial = ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
+                if (!hasValidators) initial.Headers.Remove("ETag");
+                return initial;
+            }
+            Assert.Equal(hasValidators ? "\"v1\"" : "", request.Headers.IfNoneMatch.ToString());
             started.TrySetResult();
             await release.Task.WaitAsync(ct);
-            var response = new HttpResponseMessage(HttpStatusCode.NotModified);
+            var response = new HttpResponseMessage(status) { Content = new ByteArrayContent(Fixture.Image) };
             response.Headers.TryAddWithoutValidation("Cache-Control", "max-age=60");
             return response;
         });
@@ -101,8 +110,9 @@ public sealed class DownloadedImageCacheTests
         var changes = new List<string>();
         cache.DownloadedImageChanged += (_, url) => changes.Add(url);
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
+        await cache.SaveDerivedImageDataAsync(Url("icon"), "48-Png", [7, 8]);
         var modified = File.GetLastWriteTimeUtc(fixture.PathFor("icon"));
-        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        fixture.Clock.Advance(TimeSpan.FromDays(40));
         Assert.NotNull(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(release.Task.IsCompleted);
@@ -110,9 +120,11 @@ public sealed class DownloadedImageCacheTests
         release.TrySetResult();
         await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(modified, File.GetLastWriteTimeUtc(fixture.PathFor("icon")));
+        Assert.Equal(new byte[] { 7, 8 }, await cache.DerivedImageDataAsync(Url("icon"), "48-Png"));
         var validation = Assert.IsType<DownloadedImageValidation>(await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")));
-        Assert.InRange(validation.NextCheck, fixture.Clock.GetUtcNow().AddDays(2.4), fixture.Clock.GetUtcNow().AddDays(3.6));
-        Assert.Equal("\"v1\"", validation.ConditionalGet?.ETag);
+        Assert.InRange(validation.NextCheck, fixture.Clock.GetUtcNow().AddDays(hasValidators ? 2.4 : 24),
+            fixture.Clock.GetUtcNow().AddDays(hasValidators ? 3.6 : 36));
+        Assert.Equal(hasValidators ? "\"v1\"" : null, validation.ConditionalGet?.ETag);
         Assert.Equal(2, requests);
         Assert.Empty(changes);
     }
