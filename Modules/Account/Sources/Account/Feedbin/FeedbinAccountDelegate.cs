@@ -273,11 +273,13 @@ public sealed partial class FeedbinAccountDelegate : IAccountDelegate
             articles.Add(new Article(
                 account.AccountID, articleID: e.ArticleID.ToString(), feedID: feedID, uniqueID: e.ArticleID.ToString(),
                 title: e.Title, contentHtml: e.ContentHtml, contentText: null, markdown: null,
-                url: e.Url, externalURL: e.ExtractedContentUrl, summary: e.Summary, imageURL: null,
+                url: e.Url, externalURL: e.ExtractedContentUrl, summary: e.Summary, imageURL: e.ImageUrl,
                 datePublished: e.DatePublished, dateModified: null,
                 authors: string.IsNullOrWhiteSpace(e.Author) ? null
                     : new HashSet<Author> { Author.Create(null, e.Author, null, null, null)! },
-                attachments: null, status: status));
+                attachments: e.Enclosure?.ParsedAttachment is { } media
+                    ? new[] { Attachment.Create(null, media.Url, media.MimeType, media.Title, media.SizeInBytes, media.DurationInSeconds)! } : null,
+                status: status, thumbnailURL: e.ThumbnailUrl));
         }
         return await account.Database.UpdateArticlesAsync(articles);
     }

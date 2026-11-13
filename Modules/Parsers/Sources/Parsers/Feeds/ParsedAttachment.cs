@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace WinNewsWire.Parsers;
 
 /// <summary>
@@ -29,6 +31,33 @@ public sealed record ParsedAttachment(
         Document,
         Executable
     }
+
+    public static long? ParseDurationInSeconds(string? value)
+    {
+        if (value is null) return null;
+        var components = value.Trim().Split(':');
+        if (components.Length > 3) return null;
+        double seconds = 0;
+        foreach (var component in components)
+        {
+            if (!double.TryParse(component, NumberStyles.Float, CultureInfo.InvariantCulture, out var part)
+                || !double.IsFinite(part) || part < 0) return null;
+            seconds = seconds * 60 + part;
+        }
+        // long.MaxValue rounds up as a double, so reject that exclusive upper bound.
+        return double.IsFinite(seconds) && seconds >= 1 && seconds < 9223372036854775808d
+            ? (long)Math.Floor(seconds) : null;
+    }
+
+    public static AttachmentMedium? ParseMedium(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "image" => AttachmentMedium.Image,
+        "audio" => AttachmentMedium.Audio,
+        "video" => AttachmentMedium.Video,
+        "document" => AttachmentMedium.Document,
+        "executable" => AttachmentMedium.Executable,
+        _ => null
+    };
 
     public override int GetHashCode() => Url.GetHashCode(StringComparison.Ordinal);
 }

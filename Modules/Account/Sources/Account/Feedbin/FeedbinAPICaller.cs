@@ -109,7 +109,7 @@ public sealed class FeedbinAPICaller : IDisposable
     {
         var entries = new List<FeedbinEntry>();
         foreach (var chunk in ids.Distinct().Chunk(100))
-            entries.AddRange(await GetJsonAsync<List<FeedbinEntry>>("entries.json?ids=" + string.Join(",", chunk), ct));
+            entries.AddRange(await GetJsonAsync<List<FeedbinEntry>>("entries.json?ids=" + string.Join(",", chunk) + "&mode=extended", ct));
         return entries;
     }
 

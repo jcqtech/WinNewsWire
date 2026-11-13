@@ -10,6 +10,59 @@ public sealed class FeedbinHistoryTests : IDisposable
     private readonly TestAccountManager _manager = new();
 
     [Fact]
+    public void InvalidOptionalMediaFieldsDoNotDiscardTheWholeFeedbinEntry()
+    {
+        var entry = System.Text.Json.JsonSerializer.Deserialize<FeedbinEntry>("""
+            {"id":1,"feed_id":1,"images":{"original_url":false,"size_1":false},
+             "enclosure":{"enclosure_url":"https://example.test/episode","enclosure_type":false,
+                          "enclosure_length":{},"itunes_duration":[],"itunes_image":"https://example.test/artwork.jpg"}}
+            """)!;
+        Assert.Equal("https://example.test/artwork.jpg", entry.ImageUrl);
+        Assert.Null(entry.ThumbnailUrl);
+        var attachment = entry.Enclosure!.ParsedAttachment!;
+        Assert.Equal("https://example.test/episode", attachment.Url);
+        Assert.Null(attachment.MimeType);
+        Assert.Null(attachment.SizeInBytes);
+        Assert.Null(attachment.DurationInSeconds);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ExtendedMediaSurvivesRefreshAndColdDatabaseReads(bool hasOriginalImage)
+    {
+        using var http = new HttpClient(new Handler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/subscriptions.json"))
+                return Json("""[{"id":100,"feed_id":1,"title":"Feed","feed_url":"https://example.test/rss"}]""");
+            if (path.EndsWith("/entries.json"))
+            {
+                Assert.Contains("mode=extended", request.RequestUri!.Query);
+                return Json($$$"""
+                    [{"id":1,"feed_id":1,"title":"Episode",
+                      "images":{"original_url":{{{(hasOriginalImage ? "\"https://example.test/full.jpg\"" : "null")}}},
+                                "size_1":{"cdn_url":"https://cdn.example.test/small.jpg"}},
+                      "enclosure":{"enclosure_url":"https://example.test/episode.mp3","enclosure_type":"audio/mpeg",
+                                   "enclosure_length":"54947132","itunes_duration":"01:54:09","itunes_image":"https://example.test/artwork.jpg"}}]
+                    """);
+            }
+            return Json("[]");
+        }));
+        var account = _manager.CreateAccount(accountDelegate: new FeedbinAccountDelegate(http: http));
+        await account.RefreshAllAsync();
+        account.Database.EmptyCaches();
+        var article = Assert.Single(await account.Database.FetchArticlesAsync("1"));
+        Assert.Equal(hasOriginalImage ? "https://example.test/full.jpg" : "https://example.test/artwork.jpg", article.RawImageLink);
+        Assert.Equal("https://cdn.example.test/small.jpg", article.RawThumbnailLink);
+        var attachment = Assert.Single(article.Attachments!);
+        Assert.Equal("https://example.test/episode.mp3", attachment.URL);
+        Assert.Equal("audio/mpeg", attachment.MimeType);
+        Assert.Equal(54947132L, attachment.SizeInBytes);
+        Assert.Equal(6849L, attachment.DurationInSeconds);
+    }
+
+    [Fact]
     public async Task CompletionDateIsNotPublishedUntilTheWholeRefreshCompletes()
     {
         using var http = new HttpClient(new Handler(request =>

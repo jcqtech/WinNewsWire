@@ -124,7 +124,7 @@ public static class RssParser
             if (CurrentItem is not { } item) return;
             if (ns.IsITunes && name.SequenceEqual("duration"u8))
             {
-                item.ITunesDurationInSeconds = MediaRss.DurationInSeconds(parser.CurrentStringWithTrimmedWhitespace);
+                item.ITunesDurationInSeconds = ParsedAttachment.ParseDurationInSeconds(parser.CurrentStringWithTrimmedWhitespace);
                 return;
             }
             if (ns.Prefix is not null)

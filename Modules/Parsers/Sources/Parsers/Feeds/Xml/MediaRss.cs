@@ -7,38 +7,12 @@ internal static class MediaRss
 {
     public static ParsedAttachment? Attachment(string url, XmlAttributes attributes)
     {
-        var mediumText = attributes.ValueForNameCaseInsensitive("medium")?.Trim();
-        var medium = mediumText?.ToLowerInvariant() switch
-        {
-            "image" => ParsedAttachment.AttachmentMedium.Image,
-            "audio" => ParsedAttachment.AttachmentMedium.Audio,
-            "video" => ParsedAttachment.AttachmentMedium.Video,
-            "document" => ParsedAttachment.AttachmentMedium.Document,
-            "executable" => ParsedAttachment.AttachmentMedium.Executable,
-            _ => (ParsedAttachment.AttachmentMedium?)null
-        };
+        var medium = ParsedAttachment.ParseMedium(attributes.ValueForNameCaseInsensitive("medium"));
         return ParsedAttachment.Create(url, attributes.ValueForNameCaseInsensitive("type"), null,
             PositiveInteger(attributes.ValueForNameCaseInsensitive("fileSize") ?? attributes.ValueForNameCaseInsensitive("length")),
-            DurationInSeconds(attributes.ValueForNameCaseInsensitive("duration")),
+            ParsedAttachment.ParseDurationInSeconds(attributes.ValueForNameCaseInsensitive("duration")),
             PositiveInteger(attributes.ValueForNameCaseInsensitive("width")),
             PositiveInteger(attributes.ValueForNameCaseInsensitive("height")), medium);
-    }
-
-    public static long? DurationInSeconds(string? value)
-    {
-        if (value is null) return null;
-        var components = value.Trim().Split(':');
-        if (components.Length > 3) return null;
-        double seconds = 0;
-        foreach (var component in components)
-        {
-            if (!double.TryParse(component, NumberStyles.Float, CultureInfo.InvariantCulture, out var part)
-                || !double.IsFinite(part) || part < 0) return null;
-            seconds = seconds * 60 + part;
-        }
-        // long.MaxValue rounds up as a double, so reject that exclusive upper bound.
-        return double.IsFinite(seconds) && seconds >= 1 && seconds < 9223372036854775808d
-            ? (long)Math.Floor(seconds) : null;
     }
 
     private static long? PositiveInteger(string? value)
