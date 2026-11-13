@@ -85,6 +85,66 @@ public sealed class DownloaderTests
         Assert.Equal("\"version\"", second.ConditionalGet?.ETag);
     }
 
+    [Theory]
+    [InlineData(true, 200)]
+    [InlineData(false, 200)]
+    [InlineData(true, 304)]
+    [InlineData(false, 304)]
+    public async Task ConditionalGetsBypassAndDoNotReplaceAnUnconditionalCachedBody(bool etag, int status)
+    {
+        int requests = 0;
+        using var http = new HttpClient(new Handler((request, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            bool conditional = request.Headers.Contains("If-None-Match") || request.Headers.Contains("If-Modified-Since");
+            return Task.FromResult(new HttpResponseMessage(conditional ? (HttpStatusCode)status : HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(conditional ? [2] : [1])
+            });
+        }));
+        var downloader = new Downloader(http, new DownloadCache());
+        const string url = "https://example.com/conditional-cache";
+        var original = await downloader.DownloadAsync(url);
+        var validator = etag ? new ConditionalGetInfo(null, "\"v1\"")
+            : new ConditionalGetInfo("Thu, 01 Jan 1970 00:00:00 GMT", null);
+        var validation = await downloader.DownloadAsync(url, validator);
+        Assert.False(validation.ReturnedFromCache);
+        Assert.Equal((HttpStatusCode)status, validation.StatusCode);
+        if (status == 304) Assert.Null(validation.Data);
+        else Assert.Equal(new byte[] { 2 }, validation.Data);
+        var cached = await downloader.DownloadAsync(url);
+        Assert.True(cached.ReturnedFromCache);
+        Assert.Equal(original.Data, cached.Data);
+        Assert.Equal(2, requests);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ConditionalGetsNeverCoalesceWithOtherRequestsForTheSameUrl(bool firstConditional, bool secondConditional)
+    {
+        using var started = new SemaphoreSlim(0);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var http = new HttpClient(new Handler(async (request, ct) =>
+        {
+            started.Release();
+            await release.Task.WaitAsync(ct);
+            return request.Headers.Contains("If-None-Match") ? new HttpResponseMessage(HttpStatusCode.NotModified) : Response();
+        }));
+        var downloader = new Downloader(http, new DownloadCache());
+        var conditional = new ConditionalGetInfo(null, "\"v1\"");
+        var first = downloader.DownloadAsync("https://example.com/concurrent-conditional", firstConditional ? conditional : null);
+        await started.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = downloader.DownloadAsync("https://example.com/concurrent-conditional", secondConditional ? conditional : null);
+        try { Assert.True(await started.WaitAsync(TimeSpan.FromSeconds(5)), "The second request was incorrectly coalesced."); }
+        finally { release.TrySetResult(); }
+        var results = await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(firstConditional, results[0].NotModified);
+        Assert.Equal(secondConditional, results[1].NotModified);
+        Assert.All(results, result => Assert.False(result.ReturnedFromCache));
+    }
+
     [Fact]
     public async Task OptingOutOfResponseStorageLeavesTheNextRequestUncached()
     {

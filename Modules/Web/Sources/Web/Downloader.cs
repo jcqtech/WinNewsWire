@@ -53,6 +53,8 @@ public sealed class Downloader
     {
         ct.ThrowIfCancellationRequested();
         var key = new Uri(url, UriKind.Absolute).AbsoluteUri;
+        if (!string.IsNullOrEmpty(conditional?.ETag) || !string.IsNullOrEmpty(conditional?.LastModified))
+            return await DownloadCoreAsync(url, key, conditional, userAgentStyle, cachesResponse: false, ct).ConfigureAwait(false);
         PendingDownload pending;
         bool coalesced;
         lock (_gate)
