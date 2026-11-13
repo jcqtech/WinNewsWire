@@ -75,7 +75,7 @@ public static partial class ArticleRenderer
         var enclosures = EnclosuresHtml(article.Attachments, body, article.RawImageLink, baseUrl);
         if (theme.TemplateHtml.Contains("[[enclosures]]", StringComparison.Ordinal))
             substitutions["enclosures"] = enclosures;
-        else substitutions["body"] = body + enclosures;
+        else substitutions["body"] = enclosures.Length == 0 ? body : "<div>" + body + "</div>" + enclosures;
         var template = LegacyMacro.Replace(theme.TemplateHtml, match => substitutions.ContainsKey(match.Groups[1].Value)
             ? "[[" + match.Groups[1].Value + "]]" : match.Value);
         return new(style, MacroProcessor.RenderedTextWith(template, substitutions), title, baseUrl, ThemeFolder(theme));
