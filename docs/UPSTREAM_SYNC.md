@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`f41d3d2ac7dd376ad35c6da83dcbb7493f3d42a8`**. This synchronization is in progress.
+`e0096cd2a44231fdd1854d47afc9e39cb007c256`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is incremental lookahead, `8721ecabf9f6a4b62570f8db632d267d01369c7b`;
+is removal of prefetching, `35ae2068c155fc6de758fe8c45c39fdc045ae325`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -152,8 +152,10 @@ bytes, including animation, per URL without a second raw HTTP-body cache. Native
 those bytes directly at up to 256/1200 pixels, respect EXIF orientation, and retain no
 per-size encoded thumbnail copies. Scaled icon/favicon representations now also
 persist beside the original, keyed by size and encoding, avoiding repeated
-resizing after memory eviction or service recreation. Corrupt copies are rebuilt
-without poisoning the original URL; changed originals invalidate derived copies.
+resizing after memory eviction or service recreation. Unchanged small images do
+not create duplicate sidecars. Corrupt copies are rebuilt without poisoning the
+original URL; changed originals invalidate every size/encoding sidecar under the
+shared disk gate before source-change notification.
 The source path still identifies the full-size original for reader/native callers.
 Derived copies follow source eviction/orphan cleanup and do not count toward
 the upstream original-source byte budget.
@@ -167,15 +169,18 @@ Native decoding has its own independent four-active/60-waiting queue, with
 URL/mode coalescing, visible promotion and transient overflow. Downloading precedes
 decode admission, and shutdown cancels and drains both waiting and active work.
 At most 60 requests wait, newest-first; overflow drops the oldest request as
-transient without poisoning its URL or imposing a retry backoff. Background
+transient without poisoning its URL or imposing a retry backoff. Successful
+thumbnail downloads no longer create activity entries or displace refresh/sync
+history; failures retain their article title, URL and error. Background
 icon checks bypass thumbnail slots so full thumbnail queues do not block them.
 Visible thumbnails now take precedence over newer next-screen prefetches.
 Queued sources promote by URL when their rows become visible, including
 coalesced downloads. Overflow drops prefetches before visible work; both tiers
 remain newest-first. Native timeline lookahead uses the low-priority path.
 Lookahead follows scroll direction for one screen above or below the viewport,
-requests nearest rows last for newest-first admission, and skips unchanged
-viewports. Queue leases carry the current promoted priority. After waiting,
+requests nearest rows last for newest-first admission, and requests only newly
+added lookahead rows after overlapping moves. Unchanged viewports are skipped.
+Queue leases carry the current promoted priority. After waiting,
 downloads recheck cooldown and priority-specific network/Energy Saver policy,
 except when a reader explicitly starts the shared source immediately.
 Visible rows reuse their already resolved URL during loading; failed candidates
@@ -215,14 +220,18 @@ bytes with a small icon. Activity details identify the homepage. Retired favicon
 folders, including the former SHA1 cache, are removed once on upgrade; they are
 no longer imported or periodically purged. Windows retains native decoder
 failure reporting instead of the Apple-specific unreadable-data fallback.
-Retired Images/Thumbnails/LargeThumbnails/FeedIcons folders are removed once,
+Retired Images/FeedIcons/favicon folders are removed once,
 retaining atomic preference markers. The independent resizing purge and periodic
 legacy mapping flush are removed; completed retirement never repeats deletion
 because of an obsolete date/marker. Shared sources now use the upstream desktop disk
 budget instead of periodic folder purges: 300 MiB soft, 1 GiB hard, and
 80-percent eviction targets. Three-day recent-use and one-minute save protection
 preserve active images. Startup/download-triggered passes reconcile orphan
-files/records, and disk hits update access dates at most daily. Source disk
+files/records; subsequent passes wait for another quarter-budget of growth when
+recent images remain protected. Failed folder listing, including a missing
+folder, is reported and aborts cleanup without deleting metadata. Database usage
+query failures already propagate before any deletion. Disk hits update access
+dates at most daily. Source disk
 reads/saves and pruning are serialized without serializing network downloads.
 Warm icon/favicon and decoded thumbnail hits now update the same daily access
 accounting, without decoding or downloading again. Warm icons also schedule due
@@ -274,7 +283,9 @@ Disk hits and unrelated hosts remain usable. Only a real non-transient network
 response clears a host pause. Connectivity changes reset automatic URL/host
 backoff but retain valid server-directed Retry-After deadlines, including short
 hints and extensions of an active wait. Admission rechecks cooldowns after
-waiting for a thumbnail slot.
+waiting for a thumbnail slot. Local source-write failures also log and use
+transient URL-only backoff without recording absent sources or favicon mappings;
+cancellation still propagates.
 Nonempty unreadable HTTP-200 sources are transient, allowing captive-portal
 recovery instead of a five-day failure or premature declared-icon fallback.
 Unreadable revalidations preserve the good original and validators but reschedule
@@ -311,8 +322,9 @@ Native WIC scaling now encodes resized representations as PNG, removing the
 temporary JPEG quality/alpha-format-selection API. Existing size-Png sidecar
 names remain compatible. Small single-frame
 images keep their original bytes. Header-only largest-frame dimensions avoid a
-full managed pixel-buffer allocation. Retired named thumbnail cache folders are
-removed on upgrade, and Current Activity recognizes thumbnail URLs.
+full managed pixel-buffer allocation. Development-only thumbnail cache folders
+are no longer deletion targets; shipped legacy Windows favicon storage remains
+part of the one-time retirement. Current Activity recognizes thumbnail URLs.
 
 Timeline navigation now measures the viewport below pinned toolbar and column
 headings. Rows above it scroll minimally; rows below it are centered. Adjacent-row
@@ -333,8 +345,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **180 Ported, 62 Covered, 79 Skipped, and 184 Pending**
-source commits, backed by **195 source-attributed Windows port commits**.
+The inventory currently has **189 Ported, 67 Covered, 83 Skipped, and 166 Pending**
+source commits, backed by **204 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -374,7 +386,16 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The latest reader/header/sidebar/navigation gate passes **159 image tests and
+The current image suite passes **220 tests** after batched discovery, lazy
+candidate selection, host-aware admission, retry recovery, write/listing safety,
+sidecar invalidation and failure-only thumbnail logging. All six focused cache
+retirement tests pass. Each new behavioral regression was also run against its
+original implementation and failed before the implementation was restored.
+The overlapping native lookahead probe passes in both scroll directions and
+fails with the pristine loop; the current production x64 build is warning-free.
+These targeted results do not replace the full UI-gate results below.
+
+The last reader/header/sidebar/navigation gate passes **159 image tests and
 32 of 33 UI groups** after scaled-icon persistence and signed-resource integration.
 The remaining assertion is the existing responsive-menu open-during-resize
 check ("A still-open menu was replaced during resizing"). The preceding gate
