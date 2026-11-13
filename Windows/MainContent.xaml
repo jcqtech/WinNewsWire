@@ -762,8 +762,13 @@
                         <FontIcon Glyph="&#xE713;" FontSize="14" />
                         <Button.Flyout><MenuFlyout Opening="StatusBarGearMenu_Opening" /></Button.Flyout>
                     </Button>
-                    <ProgressBar x:Name="StatusBarProgress" Grid.Column="1" Width="40" Height="4"
-                                 IsIndeterminate="False" VerticalAlignment="Center" Visibility="Collapsed" />
+                    <Button x:Name="StatusBarActivityButton" Grid.Column="1" Width="48" Height="28" MinWidth="0" MinHeight="0"
+                            Padding="4,0" Visibility="Collapsed" Click="StatusBarActivity_Click"
+                            Style="{StaticResource SubtleButtonStyle}">
+                        <ProgressBar x:Name="StatusBarProgress" Width="40" Height="4"
+                                     IsIndeterminate="False" VerticalAlignment="Center" Visibility="Collapsed"
+                                     IsHitTestVisible="False" />
+                    </Button>
                     <Button x:Name="StatusBarCountButton" Grid.Column="2" MinWidth="0" MinHeight="0" Height="28" Padding="0"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                             Click="StatusBarCount_Click" Style="{StaticResource SubtleButtonStyle}">

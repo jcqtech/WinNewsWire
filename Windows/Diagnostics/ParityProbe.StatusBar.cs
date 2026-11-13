@@ -180,6 +180,25 @@ internal static partial class ParityProbe
             await Task.Run(() => reporter.Report(new ProgressInfo(5, 3, 8)));
             await WaitFor(() => Task.FromResult(progress.Visibility == Visibility.Visible && progress.Maximum == 8
                 && progress.Value == 3 && count.Text == "3 of 8"), "Worker-thread refresh progress");
+            foreach (var button in new[] { (Button)content.FindName("StatusBarActivityButton"), countButton })
+            {
+                var modeBeforeActivity = defaults.GetStatusBarCountMode();
+                Require(!AppWindows.CurrentActivityWindow.ShouldOpenAtStartup, "Current Activity was already open.");
+                try
+                {
+                    InvokeButton(button);
+                    await WaitFor(() => Task.FromResult(AppWindows.CurrentActivityWindow.ShouldOpenAtStartup),
+                        "Status-bar Current Activity action");
+                    Require(defaults.GetStatusBarCountMode() == modeBeforeActivity,
+                        "Clicking refresh progress changed the saved count mode.");
+                }
+                finally
+                {
+                    if (AppWindows.CurrentActivityWindow.ShouldOpenAtStartup)
+                        AppWindows.CurrentActivityWindow.Show().Close();
+                    window.Activate();
+                }
+            }
             reporter.Report(new ProgressInfo(0, 8, 8));
             await WaitFor(() => Task.FromResult(progress.Visibility == Visibility.Collapsed
                 && count.Text.Contains("feed", StringComparison.Ordinal)), "Refresh completion");
@@ -196,7 +215,7 @@ internal static partial class ParityProbe
             return new { CountCycling = true, HiddenUnreadCounts = true, LastRefresh = true, ClockNotifications = true,
                 DividerAlignment = true,
                 FullLinkCopy = true, GearSelection = true,
-                SharedThemes = true, WorkerProgress = true, MultipleWindows = true, SidebarFooterFallback = true };
+                SharedThemes = true, WorkerProgress = true, ActivityActions = true, MultipleWindows = true, SidebarFooterFallback = true };
         }
         finally
         {

@@ -25,6 +25,8 @@ public sealed partial class MainContent
     {
         AutomationProperties.SetName(StatusBarSurface, AppStrings.Get("StatusBar"));
         AutomationProperties.SetName(StatusBarGearButton, AppStrings.Get("StatusBarGear"));
+        AutomationProperties.SetName(StatusBarActivityButton, AppStrings.Get("CurrentActivity"));
+        ToolTipService.SetToolTip(StatusBarActivityButton, AppStrings.Get("CurrentActivity"));
         AutomationProperties.SetHelpText(StatusBarCountButton, AppStrings.Get("StatusBarCountHelp"));
         AutomationProperties.SetName(StatusBarThemeButton, AppStrings.Get("Toolbar_articleThemeMenu"));
         CombinedRefreshProgress.Shared.ProgressChanged += StatusBarProgressChanged;
@@ -113,7 +115,7 @@ public sealed partial class MainContent
         bool showCounts = ViewModel.UnreadDisplayMode == UnreadCountDisplay.Count;
         var progress = CombinedRefreshProgress.Shared.Snapshot;
         bool refreshing = progress.NumberRemaining > 0;
-        StatusBarProgress.Visibility = refreshing ? Visibility.Visible : Visibility.Collapsed;
+        StatusBarActivityButton.Visibility = StatusBarProgress.Visibility = refreshing ? Visibility.Visible : Visibility.Collapsed;
         StatusBarProgress.Maximum = Math.Max(1, progress.NumberOfTasks);
         StatusBarProgress.Value = progress.NumberCompleted;
         if (refreshing)
@@ -153,9 +155,19 @@ public sealed partial class MainContent
     }
 
     private void StatusBarCount_Click(object sender, RoutedEventArgs args)
-        => SaveStatusBarPreference(() => AppDefaults.Shared.SetStatusBarCountMode(
+    {
+        if (CombinedRefreshProgress.Shared.Snapshot.NumberRemaining > 0)
+        {
+            StatusBarActivity_Click(sender, args);
+            return;
+        }
+        SaveStatusBarPreference(() => AppDefaults.Shared.SetStatusBarCountMode(
             StatusBarPresentation.NextMode(AppDefaults.Shared.GetStatusBarCountMode(),
                 ViewModel.UnreadDisplayMode == UnreadCountDisplay.Count)));
+    }
+
+    private void StatusBarActivity_Click(object sender, RoutedEventArgs args)
+        => AppWindows.CurrentActivityWindow.Show();
 
     private void StatusBarContextMenu_Opening(object sender, object args)
     {
