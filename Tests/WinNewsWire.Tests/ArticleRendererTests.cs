@@ -184,8 +184,7 @@ public sealed class ArticleRendererTests
         var html = ArticleRenderer.Render(Article(image: "https://example.com/artwork.jpg", attachments: [audio]),
             theme: Theme()).Html;
         Assert.Contains("<audio controls preload=\"none\" src=\"https://example.com/atp311.mp3\"", html);
-        Assert.Contains("atp311.mp3", html);
-        Assert.Contains("1:54:09", html);
+        Assert.Contains("<div class=\"nnw-enclosure-caption\">atp311.mp3 &#183; 1:54:09 &#183; ", html);
         Assert.Contains("MB", html);
         Assert.Contains("<img src=\"https://example.com/artwork.jpg\"", html);
     }
