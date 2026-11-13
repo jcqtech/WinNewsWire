@@ -31,6 +31,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     private readonly DispatcherQueue _dispatcher;
     private readonly Lazy<Task<(ArticleThumbnailFinder Finder, ThumbnailDownloader Downloads)>> _backend;
     private readonly long _cacheByteLimit;
+    private readonly Func<bool> _networkAllowsDownloads;
     private readonly Dictionary<(string Url, ThumbnailMode Mode), LinkedListNode<CachedThumbnail>> _cache = [];
     private readonly LinkedList<CachedThumbnail> _cacheOrder = [];
     private readonly ConcurrentDictionary<(string Url, ThumbnailMode Mode), Lazy<Task<SoftwareBitmapSource?>>> _pending = [];
@@ -45,7 +46,10 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal event EventHandler<string>? ThumbnailAvailable;
     internal event EventHandler<IReadOnlySet<string>>? ThumbnailUrlsAvailable;
     internal event EventHandler<string>? ThumbnailDownloadFailed;
+    internal event EventHandler? NetworkStatusChanged;
+    internal bool NetworkDownloadsAllowed { get; private set; }
 #if PARITY_PROBE
+    internal void ProbeNotifyNetworkStatusChanged() => OnNetworkStatusChanged(null);
     internal int ProbeDecodes;
     internal bool ProbeDecodedOnUIThread;
     internal long ProbeCacheBytes => _cacheBytes;
@@ -57,13 +61,15 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 
     internal ArticleThumbnailService(DispatcherQueue dispatcher,
         Func<(ArticleThumbnailFinder Finder, ThumbnailDownloader Downloads)>? createBackend = null,
-        long cacheByteLimit = 128 * 1024 * 1024)
+        long cacheByteLimit = 128 * 1024 * 1024, Func<bool>? networkAllowsDownloads = null)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(cacheByteLimit);
         _dispatcher = dispatcher;
         VerifyAccess();
         _cacheByteLimit = cacheByteLimit;
+        _networkAllowsDownloads = networkAllowsDownloads ?? NetworkAllowsDownloads;
+        NetworkDownloadsAllowed = _networkAllowsDownloads();
         _backend = new(() => Task.Run(() =>
         {
             var backend = (createBackend ?? CreateBackend)();
@@ -71,7 +77,20 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             backend.Downloads.DownloadFailed += BackendDownloadFailed;
             return backend;
         }));
+        NetworkInformation.NetworkStatusChanged += OnNetworkStatusChanged;
+        NetworkMonitor.ConnectivityChanged += OnConnectivityChanged;
     }
+
+    private void OnConnectivityChanged(object? sender, bool available) => OnNetworkStatusChanged(sender);
+
+    private void OnNetworkStatusChanged(object? sender)
+        => DispatchNotification(() =>
+        {
+            bool allowed = _networkAllowsDownloads();
+            if (NetworkDownloadsAllowed == allowed) return;
+            NetworkDownloadsAllowed = allowed;
+            NetworkStatusChanged?.Invoke(this, EventArgs.Empty);
+        });
 
     private static (ArticleThumbnailFinder, ThumbnailDownloader) CreateBackend()
     {
@@ -353,6 +372,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         {
             if (_shutdown is not null) return new(_shutdown);
             _stopping = true;
+            NetworkInformation.NetworkStatusChanged -= OnNetworkStatusChanged;
+            NetworkMonitor.ConnectivityChanged -= OnConnectivityChanged;
             _lifetime.Cancel();
             return new(_shutdown = DrainAsync(_operations.ToArray()));
         }

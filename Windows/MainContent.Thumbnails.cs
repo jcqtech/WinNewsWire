@@ -79,11 +79,13 @@ public sealed partial class MainContent
             _thumbnailService.ThumbnailAvailable -= TimelineThumbnailAvailable;
             _thumbnailService.ThumbnailUrlsAvailable -= TimelineThumbnailUrlsAvailable;
             _thumbnailService.ThumbnailDownloadFailed -= TimelineThumbnailDownloadFailed;
+            _thumbnailService.NetworkStatusChanged -= TimelineThumbnailNetworkStatusChanged;
         }
         _thumbnailService = service;
         _thumbnailService.ThumbnailAvailable += TimelineThumbnailAvailable;
         _thumbnailService.ThumbnailUrlsAvailable += TimelineThumbnailUrlsAvailable;
         _thumbnailService.ThumbnailDownloadFailed += TimelineThumbnailDownloadFailed;
+        _thumbnailService.NetworkStatusChanged += TimelineThumbnailNetworkStatusChanged;
         QueueTimelineThumbnailRefresh();
     }
 #endif
@@ -95,6 +97,7 @@ public sealed partial class MainContent
         _thumbnailService.ThumbnailAvailable += TimelineThumbnailAvailable;
         _thumbnailService.ThumbnailUrlsAvailable += TimelineThumbnailUrlsAvailable;
         _thumbnailService.ThumbnailDownloadFailed += TimelineThumbnailDownloadFailed;
+        _thumbnailService.NetworkStatusChanged += TimelineThumbnailNetworkStatusChanged;
         _articleScrollViewer!.ViewChanged += TimelineThumbnailsViewChanged;
         ObserveThumbnailItems();
     }
@@ -294,6 +297,15 @@ public sealed partial class MainContent
         QueueVisibleThumbnailRefresh();
     }
 
+    private void TimelineThumbnailNetworkStatusChanged(object? sender, EventArgs args)
+    {
+        if (!ShowsTimelineThumbnails || _thumbnailService?.NetworkDownloadsAllowed != true) return;
+        foreach (var pair in _timelineThumbnails.ToArray())
+            if (pair.Key.ImageSource is null && !pair.Value.Loading) RefreshTimelineThumbnail(pair.Key);
+        _thumbnailLookahead = null;
+        QueueVisibleThumbnailRefresh();
+    }
+
     private void TimelineThumbnailDownloadFailed(object? sender, string url)
     {
         if (!ShowsTimelineThumbnails) return;
@@ -386,6 +398,7 @@ public sealed partial class MainContent
             _thumbnailService.ThumbnailAvailable -= TimelineThumbnailAvailable;
             _thumbnailService.ThumbnailUrlsAvailable -= TimelineThumbnailUrlsAvailable;
             _thumbnailService.ThumbnailDownloadFailed -= TimelineThumbnailDownloadFailed;
+            _thumbnailService.NetworkStatusChanged -= TimelineThumbnailNetworkStatusChanged;
         }
         if (_articleScrollViewer is not null) _articleScrollViewer.ViewChanged -= TimelineThumbnailsViewChanged;
         foreach (var view in _timelineThumbnails.Keys.ToArray()) RemoveTimelineThumbnail(view);

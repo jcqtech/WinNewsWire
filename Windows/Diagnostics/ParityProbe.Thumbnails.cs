@@ -70,7 +70,7 @@ internal static partial class ParityProbe
             return (new ArticleThumbnailFinder(database),
                 new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "thumbnail-cache"),
                     () => networkAllowed, downloader));
-        }, cacheByteLimit: 3_000_000);
+        }, cacheByteLimit: 3_000_000, networkAllowsDownloads: () => networkAllowed);
         service.ThumbnailAvailable += (_, _) =>
         {
             notifications++;
@@ -251,6 +251,7 @@ internal static partial class ParityProbe
             RenderedImagesUseSharedSources = true, FailedLocalImagesFallBackWithoutPublisherScripts = true,
             HiddenModeLeavesReaderImagesRemote = true,
             ReaderAndDiscoveryShareBaseUrls = true, FeedBasesCapturedOnUI = true,
+            ConnectivityRecoveryRetriesVisiblePlaceholders = true,
             DecoderFailureStopsRetriesWithoutSuppressingIcons = true,
             VisibleNativePixels = true, RoundedClipping = true, ThemedPlaceholder = true,
             RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
@@ -497,6 +498,27 @@ internal static partial class ParityProbe
                 finally { model.RefreshArticleHtml(); }
                 await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Reader restored after fallback check");
             }
+            setNetworkAllowed(false);
+            await Task.Run(service.ProbeNotifyNetworkStatusChanged);
+            await WaitFor(() => Task.FromResult(!service.NetworkDownloadsAllowed), "Offline policy notification on UI");
+            var networkRecoveryArticle = ArticleFor(2, "https://thumbnail.test/recovered.bmp");
+            rows[2] = Row(networkRecoveryArticle);
+            await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>()
+                .Any(view => ReferenceEquals(view.Tag, networkRecoveryArticle) && view.ImageSource is null
+                    && !content.ProbeThumbnailRequestIsLoading(view))),
+                "Visible offline thumbnail placeholder");
+            await Task.Delay(250);
+            await new RenderTargetBitmap().RenderAsync(list);
+            await WaitFor(() => Task.FromResult(content.ProbeThumbnailWorkIsIdle),
+                "Offline layout and admission settle before connectivity recovery");
+            Require(!requests.Contains("/recovered.bmp"), "An offline placeholder initiated a network request.");
+            setNetworkAllowed(true);
+            await Task.Run(service.ProbeNotifyNetworkStatusChanged);
+            await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>()
+                .Any(view => ReferenceEquals(view.Tag, networkRecoveryArticle) && view.ImageSource is not null)),
+                "Connectivity recovery fills an idle visible thumbnail");
+            Require(requests.Count(path => path == "/recovered.bmp") == 1,
+                "Connectivity recovery duplicated the visible image download.");
             await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large));
             await WaitFor(() => Task.FromResult(modeNotifications > 0 && peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
                 && largeMenu.IsChecked && largeMenu.IsEnabled), "Shared large-thumbnail mode");
