@@ -21,6 +21,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private readonly Func<bool> _networkAllowsUpdates;
     private readonly object _backgroundGate = new();
     private readonly HashSet<Task> _backgroundTasks = [];
+    private readonly Dictionary<string, int> _revalidatingImages = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _lifetime = new();
     private bool _stopping;
     private Task? _shutdown;
@@ -79,6 +80,16 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         return await _downloads.FetchAsync(url, ct, request: request).ConfigureAwait(false);
     }
 
+    private void ReleaseRevalidation(string url)
+    {
+        lock (_backgroundGate)
+        {
+            int remaining = _revalidatingImages[url] - 1;
+            if (remaining == 0) _revalidatingImages.Remove(url);
+            else _revalidatingImages[url] = remaining;
+        }
+    }
+
     internal void PrioritizeDownload(string url) => _downloadLimiter.Prioritize(url);
 
     private async Task SaveAccessDateIfNeededAsync(string url, ImageResourceRequest request)
@@ -112,11 +123,14 @@ public sealed class DownloadedImageCache : IAsyncDisposable
 
     private async Task RevalidateIfDueAsync(string url, CancellationToken ct)
     {
+        bool inUse = false;
         try
         {
             var validation = await _database.FetchDownloadedImageValidationAsync(url).ConfigureAwait(false);
             if (validation is null || validation.NextCheck > _clock.GetUtcNow() || !_networkAllowsUpdates()) return;
             ct.ThrowIfCancellationRequested();
+            lock (_backgroundGate) _revalidatingImages[url] = _revalidatingImages.GetValueOrDefault(url) + 1;
+            inUse = true;
             var response = await _downloader.DownloadAsync(url, validation.ConditionalGet, ct,
                 UserAgentStyle.Browser, cachesResponse: false).ConfigureAwait(false);
             if (response.Success && response.Data is { Length: > 0 } data)
@@ -137,6 +151,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         {
             Trace.TraceWarning($"Image revalidation for {url} failed; keeping the cached image: {error}");
         }
+        finally { if (inUse) ReleaseRevalidation(url); }
     }
 
     internal static DateTimeOffset CalculateNextCheck(TimeSpan? maxAge, bool hasValidators, DateTimeOffset now)
@@ -184,7 +199,9 @@ public sealed class DownloadedImageCache : IAsyncDisposable
                 dates[file.Name] = file.LastWriteTimeUtc;
             }
         }
-        var removal = PlanRemoval(records, dates, now, _limit, _hardLimit);
+        var urlsInUse = _downloads.CopyPendingUrls();
+        lock (_backgroundGate) urlsInUse.UnionWith(_revalidatingImages.Keys);
+        var removal = PlanRemoval(records, dates, now, _limit, _hardLimit, urlsInUse);
         foreach (var key in removal.Keys) _diskCache.Remove(key);
         await _database.DeleteDownloadedImagesAsync(removal.Urls).ConfigureAwait(false);
         foreach (var url in removal.Urls) _accessDatesSaved.Remove(url);
@@ -203,7 +220,8 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     internal sealed record ImageRemoval(IReadOnlyList<string> Urls, IReadOnlySet<string> Keys, long RemainingByteCount);
 
     internal static ImageRemoval PlanRemoval(IReadOnlyList<DownloadedImageUsage> records,
-        IReadOnlyDictionary<string, DateTimeOffset> fileDates, DateTimeOffset now, ByteLimit limit, ByteLimit hardLimit)
+        IReadOnlyDictionary<string, DateTimeOffset> fileDates, DateTimeOffset now, ByteLimit limit, ByteLimit hardLimit,
+        IReadOnlySet<string>? urlsInUse = null)
     {
         var recentChange = now - TimeSpan.FromMinutes(1);
         var recentUse = now - TimeSpan.FromDays(3);
@@ -226,7 +244,8 @@ public sealed class DownloadedImageCache : IAsyncDisposable
             foreach (var (record, key) in keep)
             {
                 if (bytes <= target.ByteCountAfterRemoval || record.LastAccessed >= accessedBefore) break;
-                if (keys.Contains(key) || fileDates.TryGetValue(key, out var modified) && modified >= recentChange) continue;
+                if (keys.Contains(key) || urlsInUse?.Contains(record.Url) == true
+                    || fileDates.TryGetValue(key, out var modified) && modified >= recentChange) continue;
                 urls.Add(record.Url);
                 keys.Add(key);
                 bytes -= record.ByteCount;

@@ -41,6 +41,11 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private Task? _shutdown;
     internal event EventHandler<string>? DownloadFailed;
 
+    internal HashSet<string> CopyPendingUrls()
+    {
+        lock (_gate) return _pending.Keys.ToHashSet(StringComparer.Ordinal);
+    }
+
     internal ImageResourceDownloader(ImageDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
         TimeProvider? clock = null, ActivityLogger? activityLog = null,

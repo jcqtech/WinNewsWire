@@ -274,6 +274,62 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
+    public async Task ActiveRevalidationSurvivesPruningUntilItsNetworkOperationFinishes()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (_, ct) =>
+        {
+            started.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return ValidatedResponse(HttpStatusCode.NotModified, []);
+        });
+        await fixture.SeedAsync("active");
+        await fixture.Database.SaveDownloadedImageAsync(new(Url("active"), Fixture.Image.Length, (1, 1),
+            new(null, "\"v1\""), fixture.Clock.GetUtcNow()));
+        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        await using var cache = fixture.CreateCache(2, 2);
+        try
+        {
+            Assert.NotNull(await fixture.FetchAsync(cache, "active", checksForUpdates: true));
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await fixture.SeedAsync("other1");
+            await fixture.SeedAsync("other2");
+            fixture.Clock.Advance(TimeSpan.FromDays(10));
+            await cache.RemoveImagesOverSizeLimitAsync();
+            Assert.True(File.Exists(fixture.PathFor("active")));
+            Assert.False(File.Exists(fixture.PathFor("other1")));
+            Assert.False(File.Exists(fixture.PathFor("other2")));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        await fixture.SeedAsync("other3");
+        await fixture.SeedAsync("other4");
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        await cache.RemoveImagesOverSizeLimitAsync();
+        Assert.False(File.Exists(fixture.PathFor("active")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ActiveImagesAreProtectedUnderBothSoftAndHardLimits(bool hardLimit)
+    {
+        var old = Now.AddDays(hardLimit ? -1 : -10);
+        var records = Enumerable.Range(0, 3)
+            .Select(index => new DownloadedImageUsage(Url(index.ToString()), 100, old)).ToArray();
+        var dates = records.ToDictionary(record => record.Url.Md5Hex(), _ => old);
+        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, new(200), new(hardLimit ? 200 : 1000),
+            new HashSet<string>(StringComparer.Ordinal) { records[0].Url });
+        Assert.Equal(records.Skip(1).Select(record => record.Url), removal.Urls);
+        Assert.Equal(100, removal.RemainingByteCount);
+        Assert.DoesNotContain(records[0].Url.Md5Hex(), removal.Keys);
+    }
+
+    [Fact]
     public void LeastRecentImagesAndOrphansAreRemovedDownToTheTarget()
     {
         var old = Now.AddDays(-10);
