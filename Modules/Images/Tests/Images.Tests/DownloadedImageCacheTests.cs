@@ -460,7 +460,7 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
-    public async Task ActiveRevalidationSurvivesPruningUntilItsNetworkOperationFinishes()
+    public async Task ExpiredIconsBeingRevalidatedStayInUseUntilTheCheckFinishes()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -474,14 +474,14 @@ public sealed class DownloadedImageCacheTests
         await fixture.Database.SaveDownloadedImageAsync(new(Url("active"), (1, 1),
             new(null, "\"v1\""), fixture.Clock.GetUtcNow()));
         fixture.Clock.Advance(TimeSpan.FromDays(10));
-        await using var cache = fixture.CreateCache(2);
+        await using var cache = fixture.CreateCache(1);
         try
         {
             Assert.NotNull(await fixture.FetchAsync(cache, "active", checksForUpdates: true));
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await fixture.SeedAsync("other1");
             await fixture.SeedAsync("other2");
-            fixture.Clock.Advance(TimeSpan.FromDays(10));
+            fixture.Clock.Advance(TimeSpan.FromDays(181));
             await cache.RemoveImagesOverSizeLimitAsync();
             Assert.True(File.Exists(fixture.PathFor("active")));
             Assert.False(File.Exists(fixture.PathFor("other1")));
@@ -561,6 +561,57 @@ public sealed class DownloadedImageCacheTests
         Assert.Equal([records[1].Url], removal.Urls);
         Assert.True(removal.Keys.SetEquals([records[1].Url.Md5Hex()]));
         Assert.Equal(100L, removal.RemainingByteCount);
+    }
+
+    [Fact]
+    public void IconsNeverCountTowardTheThumbnailByteBudget()
+    {
+        var old = Now.AddDays(-10);
+        var icon = new DownloadedImageUsage(Url("icon"), old, IsIcon: true);
+        var first = new DownloadedImageUsage(Url("first"), old.AddSeconds(1));
+        var second = new DownloadedImageUsage(Url("second"), old.AddSeconds(2));
+        var records = new[] { icon, first, second };
+        var files = records.ToDictionary(row => row.Url.Md5Hex(),
+            row => new DownloadedImageCache.StoredFile(old, row.IsIcon ? 500 : 100));
+        var removal = DownloadedImageCache.PlanRemoval(records, files, Now, 100);
+        Assert.Equal([first.Url], removal.Urls);
+        Assert.Equal(100, removal.RemainingByteCount);
+        Assert.True(removal.Keys.SetEquals([first.Url.Md5Hex()]));
+    }
+
+    [Fact]
+    public void UnusedIconsExpireAfter180DaysButActiveAndRecentlyWrittenIconsStay()
+    {
+        var records = new[]
+        {
+            new DownloadedImageUsage(Url("expired"), Now.AddDays(-181), IsIcon: true),
+            new DownloadedImageUsage(Url("active"), Now.AddDays(-181), IsIcon: true),
+            new DownloadedImageUsage(Url("recent-file"), Now.AddDays(-181), IsIcon: true),
+            new DownloadedImageUsage(Url("boundary"), Now.AddDays(-180), IsIcon: true)
+        };
+        var files = records.ToDictionary(row => row.Url.Md5Hex(),
+            row => new DownloadedImageCache.StoredFile(row.Url == Url("recent-file") ? Now : Now.AddDays(-181), 100));
+        string derived = DownloadedImageCache.DerivedDiskKey(records[0].Url, "144");
+        files[derived] = new(Now, 20);
+        var removal = DownloadedImageCache.PlanRemoval(records, files, Now, 10_000,
+            new HashSet<string>(StringComparer.Ordinal) { Url("active") });
+        Assert.Equal([Url("expired")], removal.Urls);
+        Assert.Equal(0, removal.RemainingByteCount);
+        Assert.True(removal.Keys.SetEquals([Url("expired").Md5Hex(), derived]));
+    }
+
+    [Fact]
+    public async Task StartupDoesNotPruneIconSourcesToMakeRoomForThumbnails()
+    {
+        await using var fixture = new Fixture();
+        await fixture.SeedAsync("icon");
+        await fixture.Database.SaveDownloadedImageIsIconAsync(Url("icon"));
+        await fixture.SeedAsync("photo");
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        await using (var cache = fixture.CreateCache(1)) { }
+        Assert.True(File.Exists(fixture.PathFor("icon")));
+        Assert.True(File.Exists(fixture.PathFor("photo")));
+        Assert.Equal(2, (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
     }
 
     [Fact]

@@ -252,7 +252,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         try
         {
             ct.ThrowIfCancellationRequested();
-            await StoreImageAsync(url, processed, response, ct).ConfigureAwait(false);
+            await StoreImageAsync(url, processed, response, request.ChecksForUpdates, ct).ConfigureAwait(false);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
         {
@@ -274,10 +274,10 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     internal Task StoreUpdatedSourceAsync(string url, byte[] data, DownloadResult response, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        return StoreImageAsync(url, ProcessImage(data), response, ct);
+        return StoreImageAsync(url, ProcessImage(data), response, true, ct);
     }
 
-    private async Task StoreImageAsync(string url, byte[] processed, DownloadResult response, CancellationToken ct)
+    private async Task StoreImageAsync(string url, byte[] processed, DownloadResult response, bool isIcon, CancellationToken ct)
     {
         if (_sourceDiskGate is not null) await _sourceDiskGate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -290,7 +290,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                 await _database.SaveDownloadedImageAsync(new(url,
                     WindowsImage.LargestFramePixelSize(processed), response.ConditionalGet,
                     DownloadedImageCache.CalculateNextCheck(response.CacheMaxAge,
-                        response.ConditionalGet is not null, _clock.GetUtcNow()))).ConfigureAwait(false);
+                        response.ConditionalGet is not null, _clock.GetUtcNow()), isIcon)).ConfigureAwait(false);
             await _database.ClearFailureAsync(url).ConfigureAwait(false);
             if (_sourceWasSaved is not null) await _sourceWasSaved(url).ConfigureAwait(false);
         }
@@ -317,6 +317,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         var result = await _sourceCache!.FetchAsync(url, request with { ChecksForUpdates = true }, ct).ConfigureAwait(false);
         if (result.Image is not { } source) return result;
+        await _sourceCache.ImageWasUsedAsync(url, checksForUpdates: true, ct).ConfigureAwait(false);
         try
         {
             ct.ThrowIfCancellationRequested();

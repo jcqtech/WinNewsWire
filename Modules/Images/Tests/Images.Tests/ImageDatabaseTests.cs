@@ -50,7 +50,7 @@ public sealed class ImageDatabaseTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task MigrationPreservesSourceRecordsButDiscardsObsoleteThumbnailResultsIncludingRecoveredWal(bool oldValidationSchema)
+    public async Task MigrationPreservesSourceRecordsButDiscardsObsoleteThumbnailResultsIncludingRecoveredWal(bool oldSchema)
     {
         string sourcePath = Path.Combine(_directory, "source.db");
         string legacyPath = Path.Combine(_directory, "ImageMetadata.db");
@@ -61,14 +61,14 @@ public sealed class ImageDatabaseTests : IDisposable
             await source.SaveFeedIconUrlAsync("https://site.test/feed", "legacy");
             await source.RecordFailureAsync("https://site.test/missing");
             await source.SaveDownloadedImageAsync(new(image, (48, 48),
-                new(null, "\"legacy\""), _clock.GetUtcNow().AddDays(3)));
+                new(null, "\"legacy\""), _clock.GetUtcNow().AddDays(3), IsIcon: true));
             {
                 using var legacy = Open(sourcePath);
                 legacy.Execute("""
                     CREATE TABLE IF NOT EXISTS articleThumbnailURLs (articleID TEXT PRIMARY KEY NOT NULL, thumbnailURLs TEXT, lastChecked REAL NOT NULL);
                     INSERT INTO articleThumbnailURLs VALUES ('article', 'https://site.test/photo.png', $now);
                     """, ("$now", (_clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds));
-                if (oldValidationSchema) legacy.Execute("ALTER TABLE downloadedImage DROP COLUMN nextCheck;");
+                if (oldSchema) legacy.Execute("ALTER TABLE downloadedImage DROP COLUMN nextCheck; ALTER TABLE downloadedImage DROP COLUMN isIcon;");
             }
             File.Copy(sourcePath, legacyPath);
             File.Copy(sourcePath + "-wal", legacyPath + "-wal");
@@ -85,10 +85,11 @@ public sealed class ImageDatabaseTests : IDisposable
             Assert.Equal(0L, connection.Scalar<long>("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='articleThumbnailURLs';"));
             var validation = Assert.IsType<DownloadedImageValidation>(await database.FetchDownloadedImageValidationAsync(image));
             Assert.Equal("\"legacy\"", validation.ConditionalGet?.ETag);
-            Assert.Equal(oldValidationSchema ? DateTimeOffset.UnixEpoch : _clock.GetUtcNow().AddDays(3), validation.NextCheck);
+            Assert.Equal(oldSchema ? DateTimeOffset.UnixEpoch : _clock.GetUtcNow().AddDays(3), validation.NextCheck);
             var usage = Assert.Single(await database.FetchDownloadedImageUsageByLeastRecentAccessAsync());
             Assert.Equal(_clock.GetUtcNow(), usage.LastAccessed);
             Assert.Equal(image, usage.Url);
+            Assert.Equal(!oldSchema, usage.IsIcon);
         }
         Assert.False(File.Exists(legacyPath));
         Assert.False(File.Exists(legacyPath + "-wal"));
@@ -278,6 +279,24 @@ public sealed class ImageDatabaseTests : IDisposable
     }
 
     [Fact]
+    public async Task IconClassificationSurvivesReplacementAndReopening()
+    {
+        const string url = "https://site.test/shared.png";
+        using (var database = new ImageDatabase(DatabasePath, _clock))
+        {
+            await database.SaveDownloadedImageAsync(new(url, (128, 128), null));
+            Assert.False(Assert.Single(await database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).IsIcon);
+            await database.SaveDownloadedImageIsIconAsync(url);
+            await database.SaveDownloadedImageAsync(new(url, (640, 480), new(null, "\"updated\"")));
+            Assert.True(Assert.Single(await database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).IsIcon);
+        }
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
+        Assert.True(Assert.Single(await reopened.FetchDownloadedImageUsageByLeastRecentAccessAsync()).IsIcon);
+        await reopened.SaveDownloadedImageAsync(new("https://site.test/own.png", (128, 128), null, IsIcon: true));
+        Assert.All(await reopened.FetchDownloadedImageUsageByLeastRecentAccessAsync(), row => Assert.True(row.IsIcon));
+    }
+
+    [Fact]
     public async Task ExistingDownloadedImageTablesGainValidationDatesWithoutLosingSourcesOrValidators()
     {
         using (var connection = Open())
@@ -296,7 +315,11 @@ public sealed class ImageDatabaseTests : IDisposable
         Assert.Equal("\"old\"", old.ConditionalGet?.ETag);
         Assert.True(database.IsUnsuitableForThumbnail("https://site.test/icon"));
         using (var connection = Open())
+        {
             Assert.DoesNotContain("byteCount", connection.Query("PRAGMA table_info(downloadedImage);", row => row.GetString(1)));
+            Assert.Contains("isIcon", connection.Query("PRAGMA table_info(downloadedImage);", row => row.GetString(1)));
+        }
+        Assert.False(Assert.Single(await database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).IsIcon);
         await database.SaveDownloadedImageAsync(new("https://site.test/new-icon", (128, 128), null));
         Assert.False(database.IsUnsuitableForThumbnail("https://site.test/new-icon"));
         await database.SaveDownloadedImageNextCheckAsync("https://site.test/icon", _clock.GetUtcNow().AddDays(3));

@@ -27,6 +27,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     // Pruning and source read/save callbacks hold this gate; network requests stay concurrent.
     private readonly SemaphoreSlim _diskGate = new(1, 1);
     private readonly Dictionary<string, DateTimeOffset> _accessDatesSaved = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _iconUrlsNoted = new(StringComparer.Ordinal);
     private readonly Task _initialCleanup;
     internal int WaitingDownloadCount => _downloadQueue.WaitingCount;
 
@@ -160,6 +161,12 @@ public sealed class DownloadedImageCache : IAsyncDisposable
 
     private async Task SaveAccessDateIfNeededAsync(string url, bool checksForUpdates)
     {
+        if (checksForUpdates && !_iconUrlsNoted.Contains(url))
+        {
+            await _database.SaveDownloadedImageIsIconAsync(url).ConfigureAwait(false);
+            if (_iconUrlsNoted.Count >= 10_000) _iconUrlsNoted.Clear();
+            _iconUrlsNoted.Add(url);
+        }
         var now = _clock.GetUtcNow();
         if (_accessDatesSaved.TryGetValue(url, out var saved) && now - saved < TimeSpan.FromDays(1)) return;
         await _database.SaveDownloadedImageAccessDateAsync(url).ConfigureAwait(false);
@@ -282,7 +289,11 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         var removal = PlanRemoval(records, files, now, _maximumStoredByteCount, urlsInUse);
         foreach (var key in removal.Keys) _diskCache.Remove(key);
         await _database.DeleteDownloadedImagesAsync(removal.Urls).ConfigureAwait(false);
-        foreach (var url in removal.Urls) _accessDatesSaved.Remove(url);
+        foreach (var url in removal.Urls)
+        {
+            _accessDatesSaved.Remove(url);
+            _iconUrlsNoted.Remove(url);
+        }
         if (removal.Keys.Count > 0 || removal.Urls.Count > 0)
             Trace.TraceInformation($"Removed {removal.Keys.Count} downloaded image files and {removal.Urls.Count} records; {removal.RemainingByteCount} bytes remain.");
     }
@@ -296,6 +307,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     {
         var recentChange = now - TimeSpan.FromMinutes(1);
         var keep = new List<(DownloadedImageUsage Record, string Key, long ByteCount)>();
+        var icons = new List<(DownloadedImageUsage Record, string Key)>();
         var recordedKeys = new HashSet<string>(StringComparer.Ordinal);
         var urls = new List<string>();
         foreach (var record in records)
@@ -303,6 +315,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
             string key = record.Url.Md5Hex();
             recordedKeys.Add(key);
             if (!files.ContainsKey(key) && record.LastAccessed < recentChange) urls.Add(record.Url);
+            else if (record.IsIcon) icons.Add((record, key));
             else keep.Add((record, key, files.GetValueOrDefault(key)?.ByteCount ?? 0));
         }
         var keys = files.Where(pair => !recordedKeys.Contains(BaseDiskKey(pair.Key)) && pair.Value.ModificationDate < recentChange)
@@ -316,6 +329,13 @@ public sealed class DownloadedImageCache : IAsyncDisposable
             urls.Add(record.Url);
             keys.Add(key);
             bytes -= byteCount;
+        }
+        foreach (var (record, key) in icons)
+        {
+            if (record.LastAccessed >= now - TimeSpan.FromDays(180) || urlsInUse?.Contains(record.Url) == true
+                || files.TryGetValue(key, out var file) && file.ModificationDate >= recentChange) continue;
+            urls.Add(record.Url);
+            keys.Add(key);
         }
         var removedKeys = keys.Concat(urls.Select(url => url.Md5Hex())).ToHashSet(StringComparer.Ordinal);
         keys.UnionWith(files.Keys.Where(key => BaseDiskKey(key) != key && removedKeys.Contains(BaseDiskKey(key))));

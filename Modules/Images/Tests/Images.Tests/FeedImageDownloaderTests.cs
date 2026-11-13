@@ -908,6 +908,24 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SharedSourcesArePromotedToIconsBeforeTheDailyAccessThrottleExpires(bool favicon)
+    {
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Bitmap(128, 128))));
+        const string url = Home + "promoted.bmp";
+        Assert.NotNull(await fixture.Thumbnails.SourceAsync(url));
+        var original = Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync());
+        Assert.False(original.IsIcon);
+        var feed = new FeedImageSource(Feed, Home, FaviconUrl: url, IconUrl: url);
+        Assert.NotNull(favicon ? await fixture.Images.FaviconAsync(feed) : await fixture.Images.IconAsync(feed));
+        var promoted = Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync());
+        Assert.True(promoted.IsIcon);
+        Assert.Equal(original.LastAccessed, promoted.LastAccessed);
+        Assert.Single(fixture.Requests);
+    }
+
+    [Theory]
     [InlineData(32, 32)]
     [InlineData(1000, 64)]
     public async Task StoredSourceDimensionsPreventThumbnailRetriesWithoutSuppressingFeedIcons(int width, int height)
@@ -959,6 +977,7 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal(2, files.Length);
         Assert.Contains(largeImage.Path, files);
         Assert.Equal(iconImage.Data, await fixture.Images.DownloadedImages.DerivedImageDataAsync(url, "64-Png"));
+        Assert.True(Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).IsIcon);
         Assert.Single(fixture.Requests);
         Assert.Empty(fixture.Activity.CompletedActivities);
     }

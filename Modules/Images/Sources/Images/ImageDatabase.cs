@@ -42,13 +42,13 @@ public sealed class ImageDatabase : IDisposable
                     CREATE TABLE IF NOT EXISTS homePageFavicon (homePageURL TEXT PRIMARY KEY NOT NULL, faviconURL TEXT, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL);
                     DROP TABLE IF EXISTS articleThumbnailURLs;
-                    CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT, nextCheck REAL NOT NULL DEFAULT 0);
+                    CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT, nextCheck REAL NOT NULL DEFAULT 0, isIcon INTEGER NOT NULL DEFAULT 0);
                     """;
                 command.ExecuteNonQuery();
                 foreach (var (table, column) in new[] { ("downloadFailure", "statusCode"), ("feedIconURL", "lastChecked"), ("downloadedImage", "byteCount") })
                     if (connection.Query($"PRAGMA table_info({table});", row => row.GetString(1)).Contains(column, StringComparer.OrdinalIgnoreCase))
                         connection.Execute($"ALTER TABLE {table} DROP COLUMN {column};");
-                DownloadedImageTable.EnsureValidationColumn(connection);
+                DownloadedImageTable.EnsureColumns(connection);
                 bool imported = legacyDatabasePath is not null && ImportLegacyDatabase(connection, legacyDatabasePath);
                 DownloadFailureTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetry);
                 foreach (var row in HomePageFaviconTable.FetchAll(connection)) _favicons[row.HomePageUrl] = row;
@@ -79,16 +79,20 @@ public sealed class ImageDatabase : IDisposable
                 ("downloadFailure", "url,lastChecked", false),
                 ("homePageFavicon", "homePageURL,faviconURL,lastChecked", false),
                 ("feedIconURL", "feedURL,iconURL", false),
-                ("downloadedImage", "url,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck", true)
+                ("downloadedImage", "url,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck,isIcon", true)
             ];
             foreach (var (table, columns, optional) in tables)
             {
                 if (optional && connection.Scalar<long>("SELECT count(*) FROM legacy.sqlite_master WHERE type='table' AND name=$table;",
                     ("$table", table)) == 0) continue;
                 string selection = columns;
-                if (table == "downloadedImage" && !connection.Query("PRAGMA legacy.table_info(downloadedImage);",
-                    row => row.GetString(1)).Contains("nextCheck", StringComparer.OrdinalIgnoreCase))
-                    selection = columns[..^"nextCheck".Length] + "0";
+                if (table == "downloadedImage")
+                {
+                    var sourceColumns = connection.Query("PRAGMA legacy.table_info(downloadedImage);",
+                        row => row.GetString(1)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    selection = string.Join(',', columns.Split(',').Select(column =>
+                        column is "nextCheck" or "isIcon" && !sourceColumns.Contains(column) ? "0" : column));
+                }
                 int count = connection.Execute($"INSERT OR IGNORE INTO main.{table} ({columns}) SELECT {selection} FROM legacy.{table};");
                 Trace.TraceInformation($"Imported {count} image records from legacy {table}.");
             }
@@ -169,6 +173,16 @@ public sealed class ImageDatabase : IDisposable
         return _queue.RunAsync(connection =>
         {
             DownloadedImageTable.SaveAccessDate(connection, url, _clock.GetUtcNow());
+            return Task.CompletedTask;
+        });
+    }
+
+    public Task SaveDownloadedImageIsIconAsync(string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        return _queue.RunAsync(connection =>
+        {
+            DownloadedImageTable.SaveIsIcon(connection, url);
             return Task.CompletedTask;
         });
     }
