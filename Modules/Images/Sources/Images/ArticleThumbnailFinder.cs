@@ -4,7 +4,7 @@ using WinNewsWire.Parsers;
 namespace WinNewsWire.Images;
 
 public enum ThumbnailMode { Small, Large }
-public sealed record ThumbnailUrlFailure(string Url, IReadOnlySet<string> ArticleIds);
+public sealed record ThumbnailUrlFailure(IReadOnlySet<string> ArticleIds);
 
 public sealed class ArticleThumbnailFinder(ImageDatabase database)
 {
@@ -124,7 +124,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
                 .ToHashSet(StringComparer.Ordinal);
             ForgetChosenUrls(ids);
         }
-        if (ids.Count > 0) ThumbnailDownloadFailed?.Invoke(this, new(url, ids));
+        if (ids.Count > 0) ThumbnailDownloadFailed?.Invoke(this, new(ids));
     }
 
     private void ForgetChosenUrls(IEnumerable<string> ids)

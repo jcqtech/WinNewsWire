@@ -29,7 +29,6 @@ public sealed class ArticleThumbnailFinderTests
             Assert.Equal(fallback, finder.ThumbnailUrl(second, ThumbnailMode.Large));
         };
         finder.ThumbnailUrlDidFail(shared);
-        Assert.Equal(shared, failure?.Url);
         Assert.True(failure?.ArticleIds.SetEquals(["1", "2"]));
         Assert.Equal(unrelated.RawImageLink, finder.ThumbnailUrl(unrelated, ThumbnailMode.Small));
         failure = null;
