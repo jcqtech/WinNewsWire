@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`5294cab58213ae56d45f070b989e88af2c2598aa`**. This synchronization is in progress.
+`2c17fb77c97c4101fe1bda7e072901494bade2a3`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is copyable Settings version text, `d732f6dc7693d748bf5b95e185c62281a260c746`;
+is thumbnail support, `96f307911dcc266f64cfbda7889c306e9556b71b`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -51,8 +51,10 @@ Other ports include feed-title OPML autosave, feed/theme protocol links, and
 consistent successful-refresh completion dates. Windows-specific shared adapters
 preserve attachment order, dimensions/media types, and thumbnail metadata.
 Attachment-clearing updates have regression coverage. Plain text now renders
-with paragraphs, line breaks, escaping, and explicit web/mail links; detection of
-bare domains, `www` links, and bare email addresses is still a partial port.
+with paragraphs, line breaks, escaping, and explicit web/mail links. The Windows
+detector also recognizes bare domains, `www` links, and email addresses, including
+Unicode and punycode hosts, while preserving their displayed text and rejecting
+partial malformed addresses and unsupported schemes.
 
 HTML image discovery now has the final upstream lazy-source priority, significant
 image filtering, ordered unique candidates, CSS/hidden-image handling, and
@@ -76,20 +78,27 @@ including empty/successful refreshes, but not canceled refreshes.
 Midnight, clock, locale, time-zone, and resume updates use the UI dispatcher;
 timers and native message hooks are released during shutdown.
 
-The inventory currently has **76 Ported, 19 Covered, 53 Skipped, and 357 Pending**
-source commits, backed by **91 source-attributed Windows port commits**. Six
+Preferences and About share an accessible, native copyable version label.
+Its context-menu command copies the complete label without requiring selection.
+
+The inventory currently has **79 Ported, 24 Covered, 65 Skipped, and 337 Pending**
+source commits, backed by **94 source-attributed Windows port commits**. Five
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
 slot-only updates to eight older theme bundles not shipped by Windows,
 Swift-only lock substitutions and database-wrapper simplification, and
-iOS 18 deployment-target/older-UIKit compatibility cleanup.
+iOS 18 deployment-target/older-UIKit compatibility cleanup, Apple app-group
+preference migration, Swift defaults organization, Safari extension identities,
+and UIKit-only contextual-preview behavior. The FreshRSS merge resolution was
+reviewed separately: Windows retains the corrected feed/extracted-content paths
+without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are copyable version labels, the image-cache/thumbnail
+Still pending are the image-cache/thumbnail
 finder/storage/downloading rewrite, shared local-image routing, appearance
-settings, remaining navigation/scroll fixes, detector-equivalent plain-text link
-recognition, and assessment of iPhone/iPad-specific changes.
+settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
+changes.
 
 Attribution correction: Windows commit `dd3c573` records an erroneous source
 trailer, `9b103e929b3580ed0f9fef2de4a9d7303992ebfa`. The correct FreshRSS source is
@@ -100,7 +109,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 ## Verification at this checkpoint
 
 The x64 Windows application builds with zero warnings/errors. The complete parser
-suite passes 532 tests, and the shared application suite passes 467. Earlier
+suite passes 532 tests, and the shared application suite passes 480. Earlier
 related checks covered remote-account synchronization, OPML autosave, attachment
 and thumbnail storage/migration, and NewsBlur model decoding.
 
@@ -129,6 +138,12 @@ refresh timestamp assertion, while cancellation preserves the prior date.
 The existing reader/header/sidebar/navigation gate passes 36 image tests and
 33 UI groups. The selected refresh/progress/lifecycle/worker tests pass all
 50 cases. Regular and probe x64 Windows builds have zero warnings/errors.
+
+The isolated version-label probe passes full-label Copy in both Preferences and
+About without writing the real clipboard. Restoring each original window fails
+the corresponding assertion. Seven plain-text address assertions also fail
+after restoring the exact original explicit-link-only implementation; the
+restored port passes all 18 targeted plain-text cases.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
