@@ -5,6 +5,29 @@ namespace WinNewsWire.Images.Tests;
 public sealed class DownloadLimiterTests
 {
     [Fact]
+    public async Task ReaderPromotionStartsImmediatelyButNormalWorkWaitsUntilBelowTheLimitAgain()
+    {
+        var limiter = new DownloadLimiter(1);
+        using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
+        var article = limiter.AcquireAsync(key: "article", priority: DownloadPriority.Prefetch).AsTask();
+        var other = limiter.AcquireAsync(key: "other").AsTask();
+        limiter.StartNow("article");
+        using var articleLease = Assert.IsAssignableFrom<IDisposable>(await article.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(other.IsCompleted);
+        articleLease.Dispose();
+        Assert.Equal(1, limiter.WaitingCount);
+        Assert.False(other.IsCompleted);
+        limiter.StartNow("article");
+        limiter.StartNow("missing");
+        active.Dispose();
+        using var otherLease = Assert.IsAssignableFrom<IDisposable>(await other.WaitAsync(TimeSpan.FromSeconds(5)));
+        var last = limiter.AcquireAsync().AsTask();
+        Assert.False(last.IsCompleted);
+        otherLease.Dispose();
+        using var lastLease = Assert.IsAssignableFrom<IDisposable>(await last.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
     public async Task WaitingDownloadsStartMostRecentFirst()
     {
         var limiter = new DownloadLimiter(1);

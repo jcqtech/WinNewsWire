@@ -159,14 +159,17 @@ public sealed class DownloadedImageCacheTests
         }
     }
 
-    [Fact]
-    public async Task FullSizeReaderDownloadsBypassTheFourOccupiedThumbnailSlots()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FullSizeReaderDownloadsBypassTheFourOccupiedThumbnailSlots(bool alreadyQueued)
     {
-        int running = 0;
+        int running = 0, readerRequests = 0;
         var thumbnailsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var fixture = new Fixture(async (request, ct) =>
         {
+            if (request.RequestUri!.AbsolutePath == "/reader.png") Interlocked.Increment(ref readerRequests);
             if (request.RequestUri!.AbsolutePath.StartsWith("/busy", StringComparison.Ordinal))
             {
                 if (Interlocked.Increment(ref running) == 4) thumbnailsStarted.TrySetResult();
@@ -178,17 +181,27 @@ public sealed class DownloadedImageCacheTests
         await using var thumbnails = fixture.CreateThumbnails(cache);
         var downloads = Enumerable.Range(0, 4)
             .Select(index => fixture.FetchAsync(cache, "busy" + index, limited: true)).ToArray();
+        Task<DownloadedImage?>? queued = null;
         try
         {
             await thumbnailsStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (alreadyQueued)
+            {
+                queued = thumbnails.SourceAsync(Url("reader"), priority: DownloadPriority.Prefetch);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                while (cache.WaitingDownloadCount != 1) await Task.Delay(5, timeout.Token);
+            }
             Assert.Equal(Fixture.Image, Assert.IsType<DownloadedImage>(
                 await thumbnails.FullSizeImageAsync(Url("reader")).WaitAsync(TimeSpan.FromSeconds(5))).Data);
+            if (queued is not null) Assert.NotNull(await queued.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(1, readerRequests);
             Assert.All(downloads, task => Assert.False(task.IsCompleted));
         }
         finally
         {
             release.TrySetResult();
             await Task.WhenAll(downloads).WaitAsync(TimeSpan.FromSeconds(5));
+            if (queued is not null) await queued.WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 

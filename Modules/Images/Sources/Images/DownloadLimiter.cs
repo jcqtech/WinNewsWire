@@ -65,6 +65,19 @@ internal sealed class DownloadLimiter
         }
     }
 
+    internal void StartNow(string key)
+    {
+        lock (_gate)
+        {
+            var node = _waiting.Last;
+            while (node is not null && !string.Equals(node.Value.Key, key, StringComparison.Ordinal)) node = node.Previous;
+            if (node is null) return;
+            _waiting.Remove(node);
+            _running++;
+            node.Value.Ready.SetResult(new Lease(this));
+        }
+    }
+
     private static async Task<IDisposable?> WaitAsync(Waiter waiter, CancellationToken ct)
     {
         using var registration = ct.UnsafeRegister(static (state, token) =>
@@ -84,13 +97,13 @@ internal sealed class DownloadLimiter
     {
         lock (_gate)
         {
-            if (_waiting.Last is { } next)
+            _running--;
+            if (_running < _maximumConcurrentDownloads && _waiting.Last is { } next)
             {
                 _waiting.RemoveLast();
+                _running++;
                 next.Value.Ready.SetResult(new Lease(this));
             }
-            else
-                _running--;
         }
     }
 

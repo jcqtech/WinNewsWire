@@ -75,6 +75,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         lock (_backgroundGate) ObjectDisposedException.ThrowIf(_stopping, this);
         await _initialCleanup.WaitAsync(ct).ConfigureAwait(false);
         if (request.DownloadPriority == DownloadPriority.Visible) PrioritizeDownload(url);
+        else if (request.DownloadPriority is null) _downloadLimiter.StartNow(url);
         return await _downloads.FetchAsync(url, ct, request: request).ConfigureAwait(false);
     }
 
