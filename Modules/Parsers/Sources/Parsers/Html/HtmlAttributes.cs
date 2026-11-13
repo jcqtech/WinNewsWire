@@ -14,9 +14,14 @@ public sealed class HtmlAttributes
     {
         get
         {
-            var needle = Encoding.UTF8.GetBytes(name);
-            foreach (var attribute in _attributes)
+            int byteCount = Encoding.UTF8.GetByteCount(name);
+            Span<byte> needle = byteCount <= 256 ? stackalloc byte[byteCount] : new byte[byteCount];
+            Encoding.UTF8.GetBytes(name, needle);
+            for (int index = 0; index < _attributes.Count; index++)
+            {
+                var attribute = _attributes[index];
                 if (XmlAscii.EqualsCaseInsensitive(attribute.Name.Span, needle)) return attribute.Value;
+            }
             return null;
         }
     }

@@ -8,6 +8,28 @@ namespace WinNewsWire.Parsers.Tests;
 /// <summary>Port of RSParser's <c>HTMLMetadataTests.swift</c>.</summary>
 public class HtmlMetadataTests
 {
+    [Fact]
+    public void RepeatedHtmlAttributeLookupsDoNotAllocateUtf8Arrays()
+    {
+        var attributes = new HtmlAttributes([("src"u8.ToArray(), "photo.jpg")]);
+        for (int index = 0; index < 32; index++) _ = attributes["SrC"];
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        string? value = null;
+        for (int index = 0; index < 1000; index++) value = attributes["SrC"];
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal("photo.jpg", value);
+        Assert.InRange(allocated, 0, 128);
+    }
+
+    [Fact]
+    public void LongUtf8AttributeNamesKeepCaseInsensitiveAsciiLookup()
+    {
+        string name = "DATA-" + new string('x', 300) + "\u00e9";
+        var attributes = new HtmlAttributes([(Encoding.UTF8.GetBytes(name), "value")]);
+        Assert.Equal("value", attributes[name.ToLowerInvariant()]);
+        Assert.Null(attributes["missing"]);
+    }
+
     private static HtmlMetadata Parse(string f, string url) =>
         HtmlMetadataParser.Parse(TestResources.Load($"{f}.html", url));
 
