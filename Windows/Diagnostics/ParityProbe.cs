@@ -3859,7 +3859,7 @@ internal static partial class ParityProbe
     }
 
     [DllImport("user32.dll", EntryPoint = "SendMessageW")]
-    private static extern IntPtr SendIconMessage(IntPtr window, uint message, IntPtr parameter, IntPtr value);
+    private static extern IntPtr SendWindowMessage(IntPtr window, uint message, IntPtr parameter, IntPtr value);
     [DllImport("user32.dll", EntryPoint = "LoadImageW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr LoadProbeIcon(IntPtr instance, string path, uint type, int width, int height, uint flags);
     [DllImport("user32.dll", EntryPoint = "GetSystemMetrics")]
@@ -3900,7 +3900,7 @@ internal static partial class ParityProbe
         foreach (var (kind, file, widthMetric, heightMetric) in new[] { (1, "wnw.ico", 11, 12), (0, "wnw-flat.ico", 49, 50) })
         {
             int width = GetIconMetric(widthMetric), height = GetIconMetric(heightMetric);
-            var actual = SendIconMessage(WindowNative.GetWindowHandle(window), 0x007F, new IntPtr(kind), IntPtr.Zero);
+            var actual = SendWindowMessage(WindowNative.GetWindowHandle(window), 0x007F, new IntPtr(kind), IntPtr.Zero);
             var expected = LoadProbeIcon(IntPtr.Zero, Path.Combine(AppContext.BaseDirectory, "Assets", file), 1, width, height, 0x10);
             try
             {

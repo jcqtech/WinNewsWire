@@ -1,5 +1,6 @@
 #if PARITY_PROBE
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
@@ -30,6 +31,7 @@ internal static partial class ParityProbe
         var link = (TextBlock)content.FindName("StatusBarLink");
         var theme = (DropDownButton)content.FindName("StatusBarThemeButton");
         var progress = (ProgressBar)content.FindName("StatusBarProgress");
+        var oldRefresh = AccountManager.Shared.DefaultAccount.Settings.LastRefreshCompletedDate;
         try
         {
             await content.Initialization.WaitAsync(TimeSpan.FromSeconds(30));
@@ -71,8 +73,26 @@ internal static partial class ParityProbe
             model.BuildSidebar();
             await WaitFor(() => Task.FromResult(count.Text.StartsWith("1 folder,", StringComparison.Ordinal)), "Changed folder count");
             defaults.SetUnreadCountDisplay(UnreadCountDisplay.Hidden);
-            await WaitFor(() => Task.FromResult(!countButton.IsEnabled && count.Text.Contains("feed", StringComparison.Ordinal)),
+            await WaitFor(() => Task.FromResult(countButton.IsEnabled && count.Text.Contains("feed", StringComparison.Ordinal)),
                 "Hidden unread counts");
+            InvokeButton(countButton);
+            await WaitFor(() => Task.FromResult(defaults.GetStatusBarCountMode() == StatusBarCountMode.LastRefresh
+                && count.Text == "Not updated yet"), "Last refresh count mode");
+            AccountManager.Shared.DefaultAccount.Settings.LastRefreshCompletedDate = DateTime.UtcNow;
+            await Task.Run(content.InvalidateStatusBarClock);
+            await WaitFor(() => Task.FromResult(count.Text.StartsWith("Updated ", StringComparison.Ordinal)),
+                "Worker-thread clock notification");
+            foreach (uint message in new uint[] { 0x001A, 0x001E, 0x0218 })
+            {
+                var previousDay = DateTime.UtcNow.AddDays(-(int)(message % 3 + 1));
+                AccountManager.Shared.DefaultAccount.Settings.LastRefreshCompletedDate = previousDay;
+                SendWindowMessage(WinRT.Interop.WindowNative.GetWindowHandle(window), message, IntPtr.Zero, IntPtr.Zero);
+                await WaitFor(() => Task.FromResult(count.Text == "Updated "
+                    + previousDay.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)), "Native clock/settings/resume notification");
+            }
+            InvokeButton(countButton);
+            await WaitFor(() => Task.FromResult(defaults.GetStatusBarCountMode() == StatusBarCountMode.FoldersAndFeeds
+                && count.Text.Contains("feed", StringComparison.Ordinal)), "Hidden-count mode cycling");
             model.SetHoveredLink("https://example.com/a?b=1");
             await WaitFor(() => Task.FromResult(link.Text == "example.com/a?b=1"), "Hovered link presentation");
             Windows.ApplicationModel.DataTransfer.DataPackage? copied = null;
@@ -124,7 +144,8 @@ internal static partial class ParityProbe
             content.SetStatusBarVisible(true);
             await WaitFor(() => Task.FromResult(surface.Visibility == Visibility.Visible
                 && ((Border)other.ProbeContent.FindName("StatusBarSurface")).Visibility == Visibility.Visible), "Restored status-bar visibility");
-            return new { CountCycling = true, HiddenUnreadCounts = true, FullLinkCopy = true, GearSelection = true,
+            return new { CountCycling = true, HiddenUnreadCounts = true, LastRefresh = true, ClockNotifications = true,
+                FullLinkCopy = true, GearSelection = true,
                 SharedThemes = true, WorkerProgress = true, MultipleWindows = true, SidebarFooterFallback = true };
         }
         finally
@@ -134,6 +155,7 @@ internal static partial class ParityProbe
             if (other is not null) await CloseWindowAsync(other);
             if (fixtureFolder is not null) AccountManager.Shared.DefaultAccount.RemoveFolder(fixtureFolder);
             CombinedRefreshProgress.Shared.Reset();
+            AccountManager.Shared.DefaultAccount.Settings.LastRefreshCompletedDate = oldRefresh;
             defaults.ShowStatusBar = oldShow;
             defaults.ShowStatusBarThemeMenu = oldThemes;
             defaults.SetStatusBarCountMode(oldMode);

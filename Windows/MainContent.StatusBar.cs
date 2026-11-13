@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -17,6 +18,8 @@ public sealed partial class MainContent
 {
     private int _statusBarUpdateQueued;
     private string _statusBarLink = "";
+    private int _statusBarClockInvalidated;
+    private DispatcherQueueTimer? _statusBarMidnightTimer;
 
     private void InitializeStatusBar()
     {
@@ -28,6 +31,10 @@ public sealed partial class MainContent
         AppDefaults.Shared.Changed += StatusBarDefaultsChanged;
         ArticleThemesManager.Shared.CurrentThemeChanged += StatusBarThemeChanged;
         SidebarPanel.SizeChanged += StatusBarSidebar_SizeChanged;
+        _statusBarMidnightTimer = DispatcherQueue.CreateTimer();
+        _statusBarMidnightTimer.IsRepeating = false;
+        _statusBarMidnightTimer.Tick += StatusBarMidnight;
+        ScheduleStatusBarMidnight();
         QueueStatusBarUpdate();
     }
 
@@ -37,6 +44,29 @@ public sealed partial class MainContent
         AppDefaults.Shared.Changed -= StatusBarDefaultsChanged;
         ArticleThemesManager.Shared.CurrentThemeChanged -= StatusBarThemeChanged;
         SidebarPanel.SizeChanged -= StatusBarSidebar_SizeChanged;
+        if (_statusBarMidnightTimer is { } timer)
+        {
+            timer.Stop();
+            timer.Tick -= StatusBarMidnight;
+            _statusBarMidnightTimer = null;
+        }
+    }
+
+    private void StatusBarMidnight(DispatcherQueueTimer sender, object args) => InvalidateStatusBarClock();
+
+    internal void InvalidateStatusBarClock()
+    {
+        Interlocked.Exchange(ref _statusBarClockInvalidated, 1);
+        QueueStatusBarUpdate();
+    }
+
+    private void ScheduleStatusBarMidnight()
+    {
+        if (_statusBarMidnightTimer is not { } timer) return;
+        var delay = new DateTimeOffset(DateTime.Today.AddDays(1)) - DateTimeOffset.Now;
+        timer.Stop();
+        timer.Interval = delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(1);
+        timer.Start();
     }
 
     private void StatusBarProgressChanged(object? sender, ProgressInfo progress) => QueueStatusBarUpdate();
@@ -56,7 +86,14 @@ public sealed partial class MainContent
         if (!DispatcherQueue.TryEnqueue(() =>
         {
             Interlocked.Exchange(ref _statusBarUpdateQueued, 0);
-            if (!_shuttingDown) UpdateStatusBar();
+            if (_shuttingDown) return;
+            if (Interlocked.Exchange(ref _statusBarClockInvalidated, 0) != 0)
+            {
+                TimeZoneInfo.ClearCachedData();
+                CultureInfo.CurrentCulture.ClearCachedData();
+                ScheduleStatusBarMidnight();
+            }
+            UpdateStatusBar();
         })) Interlocked.Exchange(ref _statusBarUpdateQueued, 0);
     }
 
@@ -72,7 +109,6 @@ public sealed partial class MainContent
         StatusBarSidebarColumn.Width = sidebar ? SidebarColumn.Width : GridLength.Auto;
         StatusBarCountButton.Visibility = StatusBarSplitter.Visibility = sidebar ? Visibility.Visible : Visibility.Collapsed;
         bool showCounts = ViewModel.UnreadDisplayMode == UnreadCountDisplay.Count;
-        StatusBarCountButton.IsEnabled = showCounts;
         var progress = CombinedRefreshProgress.Shared.Snapshot;
         bool refreshing = progress.NumberRemaining > 0;
         StatusBarProgress.Visibility = refreshing ? Visibility.Visible : Visibility.Collapsed;
@@ -89,7 +125,8 @@ public sealed partial class MainContent
             StatusBarCountText.Text = StatusBarPresentation.CountText(defaults.GetStatusBarCountMode(), showCounts,
                 accounts.SelectMany(account => account.FlattenedFeeds()).Sum(feed => feed.UnreadCount),
                 accounts.Sum(account => account.Folders.Count),
-                accounts.Sum(account => account.FlattenedFeeds().Count()));
+                accounts.Sum(account => account.FlattenedFeeds().Count()),
+                AppRuntime.AppService.Shared.Accounts.LastRefreshCompletedDate);
         }
         _statusBarLink = ViewModel.HoveredLink ?? ViewModel.SelectedArticle?.Link ?? "";
         StatusBarLink.Text = StatusBarPresentation.LinkText(_statusBarLink);

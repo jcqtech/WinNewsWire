@@ -7,17 +7,18 @@ namespace WinNewsWire.AppShared.StatusBar;
 public enum StatusBarCountMode
 {
     Unread = 0,
-    FoldersAndFeeds = 1
+    FoldersAndFeeds = 1,
+    LastRefresh = 2
 }
 
 public static class StatusBarPresentation
 {
     public static StatusBarCountMode GetStatusBarCountMode(this AppDefaults defaults)
     {
-        int raw = defaults.GetValue(AppDefaults.Key.StatusBarCountMode, (int)StatusBarCountMode.Unread);
+        int raw = defaults.GetValue(AppDefaults.Key.StatusBarCountMode, (int)StatusBarCountMode.LastRefresh);
         if (Enum.IsDefined((StatusBarCountMode)raw)) return (StatusBarCountMode)raw;
-        Trace.TraceWarning($"Unknown status-bar count mode {raw}; showing unread counts.");
-        return StatusBarCountMode.Unread;
+        Trace.TraceWarning($"Unknown status-bar count mode {raw}; showing last refresh.");
+        return StatusBarCountMode.LastRefresh;
     }
 
     public static void SetStatusBarCountMode(this AppDefaults defaults, StatusBarCountMode mode)
@@ -26,25 +27,40 @@ public static class StatusBarPresentation
         defaults.SetValue(AppDefaults.Key.StatusBarCountMode, (int)mode);
     }
 
-    public static StatusBarCountMode NextMode(StatusBarCountMode mode, bool showUnreadCounts) => mode switch
+    public static StatusBarCountMode NextMode(StatusBarCountMode mode, bool showUnreadCounts)
+        => EffectiveMode(mode, showUnreadCounts) switch
     {
         StatusBarCountMode.Unread => StatusBarCountMode.FoldersAndFeeds,
-        StatusBarCountMode.FoldersAndFeeds => showUnreadCounts ? StatusBarCountMode.Unread : StatusBarCountMode.FoldersAndFeeds,
+        StatusBarCountMode.FoldersAndFeeds => StatusBarCountMode.LastRefresh,
+        StatusBarCountMode.LastRefresh => showUnreadCounts ? StatusBarCountMode.Unread : StatusBarCountMode.FoldersAndFeeds,
         _ => throw new ArgumentOutOfRangeException(nameof(mode))
     };
 
-    public static string CountText(StatusBarCountMode mode, bool showUnreadCounts, int unread, int folders, int feeds)
+    private static StatusBarCountMode EffectiveMode(StatusBarCountMode mode, bool showUnreadCounts)
+        => mode == StatusBarCountMode.Unread && !showUnreadCounts ? StatusBarCountMode.LastRefresh : mode;
+
+    public static string CountText(StatusBarCountMode mode, bool showUnreadCounts, int unread, int folders, int feeds,
+        DateTime? lastRefresh = null)
     {
-        if (!showUnreadCounts) mode = StatusBarCountMode.FoldersAndFeeds;
-        return mode switch
+        return EffectiveMode(mode, showUnreadCounts) switch
         {
             StatusBarCountMode.Unread => Format("StatusBarUnread", unread),
             StatusBarCountMode.FoldersAndFeeds => string.Format(CultureInfo.CurrentCulture,
                 AppStrings.Get("StatusBarSubscriptions"),
                 Format(folders == 1 ? "StatusBarFolder" : "StatusBarFolders", folders),
                 Format(feeds == 1 ? "StatusBarFeed" : "StatusBarFeeds", feeds)),
+            StatusBarCountMode.LastRefresh => lastRefresh is { } date
+                ? string.Format(CultureInfo.CurrentCulture, AppStrings.Get("StatusBarUpdated"),
+                    RefreshDateText(date, DateTime.Now, CultureInfo.CurrentCulture))
+                : AppStrings.Get("StatusBarNotUpdated"),
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
+    }
+
+    public static string RefreshDateText(DateTime completed, DateTime now, CultureInfo culture)
+    {
+        var local = completed.ToLocalTime();
+        return local.ToString(local.Date == now.ToLocalTime().Date ? "t" : "g", culture);
     }
 
     public static string LinkText(string link)

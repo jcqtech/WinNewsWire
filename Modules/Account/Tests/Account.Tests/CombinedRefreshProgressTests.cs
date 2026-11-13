@@ -6,6 +6,19 @@ namespace WinNewsWire.Account.Tests;
 public class CombinedRefreshProgressTests
 {
     [Fact]
+    public void EndingAnAlreadyReportedRefreshNotifiesAfterMetadataIsSaved()
+    {
+        var combined = new CombinedRefreshProgress();
+        using var reporter = combined.BeginRefresh("account");
+        reporter.Report(new ProgressInfo(0, 1, 1));
+        DateTime? saved = null, observed = null;
+        combined.ProgressChanged += (_, _) => observed = saved;
+        saved = DateTime.UtcNow;
+        reporter.Dispose();
+        Assert.Equal(saved, observed);
+    }
+
+    [Fact]
     public void OverlappingAccountsShareProgressAndANewRefreshStartsFresh()
     {
         var combined = new CombinedRefreshProgress();

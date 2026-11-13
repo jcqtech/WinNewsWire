@@ -73,6 +73,7 @@ public sealed partial class MainWindow : Window
         var windowId = Win32Interop.GetWindowIdFromWindow(hWnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
         _appWindow = appWindow;
+        InitializeStatusBarSystemMessages(hWnd);
         appWindow.Resize(new Windows.Graphics.SizeInt32(1400, 900));
 
         try
@@ -152,6 +153,7 @@ public sealed partial class MainWindow : Window
     internal void CloseAfterShutdown()
     {
         _closed = true;
+        StopStatusBarSystemMessages();
         try
         {
             // Release native title-bar resources while the HWND still exists.

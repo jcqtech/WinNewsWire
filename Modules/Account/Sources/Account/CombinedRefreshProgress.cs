@@ -159,7 +159,9 @@ public sealed class CombinedRefreshProgress
                 if (completesRefresh && generation == owner._generation && owner._refreshingAccounts.Remove(accountID))
                 {
                     var progress = owner._accountProgress[accountID];
-                    updated = owner.ReportCore(accountID, new ProgressInfo(0, progress.NumberOfTasks, progress.NumberOfTasks));
+                    // The delegate may save completion metadata after its last progress report.
+                    updated = owner.ReportCore(accountID, new ProgressInfo(0, progress.NumberOfTasks, progress.NumberOfTasks))
+                        ?? owner._combined;
                 }
             }
             owner.Notify(updated);

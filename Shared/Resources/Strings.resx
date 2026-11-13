@@ -9,6 +9,8 @@
   <data name="StatusBarFeeds" xml:space="preserve"><value>{0:N0} feeds</value></data>
   <data name="StatusBarSubscriptions" xml:space="preserve"><value>{0}, {1}</value></data>
   <data name="StatusBarProgress" xml:space="preserve"><value>{0:N0} of {1:N0}</value></data>
+  <data name="StatusBarUpdated" xml:space="preserve"><value>Updated {0}</value></data>
+  <data name="StatusBarNotUpdated" xml:space="preserve"><value>Not updated yet</value></data>
   <data name="StatusBarCountHelp" xml:space="preserve"><value>Click to switch the status-bar count</value></data>
   <data name="StatusBarSaveError" xml:space="preserve"><value>Could not save the status-bar setting: {0}</value></data>
   <data name="StatusBarShow" xml:space="preserve"><value>Show Status Bar</value></data>

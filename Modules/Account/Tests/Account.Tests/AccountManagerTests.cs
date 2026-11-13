@@ -14,6 +14,25 @@ public class AccountManagerTests : IDisposable
     private readonly TestAccountManager _storage = new();
 
     [Fact]
+    public void LastRefreshIncludesOnlyActiveAccountsWithCompletedRefreshes()
+    {
+        using var manager = new AccountManager();
+        Assert.Null(manager.LastRefreshCompletedDate);
+        var remote = manager.CreateRemoteAccount(AccountType.FreshRSS, "Refresh fixture",
+            new ReaderAPIAccountDelegate(ReaderAPIVariant.FreshRSS, "https://example.com/api/greader.php/"));
+        var earlier = DateTime.UtcNow.AddDays(-1);
+        manager.DefaultAccount.Settings.LastRefreshCompletedDate = earlier;
+        Assert.Equal(earlier, manager.LastRefreshCompletedDate);
+        var latest = DateTime.UtcNow;
+        remote.Settings.LastRefreshCompletedDate = latest;
+        Assert.Equal(latest, manager.LastRefreshCompletedDate);
+        remote.IsActive = false;
+        Assert.Equal(earlier, manager.LastRefreshCompletedDate);
+        manager.DefaultAccount.IsActive = false;
+        Assert.Null(manager.LastRefreshCompletedDate);
+    }
+
+    [Fact]
     public void RemoteAccountsReloadWithRealDelegatesAndStoredUsername()
     {
         var credentials = new Credentials(CredentialsType.Basic, "test-user", "test-password");

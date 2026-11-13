@@ -46,7 +46,11 @@ public sealed class LocalAccountDelegate : IAccountDelegate
     }
 
     public Task RefreshAllAsync(Account account, IProgress<ProgressInfo>? progress, CancellationToken ct)
-        => account.LogActivityAsync(ActivityKind.RefreshAll, () => account.LocalRefresher.RefreshAllAsync(progress, ct));
+        => account.LogActivityAsync(ActivityKind.RefreshAll, async () =>
+        {
+            await account.LocalRefresher.RefreshAllAsync(progress, ct).ConfigureAwait(false);
+            account.Settings.LastRefreshCompletedDate = DateTime.UtcNow;
+        });
 
     public Task<Folder> CreateFolderAsync(Account account, string name, CancellationToken ct = default)
     {

@@ -20,6 +20,7 @@ public sealed class AccountManager : IDisposable, IAsyncDisposable
     private bool _stopping;
     public IReadOnlyCollection<Account> Accounts { get { lock (_gate) return _accounts.Values.ToArray(); } }
     public IEnumerable<Account> ActiveAccounts => Accounts.Where(a => a.IsActive && !a.IsStopping);
+    public DateTime? LastRefreshCompletedDate => ActiveAccounts.Max(a => a.Settings.LastRefreshCompletedDate);
     public IEnumerable<Account> SortedAccounts => SortAccounts(Accounts);
     public IEnumerable<Account> SortedActiveAccounts => SortAccounts(ActiveAccounts);
     public Account DefaultAccount { get; }

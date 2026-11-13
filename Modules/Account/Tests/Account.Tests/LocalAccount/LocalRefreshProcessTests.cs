@@ -34,9 +34,11 @@ public sealed class LocalRefreshProcessTests : IAsyncLifetime
         int downloaded = 0;
         _account.NewArticlesDownloaded += (_, args) => downloaded += args.NewArticles.Count;
         var response = LocalOpmlRefreshTests.ServeFeedAsync(server, timeout.Token, etag: "\"first\"");
+        var refreshStarted = DateTime.UtcNow;
         await _account.RefreshAllAsync(ct: timeout.Token);
         await response;
 
+        Assert.InRange(_account.Settings.LastRefreshCompletedDate ?? DateTime.MinValue, refreshStarted, DateTime.UtcNow);
         Assert.NotNull(_account.RefreshProcessId);
         Assert.NotEqual(Environment.ProcessId, _account.RefreshProcessId);
         var statistics = Assert.IsType<LocalRefreshStatistics>(_account.LastRefreshStatistics);
@@ -124,6 +126,8 @@ public sealed class LocalRefreshProcessTests : IAsyncLifetime
     [Fact]
     public async Task CancellationDrainsWorkerAndAllowsAnotherBatch()
     {
+        var previousCompletion = DateTime.UtcNow.AddDays(-1);
+        _account.Settings.LastRefreshCompletedDate = previousCompletion;
         using var server = OpenServer();
         using var serving = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -136,6 +140,7 @@ public sealed class LocalRefreshProcessTests : IAsyncLifetime
         var pid = _account.RefreshProcessId;
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => refresh);
+        Assert.Equal(previousCompletion, _account.Settings.LastRefreshCompletedDate);
         serving.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => blocked);
         Assert.Empty(ActivityLogger.Shared.RunningActivitiesFor(_account.ActivityOwner));
@@ -147,6 +152,7 @@ public sealed class LocalRefreshProcessTests : IAsyncLifetime
         await response;
         Assert.Equal(pid, _account.RefreshProcessId);
         Assert.Single(await _account.Database.FetchArticlesAsync(feed.FeedID));
+        Assert.True(_account.Settings.LastRefreshCompletedDate > previousCompletion);
     }
 
     [Fact]
