@@ -34,6 +34,7 @@ public static class HtmlImageParser
                 || style.GetValueOrDefault("display")?.StartsWith("none", StringComparison.OrdinalIgnoreCase) == true) return;
             var width = PixelDimension(style.GetValueOrDefault("width")) ?? PixelDimension(attributes["width"]);
             var height = PixelDimension(style.GetValueOrDefault("height")) ?? PixelDimension(attributes["height"]);
+            if (!SignificantImageFilter.HasSignificantDimensions(width, height)) return;
             foreach (var source in ImageSources(attributes))
             {
                 var url = ResolveUrl(source);
