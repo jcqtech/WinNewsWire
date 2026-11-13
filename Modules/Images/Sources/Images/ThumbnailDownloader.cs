@@ -37,7 +37,8 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
     private void ResourceDownloadFailed(object? sender, string url) => DownloadFailed?.Invoke(this, url);
 
     public Task<DownloadedImage?> SourceAsync(string url,
-        CancellationToken ct = default, string? activityDetail = null, ThumbnailPriority priority = ThumbnailPriority.Visible)
+        CancellationToken ct = default, string? activityDetail = null, ThumbnailPriority priority = ThumbnailPriority.Visible,
+        Func<ThumbnailPriority, bool>? priorityAllowsDownloads = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         if (priority is not (ThumbnailPriority.Visible or ThumbnailPriority.Prefetch))
@@ -46,7 +47,8 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
         {
             if (_database.RecentlyFailed(url) || _database.IsUnsuitableForThumbnail(url)) return null;
             var request = new ImageResourceRequest(ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail(url),
-                activityDetail, _networkAllowsDownloads, DownloadPriority: priority);
+                activityDetail, _networkAllowsDownloads, DownloadPriority: priority,
+                PriorityAllowsDownloads: priorityAllowsDownloads);
             var result = await _downloadedImages.FetchAsync(url, request, token).ConfigureAwait(false);
             if (result.DecodingFailed) ImageDecodingFailed?.Invoke(this, url);
             return result.Image;

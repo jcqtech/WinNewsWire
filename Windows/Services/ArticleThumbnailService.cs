@@ -341,9 +341,11 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 #if PARITY_PROBE
         ProbeDownloadPriorities[url] = priority;
 #endif
-        var downloaded = await downloads.SourceAsync(url, ct, title, priority).ConfigureAwait(false);
+        var downloaded = await downloads.SourceAsync(url, ct, title, priority,
+            currentPriority => currentPriority == ThumbnailPriority.Prefetch ? _networkAllowsPrefetch() : _networkAllowsDownloads())
+            .ConfigureAwait(false);
         if (downloaded is null) return null;
-        ValueTask<IDisposable?> admission;
+        ValueTask<ThumbnailTaskQueue.Lease?> admission;
         lock (_gate) admission = _decodeQueue.AcquireAsync(ct, DecodeKey(url, mode), pending.Priority);
         using var lease = await admission.ConfigureAwait(false);
         if (lease is null) return null;

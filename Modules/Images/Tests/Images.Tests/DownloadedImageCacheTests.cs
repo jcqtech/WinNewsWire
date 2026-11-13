@@ -750,6 +750,58 @@ public sealed class DownloadedImageCacheTests
         Assert.Equal(blocksHost ? 1 : 2, requests);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task QueuedPrefetchRechecksCurrentPriorityPolicyUnlessAReaderStartsItNow(bool promote, bool reader)
+    {
+        int requests = 0;
+        bool allowsPrefetch = true;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            int count = Interlocked.Increment(ref requests);
+            if (request.RequestUri!.AbsolutePath.StartsWith("/active-", StringComparison.Ordinal))
+            {
+                if (count == 4) started.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Fixture.Image) };
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        await using var thumbnails = fixture.CreateThumbnails(cache);
+        var active = Enumerable.Range(0, 4).Select(index => thumbnails.SourceAsync(Url("active-" + index))).ToArray();
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var queued = thumbnails.SourceAsync(Url("queued"), priority: ThumbnailPriority.Prefetch,
+                priorityAllowsDownloads: priority => priority == ThumbnailPriority.Visible || Volatile.Read(ref allowsPrefetch));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (cache.WaitingDownloadCount != 1) await Task.Delay(5, timeout.Token);
+            Volatile.Write(ref allowsPrefetch, false);
+            if (promote) cache.PrioritizeDownload(Url("queued"));
+            if (reader)
+            {
+                Assert.NotNull(await thumbnails.FullSizeImageAsync(Url("queued")).WaitAsync(TimeSpan.FromSeconds(5)));
+                Assert.Equal(5, requests);
+            }
+            release.TrySetResult();
+            await Task.WhenAll(active);
+            Assert.Equal(promote || reader, await queued is not null);
+            Assert.Equal(promote || reader ? 5 : 4, requests);
+            Assert.False(fixture.Database.RecentlyFailed(Url("queued")));
+            if (!promote && !reader)
+            {
+                Volatile.Write(ref allowsPrefetch, true);
+                Assert.NotNull(await thumbnails.SourceAsync(Url("queued")));
+                Assert.Equal(5, requests);
+            }
+        }
+        finally { release.TrySetResult(); }
+    }
+
     [Fact]
     public async Task ConsecutiveTransientFailuresOnDifferentUrlsDoubleTheirHostDelay()
     {

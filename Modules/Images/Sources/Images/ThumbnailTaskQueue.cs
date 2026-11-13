@@ -19,7 +19,7 @@ public sealed class ThumbnailTaskQueue
         _maximumWaitingCount = maximumWaitingCount;
     }
 
-    public ValueTask<IDisposable?> AcquireAsync(CancellationToken ct = default, string? key = null,
+    public ValueTask<Lease?> AcquireAsync(CancellationToken ct = default, string? key = null,
         ThumbnailPriority priority = ThumbnailPriority.Visible)
     {
         if (priority is not (ThumbnailPriority.Visible or ThumbnailPriority.Prefetch))
@@ -30,7 +30,7 @@ public sealed class ThumbnailTaskQueue
             if (_running < _maximumRunningCount)
             {
                 _running++;
-                return ValueTask.FromResult<IDisposable?>(new Lease(this));
+                return ValueTask.FromResult<Lease?>(new Lease(this, priority));
             }
             var waiter = new Waiter(this, key, priority);
             if (priority == ThumbnailPriority.Visible) _waiting.AddLast(waiter.Node);
@@ -74,11 +74,11 @@ public sealed class ThumbnailTaskQueue
             if (node is null) return;
             _waiting.Remove(node);
             _running++;
-            node.Value.Ready.SetResult(new Lease(this));
+            node.Value.Ready.SetResult(new Lease(this, node.Value.Priority, startedNow: true));
         }
     }
 
-    private static async Task<IDisposable?> WaitAsync(Waiter waiter, CancellationToken ct)
+    private static async Task<Lease?> WaitAsync(Waiter waiter, CancellationToken ct)
     {
         using var registration = ct.UnsafeRegister(static (state, token) =>
         {
@@ -102,7 +102,7 @@ public sealed class ThumbnailTaskQueue
             {
                 _waiting.RemoveLast();
                 _running++;
-                next.Value.Ready.SetResult(new Lease(this));
+                next.Value.Ready.SetResult(new Lease(this, next.Value.Priority));
             }
         }
     }
@@ -112,7 +112,7 @@ public sealed class ThumbnailTaskQueue
         internal ThumbnailTaskQueue Owner { get; }
         internal string? Key { get; }
         internal ThumbnailPriority Priority { get; set; }
-        internal TaskCompletionSource<IDisposable?> Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource<Lease?> Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal LinkedListNode<Waiter> Node { get; }
         internal Waiter(ThumbnailTaskQueue owner, string? key, ThumbnailPriority priority)
         {
@@ -123,9 +123,17 @@ public sealed class ThumbnailTaskQueue
         }
     }
 
-    private sealed class Lease(ThumbnailTaskQueue owner) : IDisposable
+    public sealed class Lease : IDisposable
     {
-        private ThumbnailTaskQueue? _owner = owner;
+        private ThumbnailTaskQueue? _owner;
+        public ThumbnailPriority Priority { get; }
+        internal bool StartedNow { get; }
+        internal Lease(ThumbnailTaskQueue owner, ThumbnailPriority priority, bool startedNow = false)
+        {
+            _owner = owner;
+            Priority = priority;
+            StartedNow = startedNow;
+        }
         public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release();
     }
 }

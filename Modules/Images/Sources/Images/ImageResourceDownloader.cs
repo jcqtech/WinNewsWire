@@ -14,7 +14,8 @@ internal sealed record ImageResourceConfiguration(int MaxPixelSize,
     Func<bool>? NetworkAllowsDownloads = null,
     bool StoresSourceData = false);
 internal sealed record ImageResourceRequest(ActivityOwner Owner, ActivityKind Kind, string? Detail,
-    Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false, ThumbnailPriority? DownloadPriority = null);
+    Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false, ThumbnailPriority? DownloadPriority = null,
+    Func<ThumbnailPriority, bool>? PriorityAllowsDownloads = null);
 
 internal sealed class ImageResourceDownloader : IAsyncDisposable
 {
@@ -166,16 +167,22 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             }
         }
         finally { _sourceDiskGate?.Release(); }
+        bool NetworkAllowsDownload(ThumbnailPriority priority)
+            => request.NetworkAllowsDownloads?.Invoke() != false && request.PriorityAllowsDownloads?.Invoke(priority) != false;
         if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
-        if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
+        if (!NetworkAllowsDownload(request.DownloadPriority ?? ThumbnailPriority.Visible)) return new(null, IsTransient: true);
         var limiter = !_configuration.StoresSourceData || request.DownloadPriority is not null
             ? _configuration.DownloadQueue : null;
         using var lease = limiter is not null
             ? await limiter.AcquireAsync(ct, url, request.DownloadPriority ?? ThumbnailPriority.Visible).ConfigureAwait(false) : null;
         if (limiter is not null && lease is null) return new(null, IsTransient: true);
         ct.ThrowIfCancellationRequested();
-        if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
-        if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
+        if (lease?.StartedNow != true)
+        {
+            if (!NetworkAllowsDownload(lease?.Priority ?? request.DownloadPriority ?? ThumbnailPriority.Visible))
+                return new(null, IsTransient: true);
+            if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
+        }
         int activity = _log.CreateActivity(request.Owner, request.Kind, request.Detail);
         _log.DidStart(activity);
         DownloadResult response;
