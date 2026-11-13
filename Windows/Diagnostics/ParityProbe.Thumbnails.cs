@@ -85,12 +85,16 @@ internal static partial class ParityProbe
         var article = new Article("account", status.ArticleID, "feed", status.ArticleID, "Thumbnail title",
             "<img src='https://thumbnail.test/photo.bmp'>", null, null, "https://thumbnail.test/article",
             null, null, null, null, null, null, null, status);
-        var simultaneous = await Task.WhenAll(service.ThumbnailAsync(article, ThumbnailMode.Small),
-            service.ThumbnailAsync(article, ThumbnailMode.Small));
+        var resolvedUrl = await service.ThumbnailUrlAsync(article, ThumbnailMode.Small);
+        int resolutions = service.ProbeUrlResolutions;
+        var simultaneous = await Task.WhenAll(service.ThumbnailAsync(article, ThumbnailMode.Small, resolvedUrl: resolvedUrl),
+            service.ThumbnailAsync(article, ThumbnailMode.Small, resolvedUrl: resolvedUrl));
         var small = simultaneous[0] ?? throw new InvalidOperationException("The thumbnail did not decode.");
         Require(service.ProbeLastDecodedSize == (512, 256), "Small thumbnails were not decoded at display size.");
         Require(ReferenceEquals(small, simultaneous[1]) && service.ProbeDecodes == 1,
             "Concurrent discovery/download/decoding was not coalesced.");
+        Require(service.ProbeUrlResolutions == resolutions,
+            "The thumbnail service recomputed an already resolved image URL.");
         Require(!initializationOnUI && !service.ProbeDecodedOnUIThread && notificationOnUI && notifications == 1,
             "Thumbnail initialization/decoding or availability notifications ran on the wrong thread.");
         Require(ReferenceEquals(small, await service.ThumbnailAsync(article, ThumbnailMode.Small))

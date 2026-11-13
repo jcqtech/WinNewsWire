@@ -241,7 +241,7 @@ public sealed partial class MainContent
         UpdateThumbnailSize(view);
         if (!IsVisibleTimelineThumbnail(view)) return;
         binding.ImageRequested = true;
-        var image = await _thumbnailService.ThumbnailAsync(article, mode, ct);
+        var image = await _thumbnailService.ThumbnailAsync(article, mode, ct, resolvedUrl: url);
         if (!IsCurrent()) return;
         view.ImageSource = image;
         if (image is null && await _thumbnailService.ThumbnailUrlAsync(article, mode, ct) is null && IsCurrent())
