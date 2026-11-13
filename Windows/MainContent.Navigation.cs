@@ -3,6 +3,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using WinNewsWire.AppShared.Timeline;
 using WinNewsWire.Models;
 
@@ -14,43 +16,98 @@ public sealed partial class MainContent
     private Task _nextUnreadTask = Task.CompletedTask;
     private FeedItem? _pendingTimelineReveal;
     private FeedItem? _timelineRevealSelection;
+    private bool _centerPendingTimelineReveal;
+    private FeedItem? _timelineContextArticle;
+    private int _timelineContextDirection;
+    private int _pendingTimelineContextDirection;
 
-    private bool ScrollTimelineArticleIntoView(FeedItem article)
+    private void ScrollTimelineArticleIntoView(FeedItem article, int contextDirection = 0)
     {
         CancelTimelineReveal();
-        if (IsTimelineRowFullyVisible(article)) return false;
-        if (TryRevealTimelineRow(article)) return true;
         _pendingTimelineReveal = article;
         _timelineRevealSelection = ViewModel.SelectedArticle;
-        ArticleListView.LayoutUpdated += TimelineReveal_LayoutUpdated;
-        ArticleListView.ScrollIntoView(article);
-        return true;
+        _pendingTimelineContextDirection = contextDirection;
+        // Template changes finish arranging after selection notifications.
+        CompositionTarget.Rendering += TimelineReveal_Rendering;
     }
 
-    private bool TryRevealTimelineRow(FeedItem article)
+    private bool TryRevealTimelineRow(FeedItem article, bool center = false)
     {
         if (_articleScrollViewer is not { } scroll || TimelineRowBounds(article) is not { } bounds
             || ArticleListView.ActualHeight <= ArticleListView.Padding.Top + ArticleListView.Padding.Bottom)
             return false;
         double delta = TimelineViewport.ScrollDelta(bounds.Top, bounds.Bottom,
-            ArticleListView.Padding.Top, ArticleListView.ActualHeight - ArticleListView.Padding.Bottom);
-        if (delta != 0)
-            scroll.ChangeView(null, Math.Clamp(scroll.VerticalOffset + delta, 0, scroll.ScrollableHeight), null);
-        return true;
+            ArticleListView.Padding.Top, ArticleListView.ActualHeight - ArticleListView.Padding.Bottom, center);
+        return delta == 0
+            || scroll.ChangeView(null, Math.Clamp(scroll.VerticalOffset + delta, 0, scroll.ScrollableHeight), null);
     }
 
     private void TimelineReveal_LayoutUpdated(object? sender, object args)
     {
+        ArticleListView.LayoutUpdated -= TimelineReveal_LayoutUpdated;
+        CompositionTarget.Rendering += TimelineReveal_Rendering;
+    }
+
+    private void TimelineReveal_Rendering(object? sender, object args)
+    {
+        CompositionTarget.Rendering -= TimelineReveal_Rendering;
         if (_shuttingDown || !ReferenceEquals(_timelineRevealSelection, ViewModel.SelectedArticle)
-            || _pendingTimelineReveal is not { } article || TryRevealTimelineRow(article))
+            || _pendingTimelineReveal is not { } article)
+        {
             CancelTimelineReveal();
+            return;
+        }
+        bool visible = IsTimelineRowFullyVisible(article);
+        if (visible && _pendingTimelineContextDirection != 0)
+        {
+            int neighbor = ViewModel.ArticleItems.IndexOf(article) + _pendingTimelineContextDirection;
+            if (neighbor >= 0 && neighbor < ViewModel.ArticleItems.Count)
+            {
+                article = ViewModel.ArticleItems[neighbor];
+                _pendingTimelineReveal = article;
+                visible = IsTimelineRowFullyVisible(article);
+            }
+        }
+        _pendingTimelineContextDirection = 0;
+        if ((visible && !_centerPendingTimelineReveal) || TryRevealTimelineRow(article, _centerPendingTimelineReveal))
+        {
+            CancelTimelineReveal();
+            return;
+        }
+        _centerPendingTimelineReveal = ArticleListView.ItemsPanelRoot is ItemsStackPanel panel
+            && ViewModel.ArticleItems.IndexOf(article) > panel.FirstVisibleIndex;
+        ArticleListView.LayoutUpdated += TimelineReveal_LayoutUpdated;
+        ArticleListView.ScrollIntoView(article);
     }
 
     private void CancelTimelineReveal()
     {
         ArticleListView.LayoutUpdated -= TimelineReveal_LayoutUpdated;
+        CompositionTarget.Rendering -= TimelineReveal_Rendering;
         _pendingTimelineReveal = null;
         _timelineRevealSelection = null;
+        _centerPendingTimelineReveal = false;
+        _pendingTimelineContextDirection = 0;
+    }
+
+    private void SelectAdjacentArticle(bool next)
+    {
+        var previous = ViewModel.SelectedArticle;
+        _timelineContextArticle = null;
+        if (next) ViewModel.NextArticleCommand.Execute(null);
+        else ViewModel.PreviousArticleCommand.Execute(null);
+        if (!ReferenceEquals(previous, ViewModel.SelectedArticle))
+        {
+            _timelineContextArticle = ViewModel.SelectedArticle;
+            _timelineContextDirection = next ? 1 : -1;
+        }
+    }
+
+    private void RevealTimelineSelection(FeedItem article)
+    {
+        int direction = ReferenceEquals(_timelineContextArticle, article) ? _timelineContextDirection : 0;
+        _timelineContextArticle = null;
+        ScrollTimelineArticleIntoView(article, direction);
     }
 
     private bool IsTimelineRowFullyVisible(FeedItem article)

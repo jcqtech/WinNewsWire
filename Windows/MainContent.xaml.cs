@@ -214,7 +214,7 @@ public sealed partial class MainContent : UserControl
             if (identityChanged && ViewModel.SelectedArticles.Count == 1)
             {
                 var article = ViewModel.SelectedArticles[0];
-                ScrollTimelineArticleIntoView(article);
+                RevealTimelineSelection(article);
             }
             _displayedSelection = identities;
         }
@@ -2303,10 +2303,10 @@ public sealed partial class MainContent : UserControl
     // ---------- Keyboard accelerators ----------
 
     private void AccelNext_Invoked(KeyboardAccelerator s, KeyboardAcceleratorInvokedEventArgs e)
-    { ViewModel.NextArticleCommand.Execute(null); e.Handled = true; }
+    { SelectNext(); e.Handled = true; }
 
     private void AccelPrev_Invoked(KeyboardAccelerator s, KeyboardAcceleratorInvokedEventArgs e)
-    { ViewModel.PreviousArticleCommand.Execute(null); e.Handled = true; }
+    { SelectPrev(); e.Handled = true; }
 
     private async void AccelNextUnread_Invoked(KeyboardAccelerator s, KeyboardAcceleratorInvokedEventArgs e)
     {
@@ -2737,8 +2737,8 @@ public sealed partial class MainContent : UserControl
 
     public async Task ToggleSelectedReadAsync() => await ViewModel.MarkSelectedReadCommand.ExecuteAsync(null);
     public async Task ToggleSelectedStarAsync() => await ViewModel.ToggleStarredCommand.ExecuteAsync(null);
-    public void SelectNext() => ViewModel.NextArticleCommand.Execute(null);
-    public void SelectPrev() => ViewModel.PreviousArticleCommand.Execute(null);
+    public void SelectNext() => SelectAdjacentArticle(next: true);
+    public void SelectPrev() => SelectAdjacentArticle(next: false);
 
     public void OpenSelectedInBrowser(bool invertPreference = false)
     {

@@ -21,8 +21,10 @@ public class TimelineSelectionTests
     [InlineData(40, 80, 52, 200, -12)]
     [InlineData(52, 92, 52, 200, 0)]
     [InlineData(160, 200, 52, 200, 0)]
-    [InlineData(170, 210, 52, 200, 10)]
-    public void RevealingARowScrollsOnlyAsFarAsNecessary(
+    [InlineData(170, 210, 52, 200, 64)]
+    [InlineData(220, 260, 52, 200, 114)]
+    [InlineData(70, 170, 52, 120, 18)]
+    public void RevealingARowUsesTheUnobscuredViewport(
         double top, double bottom, double visibleTop, double visibleBottom, double delta)
         => Assert.Equal(delta, TimelineViewport.ScrollDelta(top, bottom, visibleTop, visibleBottom));
 
