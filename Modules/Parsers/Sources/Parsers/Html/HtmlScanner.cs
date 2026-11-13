@@ -77,9 +77,14 @@ public sealed class HtmlScanner(IHtmlScannerDelegate scannerDelegate)
             else _position++;
         }
         Delegate?.DidStartTag(this, name, attributes.Count == 0 ? HtmlAttributes.Empty : new(attributes), selfClosing);
-        if (!selfClosing && (XmlAscii.EqualsCaseInsensitive(name.Span, "script"u8) || XmlAscii.EqualsCaseInsensitive(name.Span, "style"u8)))
+        if (!selfClosing && IsRawTextTag(name.Span))
             ConsumeRawText(name.Span);
     }
+
+    private static bool IsRawTextTag(ReadOnlySpan<byte> name)
+        => XmlAscii.EqualsCaseInsensitive(name, "script"u8) || XmlAscii.EqualsCaseInsensitive(name, "style"u8)
+            || XmlAscii.EqualsCaseInsensitive(name, "textarea"u8) || XmlAscii.EqualsCaseInsensitive(name, "title"u8)
+            || XmlAscii.EqualsCaseInsensitive(name, "xmp"u8) || XmlAscii.EqualsCaseInsensitive(name, "noembed"u8);
 
     private (ReadOnlyMemory<byte> Name, string Value) ScanAttribute()
     {

@@ -98,6 +98,18 @@ public class HtmlRelativeUrlResolverTests
         Assert.Equal(html, Resolve(html));
     }
 
+    [Theory]
+    [InlineData("textarea")]
+    [InlineData("TITLE")]
+    [InlineData("xmp")]
+    [InlineData("noembed")]
+    public void ImagesWrittenAsTextAreLeftAlone(string tag)
+    {
+        var html = $"<{tag}>Embed: <img src=\"photo.jpg\"></{tag}><img src=\"photo.jpg\">";
+        var expected = $"<{tag}>Embed: <img src=\"photo.jpg\"></{tag}><img src=\"https://example.com/blog/post1/photo.jpg\">";
+        Assert.Equal(expected, Resolve(html));
+    }
+
     [Fact]
     public void MalformedInputIsSafe()
     {

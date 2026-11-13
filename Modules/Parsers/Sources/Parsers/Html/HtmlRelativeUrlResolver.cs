@@ -76,7 +76,11 @@ public static class HtmlRelativeUrlResolver
                 else _position++;
             }
             if (!selfClosing && (name.Equals("script", StringComparison.OrdinalIgnoreCase)
-                || name.Equals("style", StringComparison.OrdinalIgnoreCase)))
+                || name.Equals("style", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("textarea", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("title", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("xmp", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("noembed", StringComparison.OrdinalIgnoreCase)))
                 SkipRawText(name);
         }
 

@@ -122,6 +122,21 @@ public class HtmlLinkTests
     public void ScannerWithoutDelegateStillConsumesTheDocument()
         => new HtmlScanner(new NoopDelegate()) { Delegate = null }.Parse("plain <a href='/'>text</a>"u8.ToArray());
 
+    [Theory]
+    [InlineData("textarea")]
+    [InlineData("TITLE")]
+    [InlineData("xmp")]
+    [InlineData("noembed")]
+    public void MarkupInsideRawTextDoesNotCreateLinks(string tag)
+    {
+        var urls = Urls($"<{tag}><a href='/not-a-link'>text</a></{tag}><a href='/real'>real</a>");
+        Assert.Equal(["http://example.com/real"], urls);
+    }
+
+    [Fact]
+    public void UnterminatedRawTextDoesNotExposeMarkup()
+        => Assert.Empty(Urls("<textarea>example <a href='/not-a-link'>text</a>"));
+
     private static string[] Urls(string html, string url = "http://example.com/")
         => HtmlLinkParser.ParseLinks(new(url, Encoding.UTF8.GetBytes(html))).Select(link => link.Href).OfType<string>().ToArray();
     private sealed class NoopDelegate : IHtmlScannerDelegate { }
