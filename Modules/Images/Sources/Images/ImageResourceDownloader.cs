@@ -328,7 +328,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             var image = source with { Data = ProcessImage(source.Data) };
             ct.ThrowIfCancellationRequested();
-            await _sourceCache.SaveDerivedImageDataAsync(url, ScaledCopySuffix, image.Data, ct).ConfigureAwait(false);
+            if (!image.Data.AsSpan().SequenceEqual(source.Data))
+                await _sourceCache.SaveDerivedImageDataAsync(url, ScaledCopySuffix, image.Data, ct).ConfigureAwait(false);
             return Cache(image);
         }
         catch (InvalidDataException error)

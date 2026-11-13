@@ -507,6 +507,24 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal(original, await File.ReadAllBytesAsync(source.Path));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnchangedSmallIconsReuseOriginalBytesWithoutADuplicateDiskCopy(bool favicon)
+    {
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)), maxPixelSize: 48);
+        const string url = Home + "already-small.png";
+        var feed = new FeedImageSource(Feed, Home, IconUrl: url, FaviconUrl: url);
+        var image = Assert.IsType<DownloadedImage>(await (favicon ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed)));
+        Assert.Equal(Image, image.Data);
+        Assert.Null(await fixture.Images.DownloadedImages.DerivedImageDataAsync(url, "48-Png"));
+        await fixture.ReopenImagesAsync();
+        Assert.Equal(Image, (await (favicon ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed)))?.Data);
+        Assert.Null(await fixture.Images.DownloadedImages.DerivedImageDataAsync(url, "48-Png"));
+        Assert.Equal(Image, await File.ReadAllBytesAsync(image.Path));
+        Assert.Single(fixture.Requests);
+    }
+
     [Fact]
     public async Task ScaledIconsSurviveMemoryEvictionAndColdServicesWithoutRescaling()
     {
