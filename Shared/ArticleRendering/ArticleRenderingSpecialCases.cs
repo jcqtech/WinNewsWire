@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.RegularExpressions;
 using WinNewsWire.Web;
 
@@ -27,6 +28,9 @@ public static class ArticleRenderingSpecialCases
     private static readonly Regex SanitizedFreshRssId = new(@"(<[^>]*?)data-sanitized-id([^<]*?>)", RegexOptions.Compiled);
     private static readonly Regex NoscriptTags = new(@"</?noscript\b[^>]*>",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex FlickrImage = new(
+        "<img src=\"(https://live\\.staticflickr\\.com/[^\"]+_)[a-z]\\.jpg\" width=\"\\d+\" height=\"\\d+\"",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static bool ShouldDisableJavaScript(IEnumerable<string?> urls)
         => urls.Any(url => url is not null && SpecialCases.UrlStringMatchesDomain(url, ["slashdot.org", "blog.rust-lang.org"]));
@@ -55,6 +59,18 @@ public static class ArticleRenderingSpecialCases
 
     public static string DesanitizeFreshRssContent(string html)
         => SanitizedFreshRssId.Replace(SanitizedFreshRssClass.Replace(html, "$1class$2"), "$1id$2");
+
+    public static string EnlargeFlickrImagesIfNeeded(string html, string? feedUrl, IReadOnlyList<string> attachmentUrls)
+    {
+        if (feedUrl is null || !SpecialCases.UrlStringMatchesDomain(feedUrl, ["flickr.com"])
+            || attachmentUrls.Count == 0 || !html.Contains("staticflickr.com", StringComparison.Ordinal)) return html;
+        return FlickrImage.Replace(html, match =>
+        {
+            var prefix = match.Groups[1].Value;
+            var largeImageUrl = attachmentUrls.FirstOrDefault(url => url.StartsWith(prefix, StringComparison.Ordinal));
+            return largeImageUrl is null ? match.Value : "<img src=\"" + WebUtility.HtmlEncode(largeImageUrl) + "\"";
+        });
+    }
 
     public static string UnwrapNoscriptTags(string html) => NoscriptTags.Replace(html, "");
 

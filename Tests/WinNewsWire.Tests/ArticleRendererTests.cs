@@ -9,12 +9,57 @@ namespace WinNewsWire.AppShared.Tests;
 public sealed class ArticleRendererTests
 {
     [Fact]
+    public void PrimaryVideoConsumesItsPosterButLeavesOtherAttachments()
+    {
+        var poster = Attachment.Create(null, "https://example.com/poster.jpg", "image/jpeg", null, null, null)!;
+        var video = Attachment.Create(null, "https://example.com/video.mp4", "video/mp4", null, null, null)!;
+        var audio = Attachment.Create(null, "https://example.com/audio.mp3", "audio/mpeg", null, null, null)!;
+        var html = ArticleRenderer.Render(Article(image: poster.URL, attachments: [poster, audio, video]),
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.StartsWith("<div class=\"nnw-primary-media\"><div class=\"nnw-enclosure nnw-enclosure-video\">", html);
+        Assert.Contains("poster=\"https://example.com/poster.jpg\"", html);
+        Assert.DoesNotContain("<img ", html);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<video "));
+        Assert.True(html.IndexOf("<audio ", StringComparison.Ordinal) > html.IndexOf("<p>Body</p>", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PrimaryAudioIncludesArtworkBeforeBody()
+    {
+        var audio = Attachment.Create(null, "https://example.com/audio.mp3", "audio/mpeg", null, null, 60)!;
+        var html = ArticleRenderer.Render(Article(image: "https://example.com/artwork.jpg", attachments: [audio]),
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.StartsWith("<div class=\"nnw-primary-media\"><div class=\"nnw-primary-image\">", html);
+        Assert.Contains("src=\"https://example.com/artwork.jpg\"", html);
+        Assert.True(html.IndexOf("<audio ", StringComparison.Ordinal) < html.IndexOf("<p>Body</p>", StringComparison.Ordinal));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<audio "));
+    }
+
+    [Theory]
+    [InlineData("https://www.flickr.com/services/feeds/photos_public.gne", true)]
+    [InlineData("https://example.com/feed", false)]
+    public void FlickrFeedUsesLargeEnclosureImageInTheBody(string feedUrl, bool enlarged)
+    {
+        const string small = "https://live.staticflickr.com/65535/55640727267_a94c9ae7e7_m.jpg";
+        const string large = "https://live.staticflickr.com/65535/55640727267_a94c9ae7e7_b.jpg";
+        var image = Attachment.Create(null, large, "image/jpeg", null, null, null)!;
+        var article = Article(body: $"<p><img src=\"{small}\" width=\"180\" height=\"240\" alt=\"Photo\"></p>", attachments: [image]);
+        var html = ArticleRenderer.Render(article, feed: new Feed("account", "feed", feedUrl), theme: Theme()).Html;
+        if (enlarged)
+        {
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<img "));
+            Assert.Contains($"<img src=\"{large}\" alt=\"Photo\">", html);
+        }
+        else Assert.Contains(small, html);
+    }
+
+    [Fact]
     public void PrimaryImageUsesAttachmentCaptionAndDimensionsWithoutRepeatingIt()
     {
         var image = Attachment.Create(null, "https://example.com/photo.jpg", "image/jpeg", "Photo & <caption>", null, null, 640, 480)!;
         var html = ArticleRenderer.Render(Article(image: image.URL, attachments: [image]),
-            theme: Theme("[[primary_image]]|[[body]]|[[enclosures]]")).Html;
-        Assert.StartsWith("<div class=\"nnw-primary-image\">", html);
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.StartsWith("<div class=\"nnw-primary-media\"><div class=\"nnw-primary-image\">", html);
         Assert.Contains("width=\"640\" height=\"480\"", html);
         Assert.Contains("<div class=\"nnw-primary-image-caption\">Photo &amp; &lt;caption&gt;</div>", html);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<img "));
@@ -25,7 +70,7 @@ public sealed class ArticleRendererTests
     {
         var image = Attachment.Create(null, "https://example.com/photo.jpg", "image/jpeg", " MACBOOK\u00a0Pro ", null, null)!;
         var html = ArticleRenderer.Render(Article(title: "MacBook Pro", attachments: [image]),
-            theme: Theme("[[primary_image]]|[[body]]|[[enclosures]]")).Html;
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
         Assert.Contains("nnw-primary-image", html);
         Assert.DoesNotContain("nnw-primary-image-caption", html);
     }
@@ -34,23 +79,23 @@ public sealed class ArticleRendererTests
     public void PrimaryImageCanFallBackToThumbnailButLegacyEnclosuresCannot()
     {
         var article = Article(thumbnail: "https://example.com/thumbnail.jpg");
-        var html = ArticleRenderer.Render(article, theme: Theme("[[primary_image]]|[[body]]|[[enclosures]]")).Html;
-        Assert.StartsWith("<div class=\"nnw-primary-image\">", html);
+        var html = ArticleRenderer.Render(article, theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.StartsWith("<div class=\"nnw-primary-media\"><div class=\"nnw-primary-image\">", html);
         Assert.Contains("src=\"https://example.com/thumbnail.jpg\"", html);
         Assert.DoesNotContain("thumbnail.jpg", ArticleRenderer.Render(article, theme: Theme()).Html);
     }
 
     [Fact]
-    public void ShortUntitledPostsPlaceLeadImagesAfterTheirText()
+    public void UntitledPostsInitiallyUsePrimaryMedia()
     {
         var html = ArticleRenderer.Render(Article(title: null, image: "https://example.com/photo.jpg"),
-            theme: Theme("[[primary_image]]|[[body]]|[[enclosures]]")).Html;
-        Assert.StartsWith("|<p>Body</p>|<div class=\"nnw-enclosures\">", html);
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.StartsWith("<div class=\"nnw-primary-media\">", html);
         Assert.Contains("<img src=\"https://example.com/photo.jpg\"", html);
     }
 
     [Theory]
-    [InlineData("[[primary_image]]|[[body]]|[[enclosures]]")]
+    [InlineData("[[primary_media]]|[[body]]|[[enclosures]]")]
     [InlineData("[[body]]")]
     public void ResizedBodyImagesAreNotRepeatedAsMedia(string template)
     {

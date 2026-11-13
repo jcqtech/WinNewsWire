@@ -5,6 +5,38 @@ namespace WinNewsWire.AppShared.ArticleRendering;
 
 public static partial class ArticleRenderer
 {
+    private static (string Html, HashSet<string> Urls)? PrimaryMedia(string? imageUrl, string? thumbnailUrl,
+        IReadOnlyList<Attachment> attachments, string? articleTitle, string body, IReadOnlySet<string> bodyImageIdentities, string baseUrl)
+    {
+        var playable = attachments.Where(attachment => !BodyContainsMedia(body, attachment.URL, bodyImageIdentities, baseUrl)).ToArray();
+        var posterUrl = imageUrl ?? thumbnailUrl;
+        var video = playable.FirstOrDefault(attachment => attachment.DisplayMedium == Attachment.AttachmentMedium.Video
+            || ArticleRenderingSpecialCases.YouTubeEmbedUrl(attachment.URL) is not null);
+        if (video?.URL is { } videoUrl && EnclosureHtml(video, posterUrl, baseUrl) is { } videoHtml)
+        {
+            var videoUrls = new HashSet<string>(StringComparer.Ordinal) { videoUrl };
+            if (posterUrl is not null) videoUrls.Add(posterUrl);
+            return (PrimaryMediaHtml(videoHtml), videoUrls);
+        }
+
+        var imageHtml = "";
+        var urls = new HashSet<string>(StringComparer.Ordinal);
+        if (PrimaryImage(imageUrl, thumbnailUrl, attachments, body, bodyImageIdentities, baseUrl) is { URL: { } primaryImageUrl } image)
+        {
+            imageHtml = PrimaryImageHtml(image, articleTitle, baseUrl);
+            urls.Add(primaryImageUrl);
+        }
+        var audio = playable.FirstOrDefault(attachment => attachment.DisplayMedium == Attachment.AttachmentMedium.Audio);
+        if (audio?.URL is { } audioUrl && EnclosureHtml(audio, null, baseUrl) is { } audioHtml)
+        {
+            urls.Add(audioUrl);
+            return (PrimaryMediaHtml(imageHtml + audioHtml), urls);
+        }
+        return imageHtml.Length == 0 ? null : (PrimaryMediaHtml(imageHtml), urls);
+    }
+
+    private static string PrimaryMediaHtml(string html) => "<div class=\"nnw-primary-media\">" + html + "</div>";
+
     private static Attachment? PrimaryImage(string? imageUrl, string? thumbnailUrl, IReadOnlyList<Attachment> attachments,
         string body, IReadOnlySet<string> bodyImageIdentities, string baseUrl)
     {

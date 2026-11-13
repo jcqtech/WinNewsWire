@@ -37,6 +37,8 @@ public static partial class ArticleRenderer
         {
             body = ArticleRenderingSpecialCases.InsertParagraphTagsIfNeeded(body, feed?.Url, feed?.HomePageUrl);
             body = ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(body, feed?.Url, feed?.HomePageUrl);
+            body = ArticleRenderingSpecialCases.EnlargeFlickrImagesIfNeeded(body, feed?.Url,
+                article.Attachments?.Select(attachment => attachment.URL).OfType<string>().ToArray() ?? []);
             if (accountType == Account.AccountType.FreshRSS)
                 body = ArticleRenderingSpecialCases.DesanitizeFreshRssContent(body);
         }
@@ -72,20 +74,20 @@ public static partial class ArticleRenderer
         AddDateSubstitutions(substitutions, article.LogicalDatePublished());
         var bodyImageIdentities = BodyImageIdentities(body, baseUrl);
         var attachments = article.Attachments?.ToList() ?? [];
-        var primaryImageHtml = "";
-        var showsPrimaryImage = theme.TemplateHtml.Contains("[[primary_image]]", StringComparison.Ordinal)
-            && !IsShortUntitledPost(article.Title, body);
-        if (PrimaryImage(article.RawImageLink, showsPrimaryImage ? article.RawThumbnailLink : null,
-            attachments, body, bodyImageIdentities, baseUrl) is { } primaryImage)
+        var primaryMediaHtml = "";
+        var hasPrimaryMedia = theme.TemplateHtml.Contains("[[primary_media]]", StringComparison.Ordinal);
+        if (hasPrimaryMedia)
         {
-            if (showsPrimaryImage)
+            if (PrimaryMedia(article.RawImageLink, article.RawThumbnailLink, attachments,
+                article.Title, body, bodyImageIdentities, baseUrl) is { } primaryMedia)
             {
-                primaryImageHtml = PrimaryImageHtml(primaryImage, article.Title, baseUrl);
-                attachments.RemoveAll(attachment => attachment.URL == primaryImage.URL);
+                primaryMediaHtml = primaryMedia.Html;
+                attachments.RemoveAll(attachment => attachment.URL is { } url && primaryMedia.Urls.Contains(url));
             }
-            else if (!attachments.Contains(primaryImage)) attachments.Insert(0, primaryImage);
         }
-        substitutions["primary_image"] = primaryImageHtml;
+        else if (PrimaryImage(article.RawImageLink, null, attachments, body, bodyImageIdentities, baseUrl) is { } primaryImage
+            && !attachments.Contains(primaryImage)) attachments.Insert(0, primaryImage);
+        substitutions["primary_media"] = primaryMediaHtml;
         var enclosures = EnclosuresHtml(attachments, body, bodyImageIdentities, article.RawImageLink ?? article.RawThumbnailLink, baseUrl);
         if (theme.TemplateHtml.Contains("[[enclosures]]", StringComparison.Ordinal))
             substitutions["enclosures"] = enclosures;
