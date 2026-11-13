@@ -28,7 +28,7 @@ public sealed class ImageDatabaseTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task MigrationPreservesWindowsThumbnailAndSourceRecordsIncludingRecoveredWalAndOlderSchemas(bool oldValidationSchema)
+    public async Task MigrationPreservesSourceRecordsButDiscardsObsoleteThumbnailResultsIncludingRecoveredWal(bool oldValidationSchema)
     {
         string sourcePath = Path.Combine(_directory, "source.db");
         string legacyPath = Path.Combine(_directory, "ImageMetadata.db");
@@ -38,13 +38,15 @@ public sealed class ImageDatabaseTests : IDisposable
             await source.SaveHomePageFaviconAsync("https://site.test/", null);
             await source.SaveFeedIconUrlAsync("https://site.test/feed", "legacy");
             await source.RecordFailureAsync("https://site.test/missing", 404);
-            await source.SaveArticleThumbnailsAsync([new("article", ["https://site.test/photo.png"])]);
             await source.SaveDownloadedImageAsync(new(image, 1024, (48, 48),
                 new(null, "\"legacy\""), _clock.GetUtcNow().AddDays(3)));
-            if (oldValidationSchema)
             {
                 using var legacy = Open(sourcePath);
-                legacy.Execute("ALTER TABLE downloadedImage DROP COLUMN nextCheck;");
+                legacy.Execute("""
+                    CREATE TABLE IF NOT EXISTS articleThumbnailURLs (articleID TEXT PRIMARY KEY NOT NULL, thumbnailURLs TEXT, lastChecked REAL NOT NULL);
+                    INSERT INTO articleThumbnailURLs VALUES ('article', 'https://site.test/photo.png', $now);
+                    """, ("$now", (_clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds));
+                if (oldValidationSchema) legacy.Execute("ALTER TABLE downloadedImage DROP COLUMN nextCheck;");
             }
             File.Copy(sourcePath, legacyPath);
             File.Copy(sourcePath + "-wal", legacyPath + "-wal");
@@ -57,8 +59,8 @@ public sealed class ImageDatabaseTests : IDisposable
             Assert.Equal("current", database.IconUrl("https://site.test/feed"));
             Assert.True(database.RecentlyFailed("https://site.test/missing"));
             Assert.True(database.IsUnsuitableForThumbnail(image));
-            Assert.Equal(["https://site.test/photo.png"],
-                Assert.Single(await database.FetchArticleThumbnailsAsync(["article"])).ThumbnailUrls);
+            using var connection = Open();
+            Assert.Equal(0L, connection.Scalar<long>("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='articleThumbnailURLs';"));
             var validation = Assert.IsType<DownloadedImageValidation>(await database.FetchDownloadedImageValidationAsync(image));
             Assert.Equal("\"legacy\"", validation.ConditionalGet?.ETag);
             Assert.Equal(oldValidationSchema ? DateTimeOffset.UnixEpoch : _clock.GetUtcNow().AddDays(3), validation.NextCheck);
@@ -337,51 +339,19 @@ public sealed class ImageDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task ThumbnailResultsSurviveRestartIncludingNegativeResultsAndChunkedQueries()
-    {
-        var records = Enumerable.Range(0, 501)
-            .Select(index => new ArticleThumbnailRecord(index.ToString(), index % 2 == 0
-                ? [$"https://example.com/{index}.jpg", $"https://example.com/{index}-second.jpg"] : []))
-            .ToArray();
-        using (var database = new ImageDatabase(DatabasePath, _clock))
-            await database.SaveArticleThumbnailsAsync(records);
-        using var reopened = new ImageDatabase(DatabasePath, _clock);
-        var loaded = await reopened.FetchArticleThumbnailsAsync(records.Select(record => record.ArticleId).Append("missing"));
-        Assert.Equal(records.Length, loaded.Count);
-        Assert.True(records.ToHashSet().SetEquals(loaded));
-    }
-
-    [Fact]
-    public async Task StartupExpiresThumbnailResultsOnlyAfterThirtyThreeDays()
+    public async Task ObsoleteArticleThumbnailTableIsDroppedWithoutAffectingOtherMetadata()
     {
         using (var database = new ImageDatabase(DatabasePath, _clock))
-            await database.SaveArticleThumbnailsAsync([new("article", [])]);
-        _clock.Advance(ImageDatabase.FailureRetention);
-        using (var database = new ImageDatabase(DatabasePath, _clock))
-            Assert.Single(await database.FetchArticleThumbnailsAsync(["article"]));
-        _clock.Advance(TimeSpan.FromSeconds(1));
-        using var reopened = new ImageDatabase(DatabasePath, _clock);
-        Assert.Empty(await reopened.FetchArticleThumbnailsAsync(["article"]));
-    }
-
-    [Fact]
-    public async Task FailedThumbnailBatchRollsBackEarlierRows()
-    {
-        using var database = new ImageDatabase(DatabasePath, _clock);
-        await database.SaveArticleThumbnailsAsync([new("existing", ["https://example.com/old.jpg"])]);
+            await database.SaveFeedIconUrlAsync("feed", "icon");
         using (var connection = Open())
-        using (var command = connection.CreateCommand())
-        {
-            command.CommandText = """
-                CREATE TRIGGER reject_thumbnail BEFORE INSERT ON articleThumbnailURLs
-                WHEN NEW.articleID='rejected' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;
-                """;
-            command.ExecuteNonQuery();
-        }
-        await Assert.ThrowsAsync<SqliteException>(() => database.SaveArticleThumbnailsAsync(
-            [new("existing", ["https://example.com/new.jpg"]), new("rejected", [])]));
-        var saved = Assert.Single(await database.FetchArticleThumbnailsAsync(["existing", "rejected"]));
-        Assert.Equal(["https://example.com/old.jpg"], saved.ThumbnailUrls);
+            connection.Execute("""
+                CREATE TABLE IF NOT EXISTS articleThumbnailURLs (articleID TEXT PRIMARY KEY NOT NULL, thumbnailURLs TEXT, lastChecked REAL NOT NULL);
+                INSERT INTO articleThumbnailURLs VALUES ('old', 'https://example.com/old.jpg', $now);
+                """, ("$now", (_clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds));
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
+        using var saved = Open();
+        Assert.Equal(0L, saved.Scalar<long>("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='articleThumbnailURLs';"));
+        Assert.Equal("icon", reopened.IconUrl("feed"));
     }
 
     private long FailureCount()

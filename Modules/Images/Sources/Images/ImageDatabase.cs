@@ -42,14 +42,13 @@ public sealed class ImageDatabase : IDisposable
                     CREATE TABLE IF NOT EXISTS downloadFailure (url TEXT PRIMARY KEY NOT NULL, statusCode INTEGER, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS homePageFavicon (homePageURL TEXT PRIMARY KEY NOT NULL, faviconURL TEXT, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL, lastChecked REAL NOT NULL);
-                    CREATE TABLE IF NOT EXISTS articleThumbnailURLs (articleID TEXT PRIMARY KEY NOT NULL, thumbnailURLs TEXT, lastChecked REAL NOT NULL);
+                    DROP TABLE IF EXISTS articleThumbnailURLs;
                     CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, byteCount INTEGER NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT, nextCheck REAL NOT NULL DEFAULT 0);
                     """;
                 command.ExecuteNonQuery();
                 DownloadedImageTable.EnsureValidationColumn(connection);
                 bool imported = legacyDatabasePath is not null && ImportLegacyDatabase(connection, legacyDatabasePath);
                 DownloadFailureTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
-                ArticleThumbnailTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
                 foreach (var row in HomePageFaviconTable.FetchAll(connection)) _favicons[row.HomePageUrl] = row;
                 foreach (var pair in FeedIconUrlTable.FetchAll(connection)) _feedIcons[pair.Key] = pair.Value;
                 foreach (var pair in DownloadFailureTable.FetchAll(connection)) _failures[pair.Key] = pair.Value;
@@ -78,7 +77,6 @@ public sealed class ImageDatabase : IDisposable
                 ("downloadFailure", "url,statusCode,lastChecked", false),
                 ("homePageFavicon", "homePageURL,faviconURL,lastChecked", false),
                 ("feedIconURL", "feedURL,iconURL,lastChecked", false),
-                ("articleThumbnailURLs", "articleID,thumbnailURLs,lastChecked", true),
                 ("downloadedImage", "url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck", true)
             ];
             foreach (var (table, columns, optional) in tables)
@@ -261,24 +259,6 @@ public sealed class ImageDatabase : IDisposable
             if (pair.Value < cutoff) _failures.TryRemove(pair.Key, out _);
         return Task.CompletedTask;
     });
-
-    public Task<IReadOnlyList<ArticleThumbnailRecord>> FetchArticleThumbnailsAsync(IEnumerable<string> articleIds)
-    {
-        ArgumentNullException.ThrowIfNull(articleIds);
-        var ids = articleIds.Distinct(StringComparer.Ordinal).ToArray();
-        return _queue.RunAsync(connection => Task.FromResult(ArticleThumbnailTable.Fetch(connection, ids)));
-    }
-
-    public Task SaveArticleThumbnailsAsync(IEnumerable<ArticleThumbnailRecord> records)
-    {
-        ArgumentNullException.ThrowIfNull(records);
-        var snapshot = records.ToArray();
-        return _queue.RunAsync(connection =>
-        {
-            ArticleThumbnailTable.Save(connection, snapshot, _clock.GetUtcNow());
-            return Task.CompletedTask;
-        });
-    }
 
     public Task VacuumAsync(CancellationToken ct = default) => _queue.CheckpointAsync(ct);
     public void Dispose()

@@ -15,6 +15,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
     private readonly Dictionary<string, IReadOnlyList<string>> _htmlUrls = new(StringComparer.Ordinal);
     private readonly HashSet<string> _discovering = new(StringComparer.Ordinal);
     private readonly HashSet<string> _decodingFailures = new(StringComparer.Ordinal);
+    private sealed record ArticleThumbnailRecord(string ArticleId, IReadOnlyList<string> ThumbnailUrls);
     private sealed record ChosenThumbnail(string? RawThumbnailLink, string? RawImageLink,
         IReadOnlyList<Attachment>? Attachments, string? Url)
     {
@@ -74,27 +75,17 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         }
         try
         {
-            var saved = await _database.FetchArticleThumbnailsAsync(pending.Select(article => article.ArticleID)).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            CacheRecords(saved);
-            var savedIds = saved.Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
-            var toParse = pending.Where(article => !savedIds.Contains(article.ArticleID)).ToArray();
+            var toParse = pending;
             var baseUrls = toParse.ToDictionary(article => article.ArticleID,
                 article => baseUrlResolver is null ? article.BaseUrl() : baseUrlResolver(article), StringComparer.Ordinal);
             var initial = await ParseAsync(toParse.Take(MaximumArticlesParsedBeforeReady).ToArray()).ConfigureAwait(false);
             CacheRecords(initial);
             savedUrlsLoaded?.Invoke();
-            foreach (var batch in initial.Chunk(100))
-            {
-                ct.ThrowIfCancellationRequested();
-                await _database.SaveArticleThumbnailsAsync(batch).ConfigureAwait(false);
-            }
             PublishRecords(initial);
             foreach (var batch in toParse.Skip(MaximumArticlesParsedBeforeReady).Chunk(100))
             {
                 var parsed = await ParseAsync(batch).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
-                if (parsed.Count > 0) await _database.SaveArticleThumbnailsAsync(parsed).ConfigureAwait(false);
                 CacheRecords(parsed);
                 PublishRecords(parsed);
             }
