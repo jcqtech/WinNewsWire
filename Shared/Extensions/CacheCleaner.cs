@@ -23,7 +23,6 @@ public static class CacheCleaner
         {
             targets.Add(Path.Combine(AppConfig.DataDirectory, "Favicons"));
             targets.Add(Path.Combine(caches, "Favicons"));
-            targets.Add(Path.Combine(caches, "DownloadedImages"));
         }
         if (!removedOldFolders)
         {

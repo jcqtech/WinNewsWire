@@ -32,7 +32,7 @@ public sealed class CacheCleanerTests : IDisposable
         CacheCleaner.PurgeIfNecessary(_defaults, Now);
         Assert.False(File.Exists(favicon));
         Assert.False(File.Exists(nativeFavicon));
-        Assert.False(File.Exists(downloaded));
+        Assert.True(File.Exists(downloaded));
         Assert.False(File.Exists(image));
         Assert.False(File.Exists(thumbnail));
         Assert.False(File.Exists(largeThumbnail));
@@ -62,7 +62,7 @@ public sealed class CacheCleanerTests : IDisposable
         CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(3).AddTicks(1));
         Assert.False(File.Exists(favicon));
         Assert.False(File.Exists(nativeFavicon));
-        Assert.False(File.Exists(downloaded));
+        Assert.True(File.Exists(downloaded));
         Assert.False(File.Exists(mapping));
         Assert.True(File.Exists(feedIcon));
         Assert.Equal(Now.AddDays(3).AddTicks(1), _defaults.GetValue<DateTime?>(CacheCleaner.LastFlushKey));

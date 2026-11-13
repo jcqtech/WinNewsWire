@@ -6,8 +6,49 @@ namespace WinNewsWire.Images;
 public sealed record DownloadedImageRecord(string Url, long ByteCount,
     (uint Width, uint Height)? PixelSize, ConditionalGetInfo? ConditionalGet);
 
+public sealed record DownloadedImageUsage(string Url, long ByteCount, DateTimeOffset LastAccessed);
+
 internal static class DownloadedImageTable
 {
+    internal static IReadOnlyList<DownloadedImageUsage> FetchUsageByLeastRecentAccess(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT url,byteCount,lastAccessed FROM downloadedImage ORDER BY lastAccessed,url;";
+        using var rows = command.ExecuteReader();
+        var result = new List<DownloadedImageUsage>();
+        while (rows.Read())
+            result.Add(new(rows.GetString(0), rows.GetInt64(1), DateTimeOffset.UnixEpoch.AddSeconds(rows.GetDouble(2))));
+        return result;
+    }
+
+    internal static void SaveAccessDate(SqliteConnection connection, string url, DateTimeOffset now)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE downloadedImage SET lastAccessed=$accessed WHERE url=$url;";
+        command.Parameters.AddWithValue("$url", url);
+        command.Parameters.AddWithValue("$accessed", (now - DateTimeOffset.UnixEpoch).TotalSeconds);
+        command.ExecuteNonQuery();
+    }
+
+    internal static void Delete(SqliteConnection connection, IReadOnlyList<string> urls)
+    {
+        using var transaction = connection.BeginTransaction();
+        foreach (var chunk in urls.Chunk(500))
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            var parameters = chunk.Select((url, index) =>
+            {
+                var name = "$url" + index;
+                command.Parameters.AddWithValue(name, url);
+                return name;
+            });
+            command.CommandText = $"DELETE FROM downloadedImage WHERE url IN ({string.Join(',', parameters)});";
+            command.ExecuteNonQuery();
+        }
+        transaction.Commit();
+    }
+
     internal static IReadOnlyList<(string Url, (uint Width, uint Height)? PixelSize)> FetchPixelSizes(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();

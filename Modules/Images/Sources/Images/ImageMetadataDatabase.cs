@@ -101,6 +101,32 @@ public sealed class ImageMetadataDatabase : IDisposable
         else _unsuitableThumbnails[url] = 0;
     }
 
+    public Task SaveDownloadedImageAccessDateAsync(string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        return _queue.RunAsync(connection =>
+        {
+            DownloadedImageTable.SaveAccessDate(connection, url, _clock.GetUtcNow());
+            return Task.CompletedTask;
+        });
+    }
+
+    public Task<IReadOnlyList<DownloadedImageUsage>> FetchDownloadedImageUsageByLeastRecentAccessAsync()
+        => _queue.RunAsync(connection => Task.FromResult(DownloadedImageTable.FetchUsageByLeastRecentAccess(connection)));
+
+    public Task DeleteDownloadedImagesAsync(IEnumerable<string> urls)
+    {
+        ArgumentNullException.ThrowIfNull(urls);
+        var snapshot = urls.Distinct(StringComparer.Ordinal).ToArray();
+        return _queue.RunAsync(connection =>
+        {
+            if (snapshot.Length == 0) return Task.CompletedTask;
+            DownloadedImageTable.Delete(connection, snapshot);
+            foreach (var url in snapshot) _unsuitableThumbnails.TryRemove(url, out _);
+            return Task.CompletedTask;
+        });
+    }
+
     public Task SaveHomePageFaviconAsync(string homePageUrl, string? faviconUrl)
     {
         ArgumentException.ThrowIfNullOrEmpty(homePageUrl);

@@ -29,6 +29,9 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly ActivityLogger _log;
     private readonly ActivityOwner _owner;
     private readonly Func<string, ActivityKind> _kind;
+    private readonly SemaphoreSlim? _sourceDiskGate;
+    private readonly Func<string, Task>? _sourceWasRead;
+    private readonly Func<string, long, Task>? _sourceWasSaved;
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, Task<ImageResourceResult>> _pending = new(StringComparer.Ordinal);
@@ -44,7 +47,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     internal ImageResourceDownloader(ImageMetadataDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
         TimeProvider? clock = null, ActivityLogger? activityLog = null, string? legacyCacheFolder = null,
-        DownloadedImageCache? sourceCache = null)
+        DownloadedImageCache? sourceCache = null, SemaphoreSlim? sourceDiskGate = null,
+        Func<string, Task>? sourceWasRead = null, Func<string, long, Task>? sourceWasSaved = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFolder);
@@ -56,6 +60,9 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         _diskCache = new(cacheFolder);
         _legacyFolder = legacyCacheFolder;
         _sourceCache = sourceCache;
+        _sourceDiskGate = sourceDiskGate;
+        _sourceWasRead = sourceWasRead;
+        _sourceWasSaved = sourceWasSaved;
         _configuration = configuration;
         _owner = owner;
         _kind = kind;
@@ -130,8 +137,16 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             return await ImageFromSourceAsync(url, request, ct).ConfigureAwait(false);
         string key = url.Md5Hex();
         string path = _diskCache.PathForKey(key);
-        if (await ReadFromDiskAsync(url, key, ct).ConfigureAwait(false) is { } cached)
-            return Cache(cached);
+        if (_sourceDiskGate is not null) await _sourceDiskGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (await ReadFromDiskAsync(url, key, ct).ConfigureAwait(false) is { } cached)
+            {
+                if (_sourceWasRead is not null) await _sourceWasRead(url).ConfigureAwait(false);
+                return Cache(cached);
+            }
+        }
+        finally { _sourceDiskGate?.Release(); }
         if (_sourceCache is not null)
         {
             var result = await ImageFromSourceAsync(url, request, ct).ConfigureAwait(false);
@@ -195,11 +210,17 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         try
         {
             ct.ThrowIfCancellationRequested();
-            await _diskCache.SetAsync(key, processed, ct).ConfigureAwait(false);
-            if (_configuration.StoresSourceData && OperatingSystem.IsWindows())
-                await _database.SaveDownloadedImageAsync(new(url, processed.LongLength,
-                    WindowsImage.LargestFramePixelSize(processed), response.ConditionalGet)).ConfigureAwait(false);
-            await _database.ClearFailureAsync(url).ConfigureAwait(false);
+            if (_sourceDiskGate is not null) await _sourceDiskGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await _diskCache.SetAsync(key, processed, ct).ConfigureAwait(false);
+                if (_configuration.StoresSourceData && OperatingSystem.IsWindows())
+                    await _database.SaveDownloadedImageAsync(new(url, processed.LongLength,
+                        WindowsImage.LargestFramePixelSize(processed), response.ConditionalGet)).ConfigureAwait(false);
+                await _database.ClearFailureAsync(url).ConfigureAwait(false);
+                if (_sourceWasSaved is not null) await _sourceWasSaved(url, processed.LongLength).ConfigureAwait(false);
+            }
+            finally { _sourceDiskGate?.Release(); }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or OperationCanceledException)
         {

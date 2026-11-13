@@ -115,6 +115,42 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     }
 
     [Fact]
+    public async Task AccessDateUpdatesOrderUsageAndDeletionClearsSuitabilityAcrossBatches()
+    {
+        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        var urls = Enumerable.Range(0, 501).Select(index => "https://site.test/" + index).ToArray();
+        foreach (var url in urls) await database.SaveDownloadedImageAsync(new(url, 100, null, null));
+        _clock.Advance(TimeSpan.FromDays(1));
+        await database.SaveDownloadedImageAccessDateAsync(urls[0]);
+        var usage = await database.FetchDownloadedImageUsageByLeastRecentAccessAsync();
+        Assert.Equal(urls[0], usage[^1].Url);
+        Assert.Equal(_clock.GetUtcNow(), usage[^1].LastAccessed);
+        await database.DeleteDownloadedImagesAsync(urls);
+        Assert.Empty(await database.FetchDownloadedImageUsageByLeastRecentAccessAsync());
+        Assert.All(urls, url => Assert.False(database.IsUnsuitableForThumbnail(url)));
+        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        Assert.Empty(await reopened.FetchDownloadedImageUsageByLeastRecentAccessAsync());
+    }
+
+    [Fact]
+    public async Task FailedBatchedDeletionRollsBackEarlierRowsAndKeepsSuitability()
+    {
+        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        var urls = Enumerable.Range(0, 501).Select(index => "https://site.test/" + index).ToArray();
+        foreach (var url in urls) await database.SaveDownloadedImageAsync(new(url, 100, null, null));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TRIGGER reject_image_delete BEFORE DELETE ON downloadedImage
+            WHEN OLD.url='https://site.test/500' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;
+            """;
+        command.ExecuteNonQuery();
+        await Assert.ThrowsAsync<SqliteException>(() => database.DeleteDownloadedImagesAsync(urls));
+        Assert.Equal(501, (await database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
+        Assert.All(urls, url => Assert.True(database.IsUnsuitableForThumbnail(url)));
+    }
+
+    [Fact]
     public async Task StartupDeletesFailuresOnlyAfterThirtyThreeDays()
     {
         using (var database = new ImageMetadataDatabase(DatabasePath, _clock)) await database.RecordFailureAsync("https://site.test/icon", 404);
