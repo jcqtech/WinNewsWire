@@ -672,6 +672,49 @@ public sealed class DownloadedImageCacheTests
         Assert.Equal(3, requests);
     }
 
+    [Theory]
+    [InlineData(null, 60)]
+    [InlineData("5", 60)]
+    [InlineData("120", 121)]
+    [InlineData("7200", 7201)]
+    public async Task ConcurrentHostFailuresDoNotExtendAnActiveWaitWithoutALongerRetryAfter(string? retryAfter, int retryAtSeconds)
+    {
+        int requests = 0;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            Interlocked.Increment(ref requests);
+            if (request.RequestUri!.AbsolutePath == "/held.png")
+            {
+                started.TrySetResult();
+                await release.Task.WaitAsync(ct);
+                var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+                if (retryAfter is not null) response.Headers.TryAddWithoutValidation("Retry-After", retryAfter);
+                return response;
+            }
+            return new HttpResponseMessage(request.RequestUri.AbsolutePath == "/first.png"
+                ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) { Content = new ByteArrayContent(Fixture.Image) };
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        var held = fixture.FetchAsync(cache, "held");
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Null(await fixture.FetchAsync(cache, "first"));
+            fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+            release.TrySetResult();
+            Assert.Null(await held);
+            fixture.Clock.Advance(TimeSpan.FromSeconds(retryAtSeconds - 2));
+            Assert.Null(await fixture.FetchAsync(cache, "peer"));
+            Assert.Equal(2, requests);
+            fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+            Assert.NotNull(await fixture.FetchAsync(cache, "peer"));
+            Assert.Equal(3, requests);
+        }
+        finally { release.TrySetResult(); }
+    }
+
     [Fact]
     public async Task ConsecutiveTransientFailuresOnDifferentUrlsDoubleTheirHostDelay()
     {

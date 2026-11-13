@@ -403,6 +403,14 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             var now = _clock.GetUtcNow();
             RetryDelay NextDelay(RetryDelay previous)
             {
+                if (previous.RetryDate > now)
+                {
+                    if (retryAfter is not { } extension || extension <= previous.RetryDate - now) return previous;
+                    if (extension <= DateTimeOffset.MaxValue - now)
+                        return new(now + extension, extension > previous.Delay ? extension : previous.Delay);
+                    Trace.TraceWarning($"Ignoring an unrepresentable image Retry-After interval at {url}.");
+                    return previous;
+                }
                 var delay = previous.Delay > TimeSpan.Zero
                     ? TimeSpan.FromSeconds(Math.Min(previous.Delay.TotalSeconds * 2, 3600))
                     : TimeSpan.FromMinutes(1);
