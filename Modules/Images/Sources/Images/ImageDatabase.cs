@@ -138,6 +138,12 @@ public sealed class ImageDatabase : IDisposable
         return _unsuitableThumbnails.ContainsKey(url);
     }
 
+    internal void RecordThumbnailSizeRejection(string url)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _unsuitableThumbnails[url] = 0;
+    }
+
     public Task SaveDownloadedImageAsync(DownloadedImageRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);

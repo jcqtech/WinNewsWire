@@ -7,7 +7,7 @@ using ActivityKind = WinNewsWire.ActivityLog.ActivityKind;
 
 namespace WinNewsWire.Images;
 
-internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransient = false);
+internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransient = false, long? RejectedByteCount = null);
 internal sealed record ImageResourceConfiguration(int MaxPixelSize, ScaledImageFormat Format = ScaledImageFormat.Png,
     long MemoryCacheByteLimit = 0, DownloadLimiter? DownloadLimiter = null,
     Func<bool>? NetworkAllowsDownloads = null,
@@ -32,6 +32,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, Task<ImageResourceResult>> _pending = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _unlimitedPending = new(StringComparer.Ordinal);
     private readonly HashSet<Task> _operations = [];
     private readonly record struct RetryDelay(DateTimeOffset RetryDate, TimeSpan Delay);
     private readonly Dictionary<string, RetryDelay> _retryDelays = new(StringComparer.Ordinal);
@@ -113,12 +114,20 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             ct.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_stopping, this);
+            if (_configuration.StoresSourceData && request.DownloadPriority is null) _unlimitedPending.Add(url);
             if (!_pending.TryGetValue(url, out pending!))
             {
                 pending = Task.Run(async () =>
                 {
                     try { return await DownloadImageAsync(url, _lifetime.Token, request).ConfigureAwait(false); }
-                    finally { lock (_gate) _pending.Remove(url); }
+                    finally
+                    {
+                        lock (_gate)
+                        {
+                            _pending.Remove(url);
+                            _unlimitedPending.Remove(url);
+                        }
+                    }
                 });
                 _pending.Add(url, pending);
             }
@@ -191,6 +200,18 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                 DownloadFailed?.Invoke(this, url);
             }
             return new(null, transient);
+        }
+        bool oversized;
+        lock (_gate)
+            oversized = _configuration.StoresSourceData && request.DownloadPriority is not null
+                && bytes.LongLength > 25L * 1024 * 1024 && !_unlimitedPending.Contains(url);
+        if (oversized)
+        {
+            _log.DidFail(activity, new InvalidDataException($"Image too large for a timeline download ({bytes.LongLength} bytes)."));
+            ClearRetryDelay(url);
+            _database.RecordThumbnailSizeRejection(url);
+            DownloadFailed?.Invoke(this, url);
+            return new(null, RejectedByteCount: bytes.LongLength);
         }
         byte[] processed;
         try

@@ -389,6 +389,70 @@ public sealed class FeedImageDownloaderTests
         Assert.Single(fixture.Activity.CompletedActivities);
     }
 
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public async Task TimelineNetworkSourcesRespectThe25MiBLimitWithoutBlockingReaderImages(int extraBytes, bool accepted)
+    {
+        byte[] source = Bitmap(128, 128);
+        Array.Resize(ref source, 25 * 1024 * 1024 + extraBytes);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, source)));
+        const string url = Home + "large-source.bmp";
+        string? rejected = null;
+        fixture.Thumbnails.DownloadFailed += (_, failed) => rejected = failed;
+        Assert.Equal(accepted, await fixture.Thumbnails.SourceAsync(url) is not null);
+        Assert.Equal(accepted, File.Exists(fixture.NativePath(url)));
+        Assert.Equal(accepted ? null : url, rejected);
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+        if (!accepted)
+        {
+            Assert.True(fixture.ImageDatabase.IsUnsuitableForThumbnail(url));
+            Assert.Null(await fixture.Thumbnails.SourceAsync(url));
+            Assert.Single(fixture.Requests);
+            Assert.Empty(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync());
+        }
+        var fullSize = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.FullSizeImageAsync(url));
+        Assert.Equal(source, fullSize.Data);
+        Assert.Equal(accepted ? 1 : 2, fixture.Requests.Count);
+        Assert.NotNull(await fixture.Thumbnails.SourceAsync(url));
+    }
+
+    [Fact]
+    public async Task IconsHaveNoTimelineSourceByteLimit()
+    {
+        byte[] source = Bitmap(128, 128);
+        Array.Resize(ref source, 25 * 1024 * 1024 + 1);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, source)));
+        const string url = Home + "large-icon-source.bmp";
+        var icon = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(new(Feed, Home, IconUrl: url)));
+        Assert.Equal(source, await File.ReadAllBytesAsync(icon.Path));
+        Assert.Single(fixture.Requests);
+    }
+
+    [Fact]
+    public async Task AReaderJoiningALimitedDownloadStillReceivesALargeSourceWithoutDuplicateHttp()
+    {
+        byte[] source = Bitmap(128, 128);
+        Array.Resize(ref source, 25 * 1024 * 1024 + 1);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (_, ct) =>
+        {
+            started.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return Response(HttpStatusCode.OK, source);
+        });
+        const string url = Home + "shared-large-source.bmp";
+        var limited = fixture.Thumbnails.SourceAsync(url);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var reader = fixture.Images.DownloadedImages.FetchAsync(url, new(ActivityOwner.ThumbnailDownloader,
+            ActivityKind.DownloadThumbnail(url), null, () => true), default);
+        release.TrySetResult();
+        Assert.Equal(source, (await reader).Image?.Data);
+        Assert.Equal(source, (await limited)?.Data);
+        Assert.Single(fixture.Requests);
+    }
+
     [Fact]
     public async Task AnimatedSourceRetainsEveryFrameWithoutTranscoding()
     {

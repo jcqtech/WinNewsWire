@@ -83,7 +83,11 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         await _initialCleanup.WaitAsync(ct).ConfigureAwait(false);
         if (request.DownloadPriority == DownloadPriority.Visible) PrioritizeDownload(url);
         else if (request.DownloadPriority is null) _downloadLimiter.StartNow(url);
-        return await _downloads.FetchAsync(url, ct, request: request).ConfigureAwait(false);
+        var result = await _downloads.FetchAsync(url, ct, request: request).ConfigureAwait(false);
+        // A reader may join just after a limited operation decides to reject its response.
+        if (request.DownloadPriority is null && result.RejectedByteCount is not null)
+            return await _downloads.FetchAsync(url, ct, request: request).ConfigureAwait(false);
+        return result;
     }
 
     private void ReleaseRevalidation(string url)

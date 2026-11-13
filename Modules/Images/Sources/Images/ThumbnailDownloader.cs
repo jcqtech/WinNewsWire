@@ -15,7 +15,7 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly HashSet<Task> _operations = [];
     private Task? _shutdown;
-    /// <summary>Raised on a worker after persisting a non-transient failure; UI subscribers must dispatch.</summary>
+    /// <summary>Raised on a worker after a permanent failure or thumbnail-only rejection; UI subscribers must dispatch.</summary>
     public event EventHandler<string>? DownloadFailed;
 
     public ThumbnailDownloader(ImageDatabase database, string cacheFolder, Func<bool> networkAllowsDownloads,
