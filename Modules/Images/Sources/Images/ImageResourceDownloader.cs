@@ -53,6 +53,11 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         lock (_gate) return _pending.Keys.ToHashSet(StringComparer.Ordinal);
     }
 
+    internal bool ReturnedNonImage(string url)
+    {
+        lock (_gate) return _nonImageUrls.Contains(url);
+    }
+
     internal ImageResourceDownloader(ImageDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
         TimeProvider? clock = null, ActivityLogger? activityLog = null,

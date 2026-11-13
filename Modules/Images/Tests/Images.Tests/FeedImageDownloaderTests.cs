@@ -166,25 +166,34 @@ public sealed class FeedImageDownloaderTests
         Assert.True(fixture.ImageDatabase.RecentlyFailed(Home + "declared.png"));
     }
 
-    [Fact]
-    public async Task UnreadableDeclaredIconsDoNotTriggerHomepageFallbackOrFiveDayFailures()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task KnownNonImageFeedIconsUseHomepageFallbackAndRecoverAfterNetworkChanges(bool declared)
     {
         int requests = 0;
-        await using var fixture = new Fixture((request, _) =>
+        const string icon = Home + "declared.png";
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
         {
-            Assert.Equal("/declared.png", request.RequestUri!.AbsolutePath);
-            return Task.FromResult(Response(HttpStatusCode.OK, ++requests == 1 ? "<html>Login</html>"u8.ToArray() : Image));
-        });
-        var feed = new FeedImageSource(Feed, Home, IconUrl: Home + "declared.png");
+            "/declared.png" => Response(HttpStatusCode.OK, ++requests == 1 ? "<html>Login</html>"u8.ToArray() : Image),
+            "/" => HtmlResponse("<link rel='apple-touch-icon' sizes='180x180' href='/touch.png'>"),
+            "/touch.png" => Response(HttpStatusCode.OK, Image),
+            _ => throw new InvalidOperationException("Unexpected URL.")
+        }));
+        if (!declared) await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, icon);
+        var feed = new FeedImageSource(Feed, Home, IconUrl: declared ? icon : null);
         Assert.Null(await fixture.Images.IconAsync(feed));
-        Assert.False(fixture.ImageDatabase.RecentlyFailed(feed.IconUrl!));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(icon));
         Assert.Single(fixture.Requests);
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
-        Assert.Null(await fixture.Images.IconAsync(feed));
-        Assert.Single(fixture.Requests);
+        Assert.Equal(Home + "touch.png", (await fixture.Images.IconAsync(feed))?.Url);
+        Assert.Equal(Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(3, fixture.Requests.Count);
+        Assert.Equal(Home + "touch.png", (await fixture.Images.IconAsync(feed))?.Url);
+        Assert.Equal(3, fixture.Requests.Count);
         fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
-        Assert.Equal(feed.IconUrl, (await fixture.Images.IconAsync(feed))?.Url);
-        Assert.Equal(feed.IconUrl, fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(icon, (await fixture.Images.IconAsync(feed with { IconUrl = icon }))?.Url);
+        Assert.Equal(icon, fixture.ImageDatabase.IconUrl(Feed));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(icon));
         Assert.Equal(2, requests);
     }
 

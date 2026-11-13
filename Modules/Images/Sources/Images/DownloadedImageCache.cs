@@ -76,6 +76,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     }
 
     internal void NetworkStatusChanged(object? sender, bool available) => _downloads.ResetRetryDelays();
+    internal bool ReturnedNonImage(string url) => _downloads.ReturnedNonImage(url);
 
     internal async Task<ImageResourceResult> FetchAsync(string url, ImageResourceRequest request, CancellationToken ct)
     {
