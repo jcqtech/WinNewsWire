@@ -39,8 +39,6 @@ public static partial class ArticleRenderer
             body = ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(body, feed?.Url, feed?.HomePageUrl);
             if (accountType == Account.AccountType.FreshRSS)
                 body = ArticleRenderingSpecialCases.DesanitizeFreshRssContent(body);
-            if (!string.IsNullOrEmpty(article.RawImageLink) && !body.Contains("<img", StringComparison.OrdinalIgnoreCase))
-                body = "<p><img src=\"" + Html(article.RawImageLink) + "\" alt=\"\"></p>" + body;
         }
         body = ArticleRenderingSpecialCases.FilterHtmlIfNeeded(baseUrl, body);
         if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)) body = HtmlRelativeUrlResolver.Resolve(body, baseUri);

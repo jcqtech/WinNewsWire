@@ -10,6 +10,20 @@ public class RssParserTests
     private static ParserData Load(string f, string ext, string url) => TestResources.Load($"{f}.{ext}", url);
 
     [Theory]
+    [InlineData(false, "https://example.com/podcast.jpg")]
+    [InlineData(true, "https://example.com/preview.jpg")]
+    public void ITunesImageIsFallbackForMediaThumbnail(bool mediaThumbnail, string expected)
+    {
+        var xml = """
+            <rss xmlns:i="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:m="http://search.yahoo.com/mrss/">
+            <channel><item><guid>1</guid><i:image href="https://example.com/podcast.jpg"/>
+            """ + (mediaThumbnail ? "<m:thumbnail url='https://example.com/preview.jpg'/>" : "")
+            + "</item></channel></rss>";
+        Assert.Equal(expected, Assert.Single(RssParser.Parse(new ParserData("https://example.com/feed",
+            System.Text.Encoding.UTF8.GetBytes(xml))).Items).ImageUrl);
+    }
+
+    [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
     [InlineData(true, false, false)]

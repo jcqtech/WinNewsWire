@@ -45,6 +45,13 @@ public static class RssParser
                 parser.BeginStoringCharacters();
                 return;
             }
+            if (_parsingArticle && ns.IsITunes && name.SequenceEqual("image"u8))
+            {
+                if (CurrentItem is { ITunesImageUrl: null } item && attributes.ValueForNameCaseInsensitive("href") is { Length: > 0 } href)
+                    item.ITunesImageUrl = ResolveUrl(href);
+                _namespaceElementDepth = 1;
+                return;
+            }
             if (_media.ContainerDepth > 0) { _namespaceElementDepth = 1; return; }
             if (_parsingArticle && !unprefixed && !ns.IsDublinCore && !ns.IsContent && !ns.IsSource)
             {

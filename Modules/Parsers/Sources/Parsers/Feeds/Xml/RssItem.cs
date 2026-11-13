@@ -18,6 +18,7 @@ internal sealed class RssItem
     public HashSet<ParsedAuthor> Authors { get; } = [];
     public List<ParsedAttachment> Attachments { get; } = [];
     public string? ImageUrl { get; set; }
+    public string? ITunesImageUrl { get; set; }
     public long? ITunesDurationInSeconds { get; set; }
     public string? MediaDescription { get; set; }
     public bool MediaDescriptionIsHtml { get; set; }
@@ -56,7 +57,7 @@ internal sealed class RssItem
             syncServiceId: null, uniqueId: UniqueId, feedUrl: feedUrl,
             url: Permalink, externalUrl: Link, title: Title, language: Language,
             contentHtml: contentHtml, contentText: contentText, markdown: Markdown, summary: summary,
-            imageUrl: ImageUrl, bannerImageUrl: null, datePublished: DatePublished, dateModified: DateModified,
+            imageUrl: ImageUrl ?? ITunesImageUrl, bannerImageUrl: null, datePublished: DatePublished, dateModified: DateModified,
             authors: Authors.Count == 0 ? null : Authors, tags: null,
             attachments: MergedAttachments())
         {

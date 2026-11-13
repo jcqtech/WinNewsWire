@@ -7,10 +7,19 @@ public static partial class ArticleRenderer
 {
     private static string EnclosuresHtml(IEnumerable<Attachment>? attachments, string body, string? posterUrl, string baseUrl)
     {
-        var enclosures = (attachments ?? []).OrderBy(a => a.URL, StringComparer.Ordinal)
-            .Where(a => !BodyContainsUrl(body, a.URL))
-            .Select(a => EnclosureHtml(a, posterUrl, baseUrl)).Where(html => html is not null).ToArray();
-        return enclosures.Length == 0 ? "" : "<div class=\"nnw-enclosures\">\n" + string.Join("\n", enclosures) + "\n</div>";
+        var enclosures = new List<string>();
+        bool hasVisual = false;
+        foreach (var attachment in (attachments ?? []).OrderBy(a => a.URL, StringComparer.Ordinal))
+        {
+            if (BodyContainsUrl(body, attachment.URL) || EnclosureHtml(attachment, posterUrl, baseUrl) is not { } html) continue;
+            enclosures.Add(html);
+            hasVisual |= attachment.DisplayMedium is Attachment.AttachmentMedium.Image or Attachment.AttachmentMedium.Video
+                || ArticleRenderingSpecialCases.YouTubeEmbedUrl(attachment.URL) is not null;
+        }
+        if (!hasVisual && MediaUrl(posterUrl, baseUrl) is { } image && !BodyContainsUrl(body, image)
+            && !new[] { "<img", "<picture", "<video", "<iframe" }.Any(tag => body.Contains(tag, StringComparison.OrdinalIgnoreCase)))
+            enclosures.Insert(0, "<div class=\"nnw-enclosure nnw-enclosure-image\"><img src=\"" + Html(image) + "\" alt=\"\"></div>");
+        return enclosures.Count == 0 ? "" : "<div class=\"nnw-enclosures\">\n" + string.Join("\n", enclosures) + "\n</div>";
     }
 
     private static string? EnclosureHtml(Attachment attachment, string? posterUrl, string baseUrl)

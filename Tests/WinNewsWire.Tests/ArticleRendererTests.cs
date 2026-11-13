@@ -8,6 +8,21 @@ namespace WinNewsWire.AppShared.Tests;
 
 public sealed class ArticleRendererTests
 {
+    [Theory]
+    [InlineData("audio/mpeg", true)]
+    [InlineData("video/mp4", false)]
+    [InlineData("image/jpeg", false)]
+    public void ArticleImageAppearsOnlyWhenThereIsNoOtherVisualMedia(string mime, bool expectedImage)
+    {
+        var attachment = Attachment.Create(null, "https://example.com/media", mime, null, null, null)!;
+        var article = new Article("account", "article", "feed", "unique", "Title", "<p>Body</p>", null, null,
+            "https://example.com/article", null, null, "https://example.com/poster.jpg",
+            null, null, null, new HashSet<Attachment> { attachment }, new ArticleStatus("article", false, false, DateTime.UnixEpoch));
+        var html = ArticleRenderer.Render(article, theme: Theme()).Html;
+        Assert.Equal(expectedImage, html.Contains("<img src=\"https://example.com/poster.jpg\"", StringComparison.Ordinal));
+        if (mime == "video/mp4") Assert.Contains("poster=\"https://example.com/poster.jpg\"", html);
+    }
+
     [Fact]
     public void YouTubeFlashAttachmentRendersAsPrivacyEnhancedIframe()
     {
