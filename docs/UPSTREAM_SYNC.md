@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`3e962e641f96f812d47880c5694d30a996583f54`**. This synchronization is in progress.
+`6831d31fc911c1b13a2ebf49a537eeaee8fff8af`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is the shared downloaded-image cache, `6831d31fc911c1b13a2ebf49a537eeaee8fff8af`;
+is direct display-size thumbnail decoding, `f7daad126bc883f052eff3a8ca050d3a7dc7021c`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -100,11 +100,20 @@ Shared local-image routes remain pending.
 
 Thumbnail downloading now shares the existing icon resource pipeline without
 duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
-Small/large modes use 512/1200-pixel JPEG scaling, separate 32-MiB encoded LRUs,
-and a shared four-slot cancellation-safe LIFO scheduler. Cached images remain
-available offline; new downloads honor connectivity and Windows connection cost.
+The new shared `DownloadedImages` cache coalesces reads/downloads across feed
+icons and both thumbnail sizes. It stores one source, at most 1200 pixels, per
+URL without retaining a second raw HTTP-body cache. Small/large representations
+use 512/1200-pixel JPEG scaling and separate 32-MiB encoded memory LRUs, but no
+longer have separate disk files. A shared four-slot cancellation-safe LIFO
+scheduler limits thumbnail network requests. Cached images remain available
+offline; new downloads honor connectivity and Windows connection cost.
 Actual image dimensions are checked, with unsuitable thumbnails recorded
 separately so usable feed icons are not suppressed.
+Windows retains its existing favicon representation and SHA1 migration API,
+while sharing source fetches with the new cache. It retains native decoder
+failure reporting instead of the Apple-specific unreadable-data fallback.
+Retired Images/Thumbnails/LargeThumbnails folders are removed once; periodic
+cleanup now includes shared sources and retains atomic preference markers.
 
 The WinUI thumbnail service initializes and decodes on workers, creates native
 presentation sources and availability notifications on the UI dispatcher, and
@@ -138,8 +147,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **98 Ported, 29 Covered, 70 Skipped, and 308 Pending**
-source commits, backed by **114 source-attributed Windows port commits**. Two
+The inventory currently has **99 Ported, 29 Covered, 70 Skipped, and 307 Pending**
+source commits, backed by **115 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -152,7 +161,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are the shared downloaded-image cache and later image-cache
+Still pending are direct display-size thumbnail decoding and later image-cache
 rewrites, finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
@@ -166,7 +175,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 ## Verification at this checkpoint
 
 The x64 Windows application builds with zero warnings/errors. The complete parser
-suite passes 532 tests, and the shared application suite passes 494. Earlier
+suite passes 532 tests, and the shared application suite passes 495. Earlier
 related checks covered remote-account synchronization, OPML autosave, attachment
 and thumbnail storage/migration, and NewsBlur model decoding.
 
@@ -262,6 +271,16 @@ hide a missing availability subscription. After that precondition, restoring
 the original missing subscriptions fails the no-scroll recovery assertion.
 The restored native suite, 60-image/33-group reader gate, and regular/probe
 builds pass. All temporary tracing and negative-control changes were removed.
+
+The shared-source port passes 63 image tests, 134 Web tests and all 495 shared
+tests. Coverage includes concurrent icon/thumbnail consumers with independent
+cancellation, one disk source with distinct encoded sizes, offline source reuse,
+corrupt-source repair, no duplicate HTTP-body storage, and one-time retired-folder
+migration without deleting current sources, favicons or browser data.
+Restoring the original per-size disk/network path, unconditional HTTP response
+storage and old cleanup predicate fails all five selected controls. Restored
+native thumbnails and the 63-image/33-group reader gate pass, and regular/probe
+builds have zero warnings/errors. The temporary controls were restored.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
