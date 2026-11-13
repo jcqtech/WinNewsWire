@@ -457,7 +457,7 @@ internal static partial class ParityProbe
                 "Next-screen thumbnail prefetch");
             Require(service.ProbeDownloadPriorities.TryGetValue(
                 $"https://thumbnail.test/timeline-photo-{panel.LastVisibleIndex + 1}.bmp", out var priority)
-                && priority == DownloadPriority.Prefetch,
+                && priority == ThumbnailPriority.Prefetch,
                 "Next-screen timeline requests did not use the low-priority thumbnail path.");
             var fetched = requests.Where(path => path.StartsWith("/timeline-photo-", StringComparison.Ordinal))
                 .Select(path => int.Parse(path["/timeline-photo-".Length..^4])).ToArray();

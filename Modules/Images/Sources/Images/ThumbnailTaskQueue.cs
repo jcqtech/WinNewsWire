@@ -1,48 +1,48 @@
 namespace WinNewsWire.Images;
 
-public enum DownloadPriority { Visible, Prefetch }
+public enum ThumbnailPriority { Visible, Prefetch }
 
-internal sealed class DownloadLimiter
+internal sealed class ThumbnailTaskQueue
 {
     private readonly object _gate = new();
-    private readonly int _maximumConcurrentDownloads;
-    private readonly int _maximumWaitingDownloads;
+    private readonly int _maximumRunningCount;
+    private readonly int _maximumWaitingCount;
     private readonly LinkedList<Waiter> _waiting = [];
     private int _running;
     internal int WaitingCount { get { lock (_gate) return _waiting.Count; } }
 
-    internal DownloadLimiter(int maximumConcurrentDownloads, int maximumWaitingDownloads = 60)
+    internal ThumbnailTaskQueue(int maximumRunningCount, int maximumWaitingCount = 60)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumConcurrentDownloads);
-        ArgumentOutOfRangeException.ThrowIfNegative(maximumWaitingDownloads);
-        _maximumConcurrentDownloads = maximumConcurrentDownloads;
-        _maximumWaitingDownloads = maximumWaitingDownloads;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumRunningCount);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumWaitingCount);
+        _maximumRunningCount = maximumRunningCount;
+        _maximumWaitingCount = maximumWaitingCount;
     }
 
     internal ValueTask<IDisposable?> AcquireAsync(CancellationToken ct = default, string? key = null,
-        DownloadPriority priority = DownloadPriority.Visible)
+        ThumbnailPriority priority = ThumbnailPriority.Visible)
     {
-        if (priority is not (DownloadPriority.Visible or DownloadPriority.Prefetch))
+        if (priority is not (ThumbnailPriority.Visible or ThumbnailPriority.Prefetch))
             throw new ArgumentOutOfRangeException(nameof(priority));
         lock (_gate)
         {
             ct.ThrowIfCancellationRequested();
-            if (_running < _maximumConcurrentDownloads)
+            if (_running < _maximumRunningCount)
             {
                 _running++;
                 return ValueTask.FromResult<IDisposable?>(new Lease(this));
             }
             var waiter = new Waiter(this, key, priority);
-            if (priority == DownloadPriority.Visible) _waiting.AddLast(waiter.Node);
+            if (priority == ThumbnailPriority.Visible) _waiting.AddLast(waiter.Node);
             else
             {
                 var firstVisible = _waiting.First;
-                while (firstVisible is not null && firstVisible.Value.Priority == DownloadPriority.Prefetch)
+                while (firstVisible is not null && firstVisible.Value.Priority == ThumbnailPriority.Prefetch)
                     firstVisible = firstVisible.Next;
                 if (firstVisible is null) _waiting.AddLast(waiter.Node);
                 else _waiting.AddBefore(firstVisible, waiter.Node);
             }
-            if (_waiting.Count > _maximumWaitingDownloads)
+            if (_waiting.Count > _maximumWaitingCount)
             {
                 var oldest = _waiting.First!;
                 _waiting.RemoveFirst();
@@ -60,7 +60,7 @@ internal sealed class DownloadLimiter
             while (node is not null && !string.Equals(node.Value.Key, key, StringComparison.Ordinal)) node = node.Previous;
             if (node is null) return;
             _waiting.Remove(node);
-            node.Value.Priority = DownloadPriority.Visible;
+            node.Value.Priority = ThumbnailPriority.Visible;
             _waiting.AddLast(node);
         }
     }
@@ -98,7 +98,7 @@ internal sealed class DownloadLimiter
         lock (_gate)
         {
             _running--;
-            if (_running < _maximumConcurrentDownloads && _waiting.Last is { } next)
+            if (_running < _maximumRunningCount && _waiting.Last is { } next)
             {
                 _waiting.RemoveLast();
                 _running++;
@@ -109,12 +109,12 @@ internal sealed class DownloadLimiter
 
     private sealed class Waiter
     {
-        internal DownloadLimiter Owner { get; }
+        internal ThumbnailTaskQueue Owner { get; }
         internal string? Key { get; }
-        internal DownloadPriority Priority { get; set; }
+        internal ThumbnailPriority Priority { get; set; }
         internal TaskCompletionSource<IDisposable?> Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal LinkedListNode<Waiter> Node { get; }
-        internal Waiter(DownloadLimiter owner, string? key, DownloadPriority priority)
+        internal Waiter(ThumbnailTaskQueue owner, string? key, ThumbnailPriority priority)
         {
             Owner = owner;
             Key = key;
@@ -123,9 +123,9 @@ internal sealed class DownloadLimiter
         }
     }
 
-    private sealed class Lease(DownloadLimiter owner) : IDisposable
+    private sealed class Lease(ThumbnailTaskQueue owner) : IDisposable
     {
-        private DownloadLimiter? _owner = owner;
+        private ThumbnailTaskQueue? _owner = owner;
         public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release();
     }
 }

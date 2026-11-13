@@ -2,14 +2,14 @@ using Xunit;
 
 namespace WinNewsWire.Images.Tests;
 
-public sealed class DownloadLimiterTests
+public sealed class ThumbnailTaskQueueTests
 {
     [Fact]
     public async Task ReaderPromotionStartsImmediatelyButNormalWorkWaitsUntilBelowTheLimitAgain()
     {
-        var limiter = new DownloadLimiter(1);
+        var limiter = new ThumbnailTaskQueue(1);
         using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
-        var article = limiter.AcquireAsync(key: "article", priority: DownloadPriority.Prefetch).AsTask();
+        var article = limiter.AcquireAsync(key: "article", priority: ThumbnailPriority.Prefetch).AsTask();
         var other = limiter.AcquireAsync(key: "other").AsTask();
         limiter.StartNow("article");
         using var articleLease = Assert.IsAssignableFrom<IDisposable>(await article.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -30,7 +30,7 @@ public sealed class DownloadLimiterTests
     [Fact]
     public async Task WaitingDownloadsStartMostRecentFirst()
     {
-        var limiter = new DownloadLimiter(1);
+        var limiter = new ThumbnailTaskQueue(1);
         using var first = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
         var older = limiter.AcquireAsync().AsTask();
         var newest = limiter.AcquireAsync().AsTask();
@@ -46,7 +46,7 @@ public sealed class DownloadLimiterTests
     [Fact]
     public async Task CanceledWaiterDoesNotConsumeOrLeakADownloadSlot()
     {
-        var limiter = new DownloadLimiter(1);
+        var limiter = new ThumbnailTaskQueue(1);
         using var first = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
         var older = limiter.AcquireAsync().AsTask();
         using var cancellation = new CancellationTokenSource();
@@ -64,7 +64,7 @@ public sealed class DownloadLimiterTests
     [Fact]
     public async Task FourSlotsStayBoundedEvenWhenALeaseIsDisposedTwice()
     {
-        var limiter = new DownloadLimiter(4);
+        var limiter = new ThumbnailTaskQueue(4);
         var active = new List<IDisposable>();
         try
         {
@@ -90,11 +90,11 @@ public sealed class DownloadLimiterTests
     [InlineData(true)]
     public async Task VisibleDownloadsPrecedeNewerPrefetchesAndPromotedRowsMoveToTheFront(bool promote)
     {
-        var limiter = new DownloadLimiter(1, 10);
+        var limiter = new ThumbnailTaskQueue(1, 10);
         using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
-        var olderPrefetch = limiter.AcquireAsync(key: "older", priority: DownloadPriority.Prefetch).AsTask();
+        var olderPrefetch = limiter.AcquireAsync(key: "older", priority: ThumbnailPriority.Prefetch).AsTask();
         var visible = limiter.AcquireAsync(key: "visible").AsTask();
-        var newerPrefetch = limiter.AcquireAsync(key: "newer", priority: DownloadPriority.Prefetch).AsTask();
+        var newerPrefetch = limiter.AcquireAsync(key: "newer", priority: ThumbnailPriority.Prefetch).AsTask();
         if (promote) limiter.Prioritize("older");
         active.Dispose();
         var first = promote ? olderPrefetch : visible;
@@ -112,11 +112,11 @@ public sealed class DownloadLimiterTests
     [Fact]
     public async Task OverflowDropsPrefetchesBeforeEvenTheOldestVisibleDownload()
     {
-        var limiter = new DownloadLimiter(1, 2);
+        var limiter = new ThumbnailTaskQueue(1, 2);
         using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
         var olderVisible = limiter.AcquireAsync(key: "older-visible").AsTask();
-        var olderPrefetch = limiter.AcquireAsync(key: "older-prefetch", priority: DownloadPriority.Prefetch).AsTask();
-        var newerPrefetch = limiter.AcquireAsync(key: "newer-prefetch", priority: DownloadPriority.Prefetch).AsTask();
+        var olderPrefetch = limiter.AcquireAsync(key: "older-prefetch", priority: ThumbnailPriority.Prefetch).AsTask();
+        var newerPrefetch = limiter.AcquireAsync(key: "newer-prefetch", priority: ThumbnailPriority.Prefetch).AsTask();
         Assert.Null(await olderPrefetch.WaitAsync(TimeSpan.FromSeconds(5)));
         var newerVisible = limiter.AcquireAsync(key: "newer-visible").AsTask();
         Assert.Null(await newerPrefetch.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -132,7 +132,7 @@ public sealed class DownloadLimiterTests
     [InlineData(2)]
     public async Task OverflowDropsTheOldestWaiterWithoutLeakingOrReorderingRemainingSlots(int maximumWaiting)
     {
-        var limiter = new DownloadLimiter(1, maximumWaiting);
+        var limiter = new ThumbnailTaskQueue(1, maximumWaiting);
         using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
         var oldest = limiter.AcquireAsync().AsTask();
         var retained = Enumerable.Range(0, maximumWaiting).Select(_ => limiter.AcquireAsync().AsTask()).ToArray();

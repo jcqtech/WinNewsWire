@@ -190,7 +190,7 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(20, 40);
         await using var thumbnails = fixture.CreateThumbnails(cache);
-        Task<DownloadedImage?> FetchAsync(string name, DownloadPriority priority = DownloadPriority.Visible)
+        Task<DownloadedImage?> FetchAsync(string name, ThumbnailPriority priority = ThumbnailPriority.Visible)
             => throughThumbnailFacade ? thumbnails.SourceAsync(Url(name), priority: priority)
                 : fixture.FetchAsync(cache, name, limited: true, priority: priority);
         var active = Enumerable.Range(0, 4)
@@ -203,11 +203,11 @@ public sealed class DownloadedImageCacheTests
         try
         {
             for (int index = 0; index < 4; index++) await started.Reader.ReadAsync(timeout.Token);
-            var older = FetchAsync("older", DownloadPriority.Prefetch);
+            var older = FetchAsync("older", ThumbnailPriority.Prefetch);
             await WaitForQueuedAsync(1);
             var visible = FetchAsync("visible");
             await WaitForQueuedAsync(2);
-            var newer = FetchAsync("newer", DownloadPriority.Prefetch);
+            var newer = FetchAsync("newer", ThumbnailPriority.Prefetch);
             await WaitForQueuedAsync(3);
             var promoted = fixture.FetchAsync(cache, "older", limited: true);
             release.Release();
@@ -255,7 +255,7 @@ public sealed class DownloadedImageCacheTests
             await thumbnailsStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             if (alreadyQueued)
             {
-                queued = thumbnails.SourceAsync(Url("reader"), priority: DownloadPriority.Prefetch);
+                queued = thumbnails.SourceAsync(Url("reader"), priority: ThumbnailPriority.Prefetch);
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 while (cache.WaitingDownloadCount != 1) await Task.Delay(5, timeout.Token);
             }
@@ -785,7 +785,7 @@ public sealed class DownloadedImageCacheTests
         internal ThumbnailDownloader CreateThumbnails(DownloadedImageCache cache)
             => new(Database, _directory, () => true, downloadedImages: cache);
         internal async Task<DownloadedImage?> FetchAsync(DownloadedImageCache cache, string name, bool checksForUpdates = false,
-            bool limited = false, DownloadPriority priority = DownloadPriority.Visible)
+            bool limited = false, ThumbnailPriority priority = ThumbnailPriority.Visible)
             => (await cache.FetchAsync(Url(name), new(ActivityOwner.FeedImageDownloader,
                 ActivityKind.DownloadFeedImage(Url(name)), null, limited ? () => true : null, checksForUpdates,
                 limited ? priority : null), default)).Image;

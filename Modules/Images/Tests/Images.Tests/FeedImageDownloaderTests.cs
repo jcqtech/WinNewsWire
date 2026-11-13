@@ -897,10 +897,10 @@ public sealed class FeedImageDownloaderTests
     public async Task DroppedDownloadsAreTransientAndCanRetryWithoutNetworkBackoff()
     {
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));
-        var limiter = new DownloadLimiter(1, 0);
+        var limiter = new ThumbnailTaskQueue(1, 0);
         using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
         await using var resource = new ImageResourceDownloader(fixture.ImageDatabase,
-            Path.Combine(fixture.CacheDirectory, "QueueTest"), new(512, DownloadLimiter: limiter),
+            Path.Combine(fixture.CacheDirectory, "QueueTest"), new(512, DownloadQueue: limiter),
             ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, fixture.Downloader);
         const string url = Home + "dropped.png";
         var dropped = await resource.FetchAsync(url, default);

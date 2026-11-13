@@ -9,11 +9,11 @@ namespace WinNewsWire.Images;
 
 internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransient = false, long? RejectedByteCount = null);
 internal sealed record ImageResourceConfiguration(int MaxPixelSize, ScaledImageFormat Format = ScaledImageFormat.Png,
-    long MemoryCacheByteLimit = 0, DownloadLimiter? DownloadLimiter = null,
+    long MemoryCacheByteLimit = 0, ThumbnailTaskQueue? DownloadQueue = null,
     Func<bool>? NetworkAllowsDownloads = null,
     bool StoresSourceData = false);
 internal sealed record ImageResourceRequest(ActivityOwner Owner, ActivityKind Kind, string? Detail,
-    Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false, DownloadPriority? DownloadPriority = null);
+    Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false, ThumbnailPriority? DownloadPriority = null);
 
 internal sealed class ImageResourceDownloader : IAsyncDisposable
 {
@@ -168,9 +168,9 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
         var limiter = !_configuration.StoresSourceData || request.DownloadPriority is not null
-            ? _configuration.DownloadLimiter : null;
+            ? _configuration.DownloadQueue : null;
         using var lease = limiter is not null
-            ? await limiter.AcquireAsync(ct, url, request.DownloadPriority ?? DownloadPriority.Visible).ConfigureAwait(false) : null;
+            ? await limiter.AcquireAsync(ct, url, request.DownloadPriority ?? ThumbnailPriority.Visible).ConfigureAwait(false) : null;
         if (limiter is not null && lease is null) return new(null, IsTransient: true);
         ct.ThrowIfCancellationRequested();
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);

@@ -17,7 +17,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private readonly ByteLimit _limit;
     private readonly ByteLimit _hardLimit;
     private readonly Downloader _downloader;
-    private readonly DownloadLimiter _downloadLimiter = new(4, 60);
+    private readonly ThumbnailTaskQueue _downloadQueue = new(4, 60);
     private readonly Func<bool> _networkAllowsUpdates;
     private readonly object _backgroundGate = new();
     private readonly HashSet<Task> _backgroundTasks = [];
@@ -31,7 +31,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private readonly Task _initialCleanup;
     private long? _totalByteCount;
     private long _removalByteCount;
-    internal int WaitingDownloadCount => _downloadLimiter.WaitingCount;
+    internal int WaitingDownloadCount => _downloadQueue.WaitingCount;
 
     /// <summary>Raised on a worker after a validated server replacement is saved; UI consumers must dispatch.</summary>
     public event EventHandler<string>? DownloadedImageChanged;
@@ -68,7 +68,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         _removalByteCount = maximumByteCount;
         _diskCache = new(Path.Combine(cacheFolder, "DownloadedImages"));
         _downloads = new(database, _diskCache.Folder,
-            new(int.MaxValue, DownloadLimiter: _downloadLimiter, StoresSourceData: true),
+            new(int.MaxValue, DownloadQueue: _downloadQueue, StoresSourceData: true),
             ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, _downloader, clock, activityLog,
             sourceDiskGate: _diskGate, sourceWasRead: SaveAccessDateIfNeededAsync, sourceWasSaved: ImageWasSavedAsync);
         NetworkMonitor.ConnectivityChanged += NetworkStatusChanged;
@@ -81,8 +81,8 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     {
         lock (_backgroundGate) ObjectDisposedException.ThrowIf(_stopping, this);
         await _initialCleanup.WaitAsync(ct).ConfigureAwait(false);
-        if (request.DownloadPriority == DownloadPriority.Visible) PrioritizeDownload(url);
-        else if (request.DownloadPriority is null) _downloadLimiter.StartNow(url);
+        if (request.DownloadPriority == ThumbnailPriority.Visible) PrioritizeDownload(url);
+        else if (request.DownloadPriority is null) _downloadQueue.StartNow(url);
         var result = await _downloads.FetchAsync(url, ct, request: request).ConfigureAwait(false);
         // A reader may join just after a limited operation decides to reject its response.
         if (request.DownloadPriority is null && result.RejectedByteCount is not null)
@@ -100,7 +100,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         }
     }
 
-    internal void PrioritizeDownload(string url) => _downloadLimiter.Prioritize(url);
+    internal void PrioritizeDownload(string url) => _downloadQueue.Prioritize(url);
 
     internal Task ImageWasUsedAsync(string url, bool checksForUpdates, CancellationToken ct)
         => RunDiskOperationAsync(async _ =>

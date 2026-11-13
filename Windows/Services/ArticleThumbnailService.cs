@@ -59,7 +59,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal int ProbeDecodeError;
     internal int ProbeUrlResolutions;
     internal Action? ProbeLoadingSavedUrls;
-    internal readonly ConcurrentDictionary<string, DownloadPriority> ProbeDownloadPriorities = new(StringComparer.Ordinal);
+    internal readonly ConcurrentDictionary<string, ThumbnailPriority> ProbeDownloadPriorities = new(StringComparer.Ordinal);
 #endif
 
     internal ArticleThumbnailService(DispatcherQueue dispatcher,
@@ -123,7 +123,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(article);
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
         var baseUrl = ArticleBaseUrl(article);
-        return RunOperationAsync(token => FindImageAsync(article, mode, DownloadPriority.Visible, baseUrl, token, resolvedUrl), ct);
+        return RunOperationAsync(token => FindImageAsync(article, mode, ThumbnailPriority.Visible, baseUrl, token, resolvedUrl), ct);
     }
 
     internal Task PrefetchThumbnailAsync(Article article, ThumbnailMode mode, CancellationToken ct = default)
@@ -133,7 +133,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         var baseUrl = ArticleBaseUrl(article);
         bool allowed = _networkAllowsPrefetch();
         return RunOperationAsync(token => allowed
-            ? FindImageAsync(article, mode, DownloadPriority.Prefetch, baseUrl, token)
+            ? FindImageAsync(article, mode, ThumbnailPriority.Prefetch, baseUrl, token)
             : Task.FromResult<SoftwareBitmapSource?>(null), ct);
     }
 
@@ -233,7 +233,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         return backend.Finder.ThumbnailUrl(article, mode);
     }
 
-    private async Task<SoftwareBitmapSource?> FindImageAsync(Article article, ThumbnailMode mode, DownloadPriority priority,
+    private async Task<SoftwareBitmapSource?> FindImageAsync(Article article, ThumbnailMode mode, ThumbnailPriority priority,
         Uri? baseUrl, CancellationToken ct, string? resolvedUrl = null)
     {
         var tried = new HashSet<string>(StringComparer.Ordinal);
@@ -245,7 +245,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             var key = (imageUrl, mode);
             var pending = _pending.GetOrAdd(key, _ => new(() => LoadImageAsync(imageUrl, mode, article.Title,
                 backend.Finder, backend.Downloads, priority, ct)));
-            if (priority == DownloadPriority.Visible) backend.Downloads.PrioritizeDownload(url);
+            if (priority == ThumbnailPriority.Visible) backend.Downloads.PrioritizeDownload(url);
             try
             {
                 if (await pending.Value.ConfigureAwait(false) is { } image) return image;
@@ -279,7 +279,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     }
 
     private async Task<SoftwareBitmapSource?> LoadImageAsync(string url, ThumbnailMode mode, string? title,
-        ArticleThumbnailFinder finder, ThumbnailDownloader downloads, DownloadPriority priority, CancellationToken ct)
+        ArticleThumbnailFinder finder, ThumbnailDownloader downloads, ThumbnailPriority priority, CancellationToken ct)
     {
         var cached = await OnDispatcherAsync(() =>
         {

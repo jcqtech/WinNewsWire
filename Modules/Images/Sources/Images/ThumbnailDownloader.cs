@@ -35,10 +35,10 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
     private void ResourceDownloadFailed(object? sender, string url) => DownloadFailed?.Invoke(this, url);
 
     public Task<DownloadedImage?> SourceAsync(string url,
-        CancellationToken ct = default, string? activityDetail = null, DownloadPriority priority = DownloadPriority.Visible)
+        CancellationToken ct = default, string? activityDetail = null, ThumbnailPriority priority = ThumbnailPriority.Visible)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
-        if (priority is not (DownloadPriority.Visible or DownloadPriority.Prefetch))
+        if (priority is not (ThumbnailPriority.Visible or ThumbnailPriority.Prefetch))
             throw new ArgumentOutOfRangeException(nameof(priority));
         return RunOperationAsync(async token =>
         {
