@@ -1033,6 +1033,9 @@ public sealed partial class MainContent : UserControl
             or nameof(ViewModel.SearchQuery) or nameof(ViewModel.SearchAllAccounts))
             QueueTimelineFeedIconsUpdate();
         if (e.PropertyName == nameof(ViewModel.ArticleItems)) ObserveThumbnailItems();
+        if (e.PropertyName == nameof(ViewModel.TimelineThumbnailsDisplay)
+            && ViewModel.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.None)
+            _thumbnailService?.EmptyHtmlCache();
         if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout)
             or nameof(ViewModel.TimelineThumbnailsDisplay))
             QueueTimelineThumbnailRefresh();

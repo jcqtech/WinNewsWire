@@ -474,13 +474,11 @@ internal static partial class ParityProbe
             networkAllowsDownloads: () => true);
         int savedLoads = 0;
         bool savedOnUI = false;
-        service.ProbeLoadingSavedUrls = () =>
+        service.ProbeFindingUrls = () =>
         {
             savedOnUI |= window.DispatcherQueue.HasThreadAccess;
             Interlocked.Increment(ref savedLoads);
         };
-        var discovered = new HashSet<string>();
-        service.ThumbnailUrlsAvailable += (_, ids) => discovered.UnionWith(ids);
         var rows = new ObservableCollection<Models.FeedItem>(Enumerable.Range(0, 120).Select(index =>
         {
             string id = "visible-only-" + index;
@@ -507,6 +505,31 @@ internal static partial class ParityProbe
             model.IsUnifiedLayout = false;
             model.SelectedArticle = null;
             content.ProbeSetThumbnailService(service);
+            using (var releaseDiscovery = new ManualResetEventSlim())
+            {
+                var discoveryFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                service.ProbeUrlsFound = () =>
+                {
+                    discoveryFinished.TrySetResult();
+                    if (!releaseDiscovery.Wait(TimeSpan.FromSeconds(10)))
+                        throw new TimeoutException("Fetch-time discovery completion was not released.");
+                };
+                var preparation = service.FindAsync(rows.Select(item => item.SourceArticle!));
+                try
+                {
+                    await discoveryFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    var pulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    Require(window.DispatcherQueue.TryEnqueue(() => pulse.TrySetResult()), "Fetch-time discovery blocked the dispatcher.");
+                    await pulse.Task.WaitAsync(TimeSpan.FromSeconds(1));
+                    Require(!preparation.IsCompleted, "Fetch-time discovery returned before all owned parsing work finished.");
+                }
+                finally
+                {
+                    service.ProbeUrlsFound = null;
+                    releaseDiscovery.Set();
+                    await preparation;
+                }
+            }
             model.ArticleItems = rows;
             foreach (int target in new[] { 0, 70, 73, 40, 37 })
             {
@@ -522,7 +545,7 @@ internal static partial class ParityProbe
                         && Descendants(list).OfType<ThumbnailView>().Any(view => view.ImageSource is not null));
                 }, "Visible thumbnail loading after native viewport settles");
                 Require(Volatile.Read(ref savedLoads) > 0 && !savedOnUI,
-                    "Small timeline rows did not await saved-URL loading off the UI thread.");
+                    "Fetch-time thumbnail discovery did not run off the UI thread.");
                 CaptureVisibleRows(null, EventArgs.Empty);
                 var fetched = requests.Where(path => path.StartsWith("/visible-only-", StringComparison.Ordinal))
                     .Select(path => int.Parse(path["/visible-only-".Length..^4])).ToArray();
@@ -538,8 +561,13 @@ internal static partial class ParityProbe
             }
             Require(!requests.Contains("/offscreen-discovery.bmp"),
                 "Metadata discovery started an image download for a never-visible article.");
-            await WaitFor(() => Task.FromResult(discovered.Contains("visible-only-119")),
-                "Combined discovery parses a never-realized row after saved URLs are ready");
+            Require(await service.ThumbnailUrlAsync(rows[119].SourceArticle!, ThumbnailMode.Small)
+                == "https://thumbnail.test/offscreen-discovery.bmp", "Fetch-time discovery missed a never-realized article.");
+            int decodesBeforeHtmlReset = service.ProbeDecodes;
+            service.EmptyHtmlCache();
+            Require(await service.ThumbnailAsync(rows[37].SourceArticle!, ThumbnailMode.Small) is not null
+                && service.ProbeDecodes == decodesBeforeHtmlReset,
+                "Emptying HTML thumbnail choices discarded already-decoded pixels.");
         }
         finally
         {
@@ -916,34 +944,35 @@ internal static partial class ParityProbe
                 var savedStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 var savedFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 bool savedOnUI = true;
-                service.ProbeLoadingSavedUrls = () =>
+                service.ProbeFindingUrls = () =>
                 {
                     savedOnUI = window.DispatcherQueue.HasThreadAccess;
                     savedStarted.TrySetResult();
                     try
                     {
-                        if (!releaseSaved.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Saved thumbnail loading was not released.");
+                        if (!releaseSaved.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Fetch-time thumbnail parsing was not released.");
                     }
                     finally { savedFinished.TrySetResult(); }
                 };
+                var preparation = service.FindAsync(rows.Select(item => item.SourceArticle!));
                 try
                 {
-                    await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large));
                     await savedStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     var pulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                    Require(window.DispatcherQueue.TryEnqueue(() => pulse.TrySetResult()), "Saved-URL loading blocked the UI dispatcher.");
+                    Require(window.DispatcherQueue.TryEnqueue(() => pulse.TrySetResult()), "Fetch-time parsing blocked the UI dispatcher.");
                     await pulse.Task.WaitAsync(TimeSpan.FromSeconds(1));
-                    Require(!savedOnUI && Descendants(list).OfType<ThumbnailView>().Any(view =>
-                        view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && Grid.GetRow(view) == 0),
-                        "Large-row geometry changed before saved thumbnail URLs loaded.");
+                    Require(!savedOnUI && !preparation.IsCompleted,
+                        "Fetch-time parsing did not await its worker while leaving the dispatcher responsive.");
                 }
                 finally
                 {
-                    service.ProbeLoadingSavedUrls = null;
+                    service.ProbeFindingUrls = null;
                     releaseSaved.Set();
                     if (savedStarted.Task.IsCompleted) await savedFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    await preparation;
                 }
             }
+            await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large));
             await WaitFor(() => Task.FromResult(modeNotifications > 0 && peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
                 && largeMenu.IsChecked && largeMenu.IsEnabled), "Shared large-thumbnail mode");
             Require(modeNotificationsOnUI && new Core.AppDefaults().GetTimelineThumbnailsDisplay() == TimelineThumbnailsDisplay.Large

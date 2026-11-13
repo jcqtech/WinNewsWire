@@ -8,14 +8,12 @@ public sealed record ThumbnailUrlFailure(IReadOnlySet<string> ArticleIds);
 
 public sealed class ArticleThumbnailFinder(ImageDatabase database)
 {
-    private const int MaximumCachedArticleCount = 50_000;
-    private const int MaximumArticlesParsedBeforeReady = 1_000;
+    private const int MaximumChosenUrlCount = 50_000;
     private readonly ImageDatabase _database = database ?? throw new ArgumentNullException(nameof(database));
     private readonly object _gate = new();
     private readonly Dictionary<string, IReadOnlyList<string>> _htmlUrls = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _discovering = new(StringComparer.Ordinal);
     private readonly HashSet<string> _decodingFailures = new(StringComparer.Ordinal);
-    private sealed record ArticleThumbnailRecord(string ArticleId, IReadOnlyList<string> ThumbnailUrls);
+    private sealed record ArticleHtml(string ArticleId, string Html, Uri? BaseUrl);
     private sealed record ChosenThumbnail(string? RawThumbnailLink, string? RawImageLink,
         IReadOnlyList<Attachment>? Attachments, string? Url)
     {
@@ -29,12 +27,10 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
     }
     private readonly Dictionary<ThumbnailMode, Dictionary<string, ChosenThumbnail>> _chosenUrls = [];
 
-    /// <summary>Raised after discovery; UI subscribers must dispatch to their UI thread.</summary>
-    public event EventHandler<IReadOnlySet<string>>? ThumbnailUrlsAvailable;
     /// <summary>Raised after chosen URLs are invalidated; UI subscribers must dispatch.</summary>
     public event EventHandler<ThumbnailUrlFailure>? ThumbnailDownloadFailed;
 
-    public string? ThumbnailUrl(Article article, ThumbnailMode mode)
+    public string? ThumbnailUrl(Article article, ThumbnailMode mode, Uri? baseUrl = null)
     {
         ArgumentNullException.ThrowIfNull(article);
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
@@ -44,91 +40,56 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             if (chosen.TryGetValue(article.ArticleID, out var cached) && cached.HasSameImages(article))
                 return cached.Url;
             var url = ProvidedThumbnailUrl(article, mode)
-                ?? (_htmlUrls.TryGetValue(article.ArticleID, out var urls) ? urls.FirstOrDefault(url => !HasFailed(url)) : null);
-            if (chosen.Count >= MaximumCachedArticleCount) chosen.Clear();
+                ?? CachedOrParsedHtmlUrls(article, baseUrl).FirstOrDefault(url => !HasFailed(url));
+            if (chosen.Count >= MaximumChosenUrlCount) chosen.Clear();
             chosen[article.ArticleID] = new(article, url);
             return url;
         }
     }
 
     public async Task FindThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default,
-        Func<Article, Uri?>? baseUrlResolver = null, Action? savedUrlsLoaded = null)
+        Func<Article, Uri?>? baseUrlResolver = null)
     {
         ArgumentNullException.ThrowIfNull(articles);
         ct.ThrowIfCancellationRequested();
-        Article[] pending;
+        var pending = new List<ArticleHtml>();
         lock (_gate)
         {
-            if (_htmlUrls.Count > MaximumCachedArticleCount)
+            foreach (var article in articles.DistinctBy(article => article.ArticleID))
             {
-                _htmlUrls.Clear();
-                _chosenUrls.Clear();
+                if (_htmlUrls.ContainsKey(article.ArticleID) || ProvidedThumbnailUrl(article, ThumbnailMode.Small) is not null) continue;
+                var html = article.ContentHtml ?? article.Summary;
+                if (string.IsNullOrEmpty(html)) _htmlUrls[article.ArticleID] = [];
+                else pending.Add(new(article.ArticleID, html, baseUrlResolver is null ? article.BaseUrl() : baseUrlResolver(article)));
             }
-            pending = articles.DistinctBy(article => article.ArticleID).Where(NeedsHtmlDiscovery).ToArray();
-            foreach (var article in pending) _discovering.Add(article.ArticleID);
         }
-        if (pending.Length == 0)
+        if (pending.Count == 0) return;
+        var parsed = await Task.Run(() =>
         {
-            ct.ThrowIfCancellationRequested();
-            savedUrlsLoaded?.Invoke();
-            return;
-        }
-        try
-        {
-            var toParse = pending;
-            var baseUrls = toParse.ToDictionary(article => article.ArticleID,
-                article => baseUrlResolver is null ? article.BaseUrl() : baseUrlResolver(article), StringComparer.Ordinal);
-            var initial = await ParseAsync(toParse.Take(MaximumArticlesParsedBeforeReady).ToArray()).ConfigureAwait(false);
-            CacheRecords(initial);
-            savedUrlsLoaded?.Invoke();
-            PublishRecords(initial);
-            foreach (var batch in toParse.Skip(MaximumArticlesParsedBeforeReady).Chunk(100))
+            var urls = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            foreach (var article in pending)
             {
-                var parsed = await ParseAsync(batch).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
-                CacheRecords(parsed);
-                PublishRecords(parsed);
+                urls[article.ArticleId] = HtmlImageParser.SignificantImageUrlStrings(article.Html, article.BaseUrl, 3);
             }
-            Task<List<ArticleThumbnailRecord>> ParseAsync(Article[] batch)
-                => Task.Run(() =>
-                {
-                    var records = new List<ArticleThumbnailRecord>();
-                    foreach (var article in batch)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        var html = article.ContentHtml ?? article.Summary;
-                        if (string.IsNullOrEmpty(html)) continue;
-                        records.Add(new(article.ArticleID, HtmlImageParser.SignificantImageUrlStrings(html, baseUrls[article.ArticleID], 3)));
-                    }
-                    return records;
-                }, ct);
-        }
-        finally
-        {
-            lock (_gate)
-                foreach (var article in pending) _discovering.Remove(article.ArticleID);
-        }
-    }
-
-    private bool NeedsHtmlDiscovery(Article article)
-        => !string.IsNullOrEmpty(article.ContentHtml ?? article.Summary)
-            && !_htmlUrls.ContainsKey(article.ArticleID) && !_discovering.Contains(article.ArticleID)
-            && ThumbnailUrl(article, ThumbnailMode.Small) is null;
-
-    private void CacheRecords(IReadOnlyList<ArticleThumbnailRecord> records)
-    {
+            return urls;
+        }, ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            ForgetChosenUrls(records.Select(record => record.ArticleId));
-            foreach (var record in records) _htmlUrls[record.ArticleId] = record.ThumbnailUrls;
+            ForgetChosenUrls(parsed.Keys);
+            foreach (var pair in parsed) _htmlUrls[pair.Key] = pair.Value;
         }
     }
 
-    private void PublishRecords(IReadOnlyList<ArticleThumbnailRecord> records)
+    private IReadOnlyList<string> CachedOrParsedHtmlUrls(Article article, Uri? baseUrl)
     {
-        var found = records.Where(record => record.ThumbnailUrls.Count > 0)
-            .Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
-        if (found.Count > 0) ThumbnailUrlsAvailable?.Invoke(this, found);
+        if (_htmlUrls.TryGetValue(article.ArticleID, out var cached)) return cached;
+        var html = article.ContentHtml ?? article.Summary;
+        IReadOnlyList<string> urls = string.IsNullOrEmpty(html) ? []
+            : HtmlImageParser.SignificantImageUrlStrings(html, baseUrl ?? article.BaseUrl(), 3);
+        _htmlUrls[article.ArticleID] = urls;
+        return urls;
     }
 
     private string? ProvidedThumbnailUrl(Article article, ThumbnailMode mode)

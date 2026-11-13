@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -37,7 +36,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     private readonly LinkedList<CachedThumbnail> _cacheOrder = [];
     private readonly Dictionary<(string Url, ThumbnailMode Mode), Lazy<Task<SoftwareBitmapSource?>>> _pending = [];
     private readonly ThumbnailTaskQueue _decodeQueue = new(4, 60);
-    private readonly ConcurrentDictionary<string, Lazy<Task>> _discovering = new(StringComparer.Ordinal);
     private readonly object _gate = new();
     private readonly HashSet<Task> _operations = [];
     private readonly CancellationTokenSource _lifetime = new();
@@ -46,7 +44,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     private Task? _shutdown;
 
     internal event EventHandler<string>? ThumbnailAvailable;
-    internal event EventHandler<IReadOnlySet<string>>? ThumbnailUrlsAvailable;
     internal event EventHandler<ThumbnailUrlFailure>? ThumbnailDownloadFailed;
     internal event EventHandler? NetworkStatusChanged;
     internal bool NetworkDownloadsAllowed { get; private set; }
@@ -58,7 +55,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal (int Width, int Height) ProbeLastDecodedSize;
     internal int ProbeDecodeError;
     internal int ProbeUrlResolutions;
-    internal Action? ProbeLoadingSavedUrls;
+    internal Action? ProbeFindingUrls;
+    internal Action? ProbeUrlsFound;
     internal Func<string, ThumbnailMode, CancellationToken, Task>? ProbeDecoding;
     internal int ProbeWaitingDecodeCount => _decodeQueue.WaitingCount;
     internal int ProbeDecodePrioritizations;
@@ -79,7 +77,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         {
             var backend = (createBackend ?? CreateBackend)();
             _finder = backend.Finder;
-            backend.Finder.ThumbnailUrlsAvailable += FinderUrlsAvailable;
             backend.Finder.ThumbnailDownloadFailed += FinderDownloadFailed;
             backend.Downloads.DownloadFailed += BackendDownloadFailed;
             backend.Downloads.ImageDecodingFailed += BackendImageDecodingFailed;
@@ -159,27 +156,18 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         var snapshot = articles.ToArray();
         var baseUrls = snapshot.DistinctBy(article => article.ArticleID)
             .ToDictionary(article => article.ArticleID, ArticleBaseUrl, StringComparer.Ordinal);
-        var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var completion = RunOperationAsync(async token =>
+        return RunOperationAsync(async token =>
         {
             var backend = await _backend.Value.ConfigureAwait(false);
 #if PARITY_PROBE
-            ProbeLoadingSavedUrls?.Invoke();
+            ProbeFindingUrls?.Invoke();
 #endif
-            await backend.Finder.FindThumbnailUrlsAsync(snapshot, token, article => baseUrls[article.ArticleID],
-                () => saved.TrySetResult()).ConfigureAwait(false);
+            await backend.Finder.FindThumbnailUrlsAsync(snapshot, token, article => baseUrls[article.ArticleID]).ConfigureAwait(false);
+#if PARITY_PROBE
+            ProbeUrlsFound?.Invoke();
+#endif
             return true;
-        }, CancellationToken.None);
-        _ = completion.ContinueWith(completed =>
-        {
-            if (completed.Exception is { } error)
-            {
-                Trace.TraceError($"Thumbnail discovery failed: {error}");
-                saved.TrySetException(error.InnerExceptions);
-            }
-            else if (completed.IsCanceled) saved.TrySetCanceled();
-        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-        return saved.Task.WaitAsync(ct);
+        }, ct);
     }
 
     private Uri? ArticleBaseUrl(Article article)
@@ -215,14 +203,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 #endif
         var backend = await _backend.Value.ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
-        if (backend.Finder.ThumbnailUrl(article, mode) is null)
-        {
-            var discovery = _discovering.GetOrAdd(article.ArticleID,
-                _ => new(() => backend.Finder.FindThumbnailUrlsAsync([article], ct, _ => baseUrl)));
-            try { await discovery.Value.ConfigureAwait(false); }
-            finally { _discovering.TryRemove(new KeyValuePair<string, Lazy<Task>>(article.ArticleID, discovery)); }
-        }
-        return backend.Finder.ThumbnailUrl(article, mode);
+        return backend.Finder.ThumbnailUrl(article, mode, baseUrl);
     }
 
     private async Task<SoftwareBitmapSource?> FindImageAsync(Article article, ThumbnailMode mode,
@@ -263,9 +244,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         }
         return null;
     }
-
-    private void FinderUrlsAvailable(object? sender, IReadOnlySet<string> ids)
-        => DispatchNotification(() => ThumbnailUrlsAvailable?.Invoke(this, ids));
 
     private void BackendDownloadFailed(object? sender, string url)
         => (_finder ?? throw new InvalidOperationException("The thumbnail finder is not initialized.")).ThumbnailUrlDidFail(url);
@@ -429,6 +407,12 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         _finder?.EmptyCache();
     }
 
+    internal void EmptyHtmlCache()
+    {
+        VerifyAccess();
+        _finder?.EmptyCache();
+    }
+
     private void VerifyAccess()
     {
         if (!_dispatcher.HasThreadAccess) throw new InvalidOperationException("Thumbnail presentation requires its UI dispatcher.");
@@ -462,7 +446,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
                 if (_backend.IsValueCreated)
                 {
                     var backend = await _backend.Value;
-                    backend.Finder.ThumbnailUrlsAvailable -= FinderUrlsAvailable;
                     backend.Finder.ThumbnailDownloadFailed -= FinderDownloadFailed;
                     backend.Downloads.DownloadFailed -= BackendDownloadFailed;
                     backend.Downloads.ImageDecodingFailed -= BackendImageDecodingFailed;

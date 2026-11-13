@@ -37,7 +37,6 @@ public sealed partial class MainContent
     private ArticleThumbnailService? _thumbnailService;
     private INotifyCollectionChanged? _thumbnailItems;
     private bool _thumbnailRefreshQueued;
-    private int _thumbnailRefreshVersion;
     private bool _visibleThumbnailRefreshQueued;
     private bool ShowsTimelineThumbnails => !_shuttingDown && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout
         && ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode() is not null;
@@ -76,13 +75,11 @@ public sealed partial class MainContent
         if (_thumbnailService is not null)
         {
             _thumbnailService.ThumbnailAvailable -= TimelineThumbnailAvailable;
-            _thumbnailService.ThumbnailUrlsAvailable -= TimelineThumbnailUrlsAvailable;
             _thumbnailService.ThumbnailDownloadFailed -= TimelineThumbnailDownloadFailed;
             _thumbnailService.NetworkStatusChanged -= TimelineThumbnailNetworkStatusChanged;
         }
         _thumbnailService = service;
         _thumbnailService.ThumbnailAvailable += TimelineThumbnailAvailable;
-        _thumbnailService.ThumbnailUrlsAvailable += TimelineThumbnailUrlsAvailable;
         _thumbnailService.ThumbnailDownloadFailed += TimelineThumbnailDownloadFailed;
         _thumbnailService.NetworkStatusChanged += TimelineThumbnailNetworkStatusChanged;
         QueueTimelineThumbnailRefresh();
@@ -94,7 +91,6 @@ public sealed partial class MainContent
         ViewModel.TimelineArticlesChanged += TimelineFeedIconArticlesChanged;
         _thumbnailService = AppRuntime.AppService.Shared.ThumbnailImages;
         _thumbnailService.ThumbnailAvailable += TimelineThumbnailAvailable;
-        _thumbnailService.ThumbnailUrlsAvailable += TimelineThumbnailUrlsAvailable;
         _thumbnailService.ThumbnailDownloadFailed += TimelineThumbnailDownloadFailed;
         _thumbnailService.NetworkStatusChanged += TimelineThumbnailNetworkStatusChanged;
         _articleScrollViewer!.ViewChanged += TimelineThumbnailsViewChanged;
@@ -119,24 +115,14 @@ public sealed partial class MainContent
     private void QueueTimelineThumbnailRefresh()
     {
         if (_shuttingDown || _thumbnailService is null) return;
-        _thumbnailRefreshVersion++;
         if (_thumbnailRefreshQueued) return;
         _thumbnailRefreshQueued = true;
         if (!DispatcherQueue.TryEnqueue(() =>
         {
             _thumbnailRefreshQueued = false;
             if (_shuttingDown) return;
-            int version = _thumbnailRefreshVersion;
-            var articles = ViewModel.ArticleItems.Select(item => item.SourceArticle).OfType<Article>().ToArray();
-            TrackThumbnailTask(async () =>
-            {
-                if (ShowsTimelineThumbnails && articles.Length > 0)
-                    await _thumbnailService.FindAsync(articles, _thumbnailLifetime.Token);
-                if (_shuttingDown || version != _thumbnailRefreshVersion) return;
-                foreach (var view in _timelineThumbnails.Keys.ToArray()) RefreshTimelineThumbnail(view);
-                if (!ShowsTimelineThumbnails) return;
-                QueueVisibleThumbnailRefresh();
-            });
+            foreach (var view in _timelineThumbnails.Keys.ToArray()) RefreshTimelineThumbnail(view);
+            if (ShowsTimelineThumbnails) QueueVisibleThumbnailRefresh();
         }))
         {
             _thumbnailRefreshQueued = false;
@@ -294,14 +280,6 @@ public sealed partial class MainContent
                 RefreshTimelineThumbnail(pair.Key);
     }
 
-    private void TimelineThumbnailUrlsAvailable(object? sender, IReadOnlySet<string> ids)
-    {
-        if (!ShowsTimelineThumbnails) return;
-        foreach (var view in _timelineThumbnails.Keys.ToArray())
-            if (view.Tag is Article article && ids.Contains(article.ArticleID)) RefreshTimelineThumbnail(view);
-        QueueVisibleThumbnailRefresh();
-    }
-
     private void TimelineThumbnailNetworkStatusChanged(object? sender, EventArgs args)
     {
         if (!ShowsTimelineThumbnails || _thumbnailService?.NetworkDownloadsAllowed != true) return;
@@ -385,7 +363,6 @@ public sealed partial class MainContent
         if (_thumbnailService is not null)
         {
             _thumbnailService.ThumbnailAvailable -= TimelineThumbnailAvailable;
-            _thumbnailService.ThumbnailUrlsAvailable -= TimelineThumbnailUrlsAvailable;
             _thumbnailService.ThumbnailDownloadFailed -= TimelineThumbnailDownloadFailed;
             _thumbnailService.NetworkStatusChanged -= TimelineThumbnailNetworkStatusChanged;
         }
