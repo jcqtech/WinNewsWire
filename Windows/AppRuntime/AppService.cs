@@ -74,11 +74,6 @@ public sealed partial class AppService
         if (_started) return;
         _started = true;
         var errors = new List<(string Operation, Exception Error)>();
-        try { CacheCleaner.PurgeIfNecessary(Defaults); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            errors.Add(("Purge image caches", error));
-        }
         try { StartMemoryMonitoring(); }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException)
         {
@@ -92,6 +87,11 @@ public sealed partial class AppService
 
     private async Task RefreshInitiallyAsync(CancellationToken ct, IReadOnlyList<(string Operation, Exception Error)> errors)
     {
+        try { await Task.Run(() => CacheCleaner.PurgeIfNecessary(Defaults)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            await LogAsync("Purge image caches", error);
+        }
         foreach (var (operation, error) in errors) await LogAsync(operation, error);
         if (ct.IsCancellationRequested) return;
         await _notifier.StartAsync();
