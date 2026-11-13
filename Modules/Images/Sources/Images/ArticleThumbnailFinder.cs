@@ -14,7 +14,17 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
     private readonly Dictionary<string, IReadOnlyList<string>> _htmlUrls = new(StringComparer.Ordinal);
     private readonly HashSet<string> _discovering = new(StringComparer.Ordinal);
     private readonly HashSet<string> _decodingFailures = new(StringComparer.Ordinal);
-    private sealed record ChosenThumbnail(Article Article, string? Url);
+    private sealed record ChosenThumbnail(string? RawThumbnailLink, string? RawImageLink,
+        IReadOnlyList<Attachment>? Attachments, string? Url)
+    {
+        internal ChosenThumbnail(Article article, string? url)
+            : this(article.RawThumbnailLink, article.RawImageLink, article.Attachments, url) { }
+
+        internal bool HasSameImages(Article article)
+            => RawThumbnailLink == article.RawThumbnailLink && RawImageLink == article.RawImageLink
+                && (Attachments is null ? article.Attachments is null
+                    : article.Attachments is not null && Attachments.SequenceEqual(article.Attachments));
+    }
     private readonly Dictionary<ThumbnailMode, Dictionary<string, ChosenThumbnail>> _chosenUrls = [];
 
     /// <summary>Raised after discovery; UI subscribers must dispatch to their UI thread.</summary>
@@ -29,7 +39,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         lock (_gate)
         {
             if (!_chosenUrls.TryGetValue(mode, out var chosen)) _chosenUrls[mode] = chosen = new(StringComparer.Ordinal);
-            if (chosen.TryGetValue(article.ArticleID, out var cached) && ReferenceEquals(cached.Article, article))
+            if (chosen.TryGetValue(article.ArticleID, out var cached) && cached.HasSameImages(article))
                 return cached.Url;
             var url = ProvidedThumbnailUrl(article, mode)
                 ?? (_htmlUrls.TryGetValue(article.ArticleID, out var urls) ? urls.FirstOrDefault(url => !HasFailed(url)) : null);
@@ -138,7 +148,11 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
 
     public void ResetDecodingFailures()
     {
-        lock (_gate) _decodingFailures.Clear();
+        lock (_gate)
+        {
+            _decodingFailures.Clear();
+            _chosenUrls.Clear();
+        }
     }
 
     public void ThumbnailUrlDidFail(string url)

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using WinNewsWire.Articles;
 using Xunit;
 
@@ -92,6 +93,52 @@ public sealed class ArticleThumbnailFinderTests
         Assert.Equal(first.RawImageLink, finder.ThumbnailUrl(first, ThumbnailMode.Small));
         Assert.Equal(replacement.RawImageLink, finder.ThumbnailUrl(replacement, ThumbnailMode.Small));
         Assert.Null(finder.ThumbnailUrl(empty, ThumbnailMode.Small));
+    }
+
+    [Fact]
+    public void CachedChoicesDoNotRetainArticlesAndTheirHtml()
+    {
+        using var database = new ImageDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        var article = CacheArticle(finder);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(article.TryGetTarget(out _));
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static WeakReference<Article> CacheArticle(ArticleThumbnailFinder finder)
+        {
+            var article = Article(html: "<p>Body</p>", image: "https://example.com/image.jpg");
+            finder.ThumbnailUrl(article, ThumbnailMode.Small);
+            finder.ThumbnailUrl(article, ThumbnailMode.Large);
+            return new(article);
+        }
+    }
+
+    [Theory]
+    [InlineData(ThumbnailMode.Small, "image")]
+    [InlineData(ThumbnailMode.Small, "thumbnail")]
+    [InlineData(ThumbnailMode.Small, "attachments")]
+    [InlineData(ThumbnailMode.Large, "image")]
+    [InlineData(ThumbnailMode.Large, "thumbnail")]
+    [InlineData(ThumbnailMode.Large, "attachments")]
+    public async Task ReplacedArticlesReuseChoicesOnlyWhenAllImageFieldsHaveEqualValues(ThumbnailMode mode, string field)
+    {
+        using var database = new ImageDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        const string original = "https://example.com/original.jpg";
+        const string replacement = "https://example.com/replacement.jpg";
+        Assert.Equal(original, finder.ThumbnailUrl(WithImage(original, "<p>Original body</p>"), mode));
+        await database.RecordFailureAsync(original, 404);
+        Assert.Equal(original, finder.ThumbnailUrl(WithImage(original), mode));
+        Assert.Equal(replacement, finder.ThumbnailUrl(WithImage(replacement), mode));
+
+        Article WithImage(string url, string html = "<p>Edited body</p>") => Article(html: html,
+            image: field == "image" ? url : null,
+            thumbnail: field == "thumbnail" ? url : null,
+            attachments: field == "attachments"
+                ? [Attachment.Create(null, url, "image/jpeg", null, null, null, 640, 480)!] : null);
     }
 
     [Fact]
@@ -200,7 +247,7 @@ public sealed class ArticleThumbnailFinderTests
         Assert.False(database.RecentlyFailed(provided));
         Assert.False(database.IsUnsuitableForThumbnail(provided));
         finder.ResetDecodingFailures();
-        Assert.Equal(provided, finder.ThumbnailUrl(Article(thumbnail: provided, image: fallback), ThumbnailMode.Small));
+        Assert.Equal(provided, finder.ThumbnailUrl(article, ThumbnailMode.Small));
     }
 
     [Fact]
