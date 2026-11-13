@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`97ad41dc86381a8b7b072a36553ccc8b86fb0072`**. This synchronization is in progress.
+`f7ee842823d5a8d62a65d74698adc061429adffa`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is thumbnail downloading, `7c9b0cd1c8dea1187fb890f90a59bc68bc758613`;
+is timeline thumbnail presentation, `f5f9043b05386b6e3984aace76aae9520c4fac81`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -65,8 +65,23 @@ buttons, avatars, and decorative strips. The new finder selects provided images
 by thumbnail mode, discovers HTML images off the caller thread, and persists up
 to three ordered candidates plus negative results. Queries are bounded, writes
 transactional, and results expire after 33 days. Failed URLs fall through to the
-next candidate after warm or cold reads. Actual thumbnail downloading, timeline
-display, and shared local-image routes remain pending.
+next candidate after warm or cold reads. Timeline row integration and shared
+local-image routes remain pending.
+
+Thumbnail downloading now shares the existing icon resource pipeline without
+duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
+Small/large modes use 512/1200-pixel JPEG scaling, separate 32-MiB encoded LRUs,
+and a shared four-slot cancellation-safe LIFO scheduler. Cached images remain
+available offline; new downloads honor connectivity and Windows connection cost.
+Actual image dimensions are checked, with unsuitable thumbnails recorded
+separately so usable feed icons are not suppressed.
+
+The WinUI thumbnail service initializes and decodes on workers, creates native
+presentation sources and availability notifications on the UI dispatcher, and
+bounds decoded images by URL/mode to 128 MiB. Large-mode resources are lazy.
+Memory pressure clears the caches, and shutdown drains work before closing the
+metadata database. The native thumbnail control supports aspect-fill cropping,
+rounded clipping, themed placeholders, and recycling to an empty image.
 
 Native WIC scaling now supports JPEG quality options for opaque images while
 retaining PNG for source formats with an alpha channel. Small single-frame
@@ -93,8 +108,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **89 Ported, 25 Covered, 67 Skipped, and 324 Pending**
-source commits, backed by **102 source-attributed Windows port commits**. Two
+The inventory currently has **92 Ported, 25 Covered, 67 Skipped, and 321 Pending**
+source commits, backed by **108 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -107,8 +122,8 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are the remaining image-cache and thumbnail
-downloading/display rewrites, later finder/cache refinements, shared local-image routing, appearance
+Still pending are timeline thumbnail presentation and later image-cache
+rewrites, finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
 
@@ -157,7 +172,7 @@ the corresponding assertion. Seven plain-text address assertions also fail
 after restoring the exact original explicit-link-only implementation; the
 restored port passes all 18 targeted plain-text cases.
 
-The image suite passes 45 tests, including thumbnail priority, recent-failure
+The image suite passes 57 tests, including thumbnail priority, recent-failure
 fallback, metadata restart/batching/expiry, atomic-write rollback, HTML discovery,
 and ordered fallback after cold reads. Restoring the exact single-image finder
 with record-shape compatibility only fails both multi-candidate regressions.
@@ -165,6 +180,15 @@ The Core suite passes 332 tests, including 43 native image cases; restoring the
 original PNG encoder path fails the opaque-JPEG assertion while the alpha-channel
 case remains PNG. Original cache-cleaner and Current Activity implementations
 fail their new thumbnail assertions.
+
+The isolated `--thumbnails` WinUI probe passes worker initialization/decoding,
+UI-thread notifications, coalesced discovery/decoding, mode isolation, decoded-LRU
+eviction/accounting, visible native pixels, aspect-fill cropping, rounded
+clipping, light/dark placeholders, view recycling, offline disk reuse, low-memory
+cleanup, and shutdown. Original PNG-only processing and unlimited-memory cache
+paths fail four new regressions; removing the network gate fails the offline
+case. The original finder fails size-only fallback, and shared failure storage
+fails both icon-safety regressions. All temporary controls were restored.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
