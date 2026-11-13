@@ -5,18 +5,27 @@ using System.Runtime.Versioning;
 
 namespace WinNewsWire.Core;
 
+public enum ScaledImageFormat { Png, Jpeg }
+
 /// <summary>Windows Imaging Component adapter for RSImage.scaledImageData.</summary>
 [SupportedOSPlatform("windows")]
 public static partial class WindowsImage
 {
     private static readonly Guid PngFormat = new("1b7cfaf4-713f-473c-bbcd-6137425faeaf");
+    private static readonly Guid JpegFormat = new("19e4a5aa-5662-4fc5-a0c0-1758028e1057");
+    private static readonly Guid Bgr24 = new("6fddc324-4e03-4bfe-b185-3d77768dc90c");
     private static readonly Guid Bgra32 = new("6fddc324-4e03-4bfe-b185-3d77768dc90f");
     private static readonly Guid PremultipliedBgra32 = new("6fddc324-4e03-4bfe-b185-3d77768dc910");
 
-    public static byte[] ScaledImageData(byte[] data, int maxPixelSize)
+    public static byte[] ScaledImageData(byte[] data, int maxPixelSize,
+        ScaledImageFormat format = ScaledImageFormat.Png, double jpegQuality = 0.8)
     {
         ArgumentNullException.ThrowIfNull(data);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPixelSize);
+        if (format is not (ScaledImageFormat.Png or ScaledImageFormat.Jpeg))
+            throw new ArgumentOutOfRangeException(nameof(format));
+        if (format == ScaledImageFormat.Jpeg && (!double.IsFinite(jpegQuality) || jpegQuality is < 0 or > 1))
+            throw new ArgumentOutOfRangeException(nameof(jpegQuality));
         if (data.Length == 0) throw new InvalidDataException("The image is empty.");
         try
         {
@@ -28,28 +37,9 @@ public static partial class WindowsImage
             input.Seek(0, 0, IntPtr.Zero);
             factory.CreateDecoderFromStream(input, IntPtr.Zero, 0, out var decoder);
             resources.Add(decoder);
-            decoder.GetFrameCount(out uint count);
-
-            uint largestIndex = 0, largestWidth = 0, largestHeight = 0, largestDimension = 0;
-            for (uint index = 0; index < count; index++)
-            {
-                IWICBitmapFrameDecode? candidate = null;
-                try
-                {
-                    decoder.GetFrame(index, out candidate);
-                    candidate.GetSize(out uint width, out uint height);
-                    uint dimension = Math.Max(width, height);
-                    if (width > 0 && height > 0 && dimension > largestDimension)
-                        (largestIndex, largestWidth, largestHeight, largestDimension) = (index, width, height, dimension);
-                }
-                catch (COMException error) when (IsImageError(error.HResult))
-                {
-                    Trace.TraceWarning($"Could not read image frame {index}: {error.Message}");
-                }
-                finally { if (candidate is not null) Marshal.ReleaseComObject(candidate); }
-            }
-            if (largestDimension == 0) throw new InvalidDataException("The image has no decodable frames.");
-            decoder.GetFrame(largestIndex, out var frame);
+            var largest = LargestFrame(decoder, out uint count);
+            uint largestDimension = Math.Max(largest.Width, largest.Height);
+            decoder.GetFrame(largest.Index, out var frame);
             resources.Add(frame);
             var source = ConvertPixels(factory, frame, PremultipliedBgra32, resources);
             bool needsResize = largestDimension > maxPixelSize;
@@ -62,8 +52,8 @@ public static partial class WindowsImage
             if (needsResize)
             {
                 double ratio = (double)maxPixelSize / largestDimension;
-                uint width = Math.Max(1, (uint)Math.Round(largestWidth * ratio, MidpointRounding.AwayFromZero));
-                uint height = Math.Max(1, (uint)Math.Round(largestHeight * ratio, MidpointRounding.AwayFromZero));
+                uint width = Math.Max(1, (uint)Math.Round(largest.Width * ratio, MidpointRounding.AwayFromZero));
+                uint height = Math.Max(1, (uint)Math.Round(largest.Height * ratio, MidpointRounding.AwayFromZero));
                 factory.CreateBitmapScaler(out var scaler);
                 resources.Add(scaler);
                 scaler.Initialize(source, width, height, 3);
@@ -77,7 +67,8 @@ public static partial class WindowsImage
                 rotator.Initialize(source, transform);
                 source = rotator;
             }
-            return EncodePng(factory, source, resources);
+            bool jpeg = format == ScaledImageFormat.Jpeg && !HasAlphaChannel(factory, frame, resources);
+            return EncodeImage(factory, source, jpeg ? jpegQuality : null, resources);
         }
         catch (COMException error) when (IsImageError(error.HResult))
         {
@@ -87,6 +78,63 @@ public static partial class WindowsImage
         {
             throw new InvalidDataException("Windows rejected the image data.", error);
         }
+    }
+
+    public static (uint Width, uint Height) LargestFramePixelSize(byte[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (data.Length == 0) throw new InvalidDataException("The image is empty.");
+        try
+        {
+            using var resources = new ComResources();
+            var factory = resources.Add((IWICImagingFactory)new ImagingFactory());
+            CreateStreamOnHGlobal(IntPtr.Zero, true, out var input);
+            resources.Add(input);
+            input.Write(data, data.Length, IntPtr.Zero);
+            input.Seek(0, 0, IntPtr.Zero);
+            factory.CreateDecoderFromStream(input, IntPtr.Zero, 0, out var decoder);
+            resources.Add(decoder);
+            var largest = LargestFrame(decoder, out _);
+            return (largest.Width, largest.Height);
+        }
+        catch (COMException error) when (IsImageError(error.HResult))
+        {
+            throw new InvalidDataException("Windows could not read the image dimensions.", error);
+        }
+    }
+
+    private static (uint Index, uint Width, uint Height) LargestFrame(IWICBitmapDecoder decoder, out uint count)
+    {
+        decoder.GetFrameCount(out count);
+        uint largestIndex = 0, largestWidth = 0, largestHeight = 0, largestDimension = 0;
+        for (uint index = 0; index < count; index++)
+        {
+            IWICBitmapFrameDecode? candidate = null;
+            try
+            {
+                decoder.GetFrame(index, out candidate);
+                candidate.GetSize(out uint width, out uint height);
+                uint dimension = Math.Max(width, height);
+                if (width > 0 && height > 0 && dimension > largestDimension)
+                    (largestIndex, largestWidth, largestHeight, largestDimension) = (index, width, height, dimension);
+            }
+            catch (COMException error) when (IsImageError(error.HResult))
+            {
+                Trace.TraceWarning($"Could not read image frame {index}: {error.Message}");
+            }
+            finally { if (candidate is not null) Marshal.ReleaseComObject(candidate); }
+        }
+        if (largestDimension == 0) throw new InvalidDataException("The image has no decodable frames.");
+        return (largestIndex, largestWidth, largestHeight);
+    }
+
+    private static bool HasAlphaChannel(IWICImagingFactory factory, IWICBitmapSource source, ComResources resources)
+    {
+        source.GetPixelFormat(out var format);
+        factory.CreateComponentInfo(ref format, out var info);
+        resources.Add(info);
+        info.SupportsTransparency(out bool alpha);
+        return alpha;
     }
 
     private static bool IsImageError(int error)
@@ -168,21 +216,29 @@ public static partial class WindowsImage
         return 0;
     }
 
-    private static byte[] EncodePng(IWICImagingFactory factory, IWICBitmapSource source, ComResources resources)
+    private static byte[] EncodeImage(IWICImagingFactory factory, IWICBitmapSource source, double? jpegQuality, ComResources resources)
     {
-        source = ConvertPixels(factory, source, Bgra32, resources);
+        var pixelFormat = jpegQuality.HasValue ? Bgr24 : Bgra32;
+        source = ConvertPixels(factory, source, pixelFormat, resources);
         source.GetSize(out uint width, out uint height);
         CreateStreamOnHGlobal(IntPtr.Zero, true, out var output);
         resources.Add(output);
-        var format = PngFormat;
+        var format = jpegQuality.HasValue ? JpegFormat : PngFormat;
         factory.CreateEncoder(ref format, IntPtr.Zero, out var encoder);
         resources.Add(encoder);
         encoder.Initialize(output, 2);
-        encoder.CreateNewFrame(out var frame, IntPtr.Zero);
+        encoder.CreateNewFrame(out var frame, out var options);
         resources.Add(frame);
-        frame.Initialize(IntPtr.Zero);
+        if (options is null) throw new InvalidDataException("The image encoder did not provide its options.");
+        resources.Add(options);
+        if (jpegQuality is { } quality)
+        {
+            var property = new PropertyBagProperty { Name = "ImageQuality", VariantType = 4 };
+            object value = (float)quality;
+            options.Write(1, ref property, ref value);
+        }
+        frame.Initialize(options);
         frame.SetSize(width, height);
-        var pixelFormat = Bgra32;
         frame.SetPixelFormat(ref pixelFormat);
         frame.WriteSource(source, IntPtr.Zero);
         frame.Commit();

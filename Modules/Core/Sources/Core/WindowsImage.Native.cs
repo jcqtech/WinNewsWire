@@ -27,7 +27,7 @@ public static partial class WindowsImage
         void CreateDecoderFromFilename([MarshalAs(UnmanagedType.LPWStr)] string filename, IntPtr vendor, uint access, uint options, out IWICBitmapDecoder decoder);
         void CreateDecoderFromStream(IStream stream, IntPtr vendor, uint options, out IWICBitmapDecoder decoder);
         void CreateDecoderFromFileHandle(IntPtr file, IntPtr vendor, uint options, out IWICBitmapDecoder decoder);
-        void CreateComponentInfo(ref Guid component, out IntPtr info);
+        void CreateComponentInfo(ref Guid component, out IWICPixelFormatInfo2 info);
         void CreateDecoder(ref Guid format, IntPtr vendor, out IWICBitmapDecoder decoder);
         void CreateEncoder(ref Guid format, IntPtr vendor, out IWICBitmapEncoder encoder);
         void CreatePalette(out IntPtr palette);
@@ -130,7 +130,7 @@ public static partial class WindowsImage
         void SetPalette(IntPtr palette);
         void SetThumbnail(IWICBitmapSource thumbnail);
         void SetPreview(IWICBitmapSource preview);
-        void CreateNewFrame(out IWICBitmapFrameEncode frame, IntPtr options);
+        void CreateNewFrame(out IWICBitmapFrameEncode frame, out IPropertyBag2 options);
         void Commit();
         void GetMetadataQueryWriter(out IntPtr writer);
     }
@@ -138,7 +138,7 @@ public static partial class WindowsImage
     [ComImport, Guid("00000105-a8f2-4877-ba0a-fd2b6645fb94"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IWICBitmapFrameEncode
     {
-        void Initialize(IntPtr options);
+        void Initialize(IPropertyBag2 options);
         void SetSize(uint width, uint height);
         void SetResolution(double dpiX, double dpiY);
         void SetPixelFormat(ref Guid format);
@@ -149,5 +149,42 @@ public static partial class WindowsImage
         void WriteSource(IWICBitmapSource source, IntPtr rectangle);
         void Commit();
         void GetMetadataQueryWriter(out IntPtr writer);
+    }
+
+    [ComImport, Guid("a9db33a2-af5f-43c7-b679-74f5984b5aa4"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IWICPixelFormatInfo2
+    {
+        void GetComponentType(out uint type);
+        void GetCLSID(out Guid clsid);
+        void GetSigningStatus(out uint status);
+        void GetAuthor(uint capacity, IntPtr author, out uint actualLength);
+        void GetVendorGUID(out Guid vendor);
+        void GetVersion(uint capacity, IntPtr version, out uint actualLength);
+        void GetSpecVersion(uint capacity, IntPtr version, out uint actualLength);
+        void GetFriendlyName(uint capacity, IntPtr name, out uint actualLength);
+        void GetFormatGUID(out Guid format);
+        void GetColorContext(out IntPtr context);
+        void GetBitsPerPixel(out uint bits);
+        void GetChannelCount(out uint count);
+        void GetChannelMask(uint channel, uint capacity, IntPtr mask, out uint actualLength);
+        void SupportsTransparency([MarshalAs(UnmanagedType.Bool)] out bool transparency);
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct PropertyBagProperty
+    {
+        public uint Type;
+        public ushort VariantType;
+        public ushort ClipboardFormat;
+        public uint Hint;
+        [MarshalAs(UnmanagedType.LPWStr)] public string Name;
+        public Guid ClassId;
+    }
+
+    [ComImport, Guid("22f55882-280b-11d0-a8a9-00a0c90c2004"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPropertyBag2
+    {
+        void Read(uint count, IntPtr properties, IntPtr errorLog, IntPtr values, IntPtr errors);
+        void Write(uint count, [In] ref PropertyBagProperty property, [In, MarshalAs(UnmanagedType.Struct)] ref object value);
     }
 }

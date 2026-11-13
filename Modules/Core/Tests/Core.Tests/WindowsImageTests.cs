@@ -37,6 +37,65 @@ public sealed class WindowsImageTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void JpegTargetKeepsAlphaChannelImagesAsPng(bool alphaChannel)
+    {
+        var data = Png(2000, 1000, Blue, alphaChannel);
+        var scaled = WindowsImage.ScaledImageData(data, 512, ScaledImageFormat.Jpeg, 0.8);
+        Assert.Equal((512u, 256u), WindowsImage.LargestFramePixelSize(scaled));
+        if (alphaChannel)
+            Assert.Equal(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, scaled[..8]);
+        else
+        {
+            Assert.Equal(new byte[] { 255, 216 }, scaled[..2]);
+            Assert.Equal(ImageLuminanceType.Dark, WindowsImage.ClassifyLuminance(scaled));
+        }
+    }
+
+    [Fact]
+    public void JpegTargetDoesNotReencodeSingleFramesAlreadyWithinTheBound()
+    {
+        var data = Png(64, 32, Red, alphaChannel: false);
+        Assert.Same(data, WindowsImage.ScaledImageData(data, 64, ScaledImageFormat.Jpeg));
+    }
+
+    [Fact]
+    public void JpegTargetRetainsActualTransparencyAndColor()
+    {
+        byte[] translucentGreen = [0, 255, 0, 128];
+        var image = ReadPng(WindowsImage.ScaledImageData(Png(128, 64, translucentGreen), 48, ScaledImageFormat.Jpeg));
+        Assert.All(image.Pixels.Chunk(4), pixel => Assert.Equal(translucentGreen, pixel));
+    }
+
+    [Fact]
+    public void HeaderDimensionsUseTheFirstFrameWithTheLargestDimension()
+    {
+        var ico = Ico((16, 16, Png(16, 16, Green)), (64, 16, Png(64, 16, Red)), (64, 64, Png(64, 64, Blue)));
+        Assert.Equal((64u, 16u), WindowsImage.LargestFramePixelSize(ico));
+    }
+
+    [Fact]
+    public void HeaderDimensionsDoNotAllocateAFullPixelBuffer()
+    {
+        var data = Png(4096, 2048, Red);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var size = WindowsImage.LargestFramePixelSize(data);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal((4096u, 2048u), size);
+        Assert.InRange(allocated, 0, 1_048_575);
+    }
+
+    [Theory]
+    [InlineData(-0.1)]
+    [InlineData(1.1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void InvalidJpegQualityIsRejected(double quality)
+        => Assert.Throws<ArgumentOutOfRangeException>(() =>
+            WindowsImage.ScaledImageData(Png(128, 64, Red), 48, ScaledImageFormat.Jpeg, quality));
+
+    [Theory]
     [InlineData(192, 96, 96, 48)]
     [InlineData(96, 192, 48, 96)]
     [InlineData(97, 97, 96, 96)]
@@ -146,7 +205,7 @@ public sealed class WindowsImageTests
     private static readonly byte[] Yellow = [255, 255, 0, 255];
     private static byte[] Color(char color) => color switch { 'R' => Red, 'G' => Green, 'B' => Blue, 'Y' => Yellow, _ => throw new ArgumentException(nameof(color)) };
 
-    private static byte[] Png(int width, int height, byte[] color)
+    private static byte[] Png(int width, int height, byte[] color, bool alphaChannel = true)
     {
         using var output = new MemoryStream();
         output.Write([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -154,14 +213,14 @@ public sealed class WindowsImageTests
         BinaryPrimitives.WriteInt32BigEndian(header, width);
         BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4), height);
         header[8] = 8;
-        header[9] = 6;
+        header[9] = alphaChannel ? (byte)6 : (byte)2;
         WriteChunk(output, "IHDR", header);
         using var compressed = new MemoryStream();
         using (var zlib = new ZLibStream(compressed, CompressionLevel.Fastest, leaveOpen: true))
             for (int y = 0; y < height; y++)
             {
                 zlib.WriteByte(0);
-                for (int x = 0; x < width; x++) zlib.Write(color);
+                for (int x = 0; x < width; x++) zlib.Write(color.AsSpan(0, alphaChannel ? 4 : 3));
             }
         WriteChunk(output, "IDAT", compressed.ToArray());
         WriteChunk(output, "IEND", []);
