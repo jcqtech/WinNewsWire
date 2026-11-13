@@ -778,7 +778,8 @@
                                 PointerExited="Splitter_PointerExited" KeyDown="SidebarSplitter_KeyDown"
                                 AutomationProperties.Name="Resize sidebar">
                     <Grid Background="Transparent">
-                        <Border Width="1" HorizontalAlignment="Center" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <Border x:Name="StatusBarDivider" Width="1" HorizontalAlignment="Left" Margin="12,0,-1,0"
+                                Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <FontIcon Glyph="&#xE784;" FontSize="10" VerticalAlignment="Center" Margin="-12,0,0,0"
                                   AutomationProperties.AccessibilityView="Raw" />
                     </Grid>

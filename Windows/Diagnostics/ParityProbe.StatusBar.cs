@@ -144,6 +144,27 @@ internal static partial class ParityProbe
             InvokeMenuItem(gearMenu.Items.OfType<MenuFlyoutItem>().Single(item => item.Text == "Show Sidebar"));
             await WaitFor(() => Task.FromResult(model.IsSidebarVisible), "Gear menu sidebar restoration");
             gearMenu.Hide();
+            var sidebarColumn = (ColumnDefinition)content.FindName("SidebarColumn");
+            var divider = (Border)content.FindName("StatusBarDivider");
+            var readingPane = (Border)content.FindName("ContentContainer");
+            foreach (double width in new[] { 200.0, 320.0, 400.0 })
+            {
+                await content.RestoreStateAsync(window.CaptureState() with { SidebarWidth = width });
+                try
+                {
+                    await WaitFor(() => Task.FromResult(Math.Abs(sidebarColumn.ActualWidth - width) < 1
+                        && Math.Abs(divider.TransformToVisual(content).TransformPoint(default).X
+                            - readingPane.TransformToVisual(content).TransformPoint(default).X)
+                        < 1 / content.XamlRoot.RasterizationScale), "Status-bar divider alignment after sidebar resize");
+                }
+                catch (TimeoutException error)
+                {
+                    throw new InvalidOperationException($"Requested sidebar={width}, actual={sidebarColumn.ActualWidth}, "
+                        + $"status={((ColumnDefinition)content.FindName("StatusBarSidebarColumn")).ActualWidth}, "
+                        + $"divider={divider.TransformToVisual(content).TransformPoint(default).X}, "
+                        + $"reading={readingPane.TransformToVisual(content).TransformPoint(default).X}.", error);
+                }
+            }
             var themes = (MenuFlyout)theme.Flyout;
             themes.ShowAt(theme);
             await WaitFor(() => Task.FromResult(themes.Items.OfType<ToggleMenuFlyoutItem>().Count() >= 3), "Status-bar theme menu");
@@ -173,6 +194,7 @@ internal static partial class ParityProbe
             await WaitFor(() => Task.FromResult(surface.Visibility == Visibility.Visible
                 && ((Border)other.ProbeContent.FindName("StatusBarSurface")).Visibility == Visibility.Visible), "Restored status-bar visibility");
             return new { CountCycling = true, HiddenUnreadCounts = true, LastRefresh = true, ClockNotifications = true,
+                DividerAlignment = true,
                 FullLinkCopy = true, GearSelection = true,
                 SharedThemes = true, WorkerProgress = true, MultipleWindows = true, SidebarFooterFallback = true };
         }
