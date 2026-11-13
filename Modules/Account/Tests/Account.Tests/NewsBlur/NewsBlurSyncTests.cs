@@ -24,7 +24,11 @@ public sealed class NewsBlurSyncTests : IDisposable
             "/reader/feeds" => Json(Structure),
             "/reader/unread_story_hashes" => Json("""{"unread_feed_story_hashes":{"1":[["1:unread",1700000000]]}}"""),
             "/reader/starred_story_hashes" => Json("""{"starred_story_hashes":[["2:starred","1700000000"]]}"""),
-            "/reader/river_stories" => Json(JsonSerializer.Serialize(new NewsBlurStoriesResponse([Story(1, "1:unread"), Story(2, "2:starred")]))),
+            "/reader/river_stories" => Json(JsonSerializer.Serialize(new NewsBlurStoriesResponse([
+                Story(1, "1:unread") with { ImageUrls = ["http://example.test/first.jpg"],
+                    SecureImageUrls = new() { ["http://example.test/first.jpg"] = "https://proxy.example.test/full" },
+                    SecureImageThumbnails = new() { ["http://example.test/first.jpg"] = "https://proxy.example.test/thumb" } },
+                Story(2, "2:starred")]))),
             _ => throw new InvalidOperationException("Unexpected NewsBlur endpoint."),
         }));
         var account = _manager.CreateAccount(accountDelegate: new NewsBlurAccountDelegate(http: http));
@@ -41,11 +45,14 @@ public sealed class NewsBlurSyncTests : IDisposable
         Assert.Equal(2, account.ExistingFolderWithName("Tech")!.Feeds.Count);
         Assert.Empty(account.ExistingFolderWithName("Empty")!.Feeds);
         Assert.Equal("Custom", first.NameForDisplay);
+        account.Database.EmptyCaches();
         var articles = await account.Database.FetchArticlesAsync(account.FlattenedFeeds().Select(feed => feed.FeedID));
         Assert.Equal(2, articles.Count);
         Assert.False(articles.Single(article => article.ArticleID == "1:unread").Status.Read);
         Assert.True(articles.Single(article => article.ArticleID == "2:starred").Status.Starred);
         Assert.Equal(first.FeedID, articles.Single(article => article.ArticleID == "1:unread").FeedID);
+        Assert.Equal("https://proxy.example.test/full", articles.Single(article => article.ArticleID == "1:unread").RawImageLink);
+        Assert.Equal("https://proxy.example.test/thumb", articles.Single(article => article.ArticleID == "1:unread").RawThumbnailLink);
     }
 
     [Fact]

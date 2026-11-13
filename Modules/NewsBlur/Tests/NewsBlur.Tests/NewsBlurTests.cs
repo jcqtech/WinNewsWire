@@ -60,6 +60,23 @@ public sealed class NewsBlurTests
         finally { CultureInfo.CurrentCulture = previous; }
     }
 
+    [Theory]
+    [InlineData(true, "https://proxy.example.test/first")]
+    [InlineData(false, "http://example.test/first.jpg")]
+    public void StoryImageUsesTheFirstOriginalsProxyAndThumbnail(bool hasProxy, string expected)
+    {
+        var story = JsonSerializer.Deserialize<NewsBlurStory>($$$"""
+            {"story_hash":"1:story","story_feed_id":1,
+             "image_urls":["http://example.test/first.jpg","http://example.test/second.jpg"],
+             "secure_image_urls":{"http://example.test/second.jpg":"https://proxy.example.test/second"
+                                  {{{(hasProxy ? ",\"http://example.test/first.jpg\":\"https://proxy.example.test/first\"" : "")}}}},
+             "secure_image_thumbnails":{"http://example.test/second.jpg":"https://proxy.example.test/thumb2",
+                                        "http://example.test/first.jpg":"https://proxy.example.test/thumb1"}}
+            """)!;
+        Assert.Equal(expected, story.ImageUrl);
+        Assert.Equal("https://proxy.example.test/thumb1", story.ThumbnailUrl);
+    }
+
     [Fact]
     public async Task FailedFeedRequestThrowsInsteadOfReturningAnEmptyList()
     {

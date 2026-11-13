@@ -128,7 +128,7 @@ public sealed partial class NewsBlurAccountDelegate
             var parsed = new ParsedItem(story.StoryID, story.StoryID, remoteID, story.Url, null, story.Title, null,
                 story.ContentHtml, null, null, null, story.ImageUrl, null, story.DatePublished, null,
                 story.AuthorName is null ? null : new HashSet<ParsedAuthor> { new(story.AuthorName, null, null, null) },
-                story.Tags?.ToHashSet(), null);
+                story.Tags?.ToHashSet(), null, thumbnailUrl: story.ThumbnailUrl);
             return RemoteSyncHelpers.ArticleFromParsedItem(account, parsed, feeds.GetValueOrDefault(remoteID)?.FeedID ?? remoteID, defaultRead: true);
         }).ToList();
         var added = await account.Database.UpdateArticlesAsync(articles);
