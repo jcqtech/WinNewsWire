@@ -610,6 +610,35 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
+    public async Task FailedSourceWritesStayTransientAndBackOffWithoutBlockingOtherUrls()
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Fixture.Image) });
+        });
+        string blocked = fixture.PathFor("write-blocked");
+        Directory.CreateDirectory(blocked);
+        await using var cache = fixture.CreateCache(10, 20);
+        var result = await cache.FetchAsync(Url("write-blocked"), new(ActivityOwner.FeedImageDownloader,
+            ActivityKind.DownloadFeedImage(Url("write-blocked")), null, null), default);
+        Assert.True(result.IsTransient);
+        Assert.False(result.DecodingFailed);
+        Assert.Null(result.Image);
+        Assert.False(fixture.Database.RecentlyFailed(Url("write-blocked")));
+        Assert.Empty(await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync());
+        Directory.Delete(blocked);
+        Assert.Null(await fixture.FetchAsync(cache, "write-blocked"));
+        Assert.Equal(1, requests);
+        Assert.NotNull(await fixture.FetchAsync(cache, "peer"));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.NotNull(await fixture.FetchAsync(cache, "write-blocked"));
+        Assert.Equal(3, requests);
+        Assert.Equal(2, (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
+    }
+
+    [Fact]
     public async Task NewDownloadsTriggerLruRemovalWithoutWaitingForAnotherLaunch()
     {
         await using var fixture = new Fixture();

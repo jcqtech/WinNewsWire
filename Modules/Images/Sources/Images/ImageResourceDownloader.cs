@@ -264,7 +264,13 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             await StoreImageAsync(url, processed, response, ct).ConfigureAwait(false);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or OperationCanceledException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            _log.DidFail(activity, error);
+            NoteTransientFailure(url, statusCode: (int)response.StatusCode);
+            return new(null, IsTransient: true);
+        }
+        catch (OperationCanceledException error)
         {
             _log.DidFail(activity, error);
             throw;

@@ -365,8 +365,9 @@ public sealed class FeedImageDownloaderTests
         Directory.CreateDirectory(fixture.CacheDirectory);
         await File.WriteAllBytesAsync(fixture.LegacyPath(url, ".png"), Image);
         Directory.CreateDirectory(fixture.NativePath(url));
-        var error = await Record.ExceptionAsync(() => fixture.Images.FaviconAsync(new(Feed, Home, url)));
-        Assert.True(error is IOException or UnauthorizedAccessException);
+        Assert.Null(await fixture.Images.FaviconAsync(new(Feed, Home, url)));
+        Assert.Null(await fixture.Images.FaviconAsync(new(Feed, Home, url)));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
         Assert.Equal(Image, await File.ReadAllBytesAsync(fixture.LegacyPath(url, ".png")));
         Assert.Null(fixture.ImageDatabase.FaviconUrl(Home));
         Assert.Single(fixture.Requests);
