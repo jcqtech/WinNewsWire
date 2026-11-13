@@ -11,9 +11,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using WinNewsWire.Articles;
+using WinNewsWire.AppShared;
 using WinNewsWire.Images;
 using WinNewsWire.Helpers;
 using WinNewsWire.Services;
@@ -190,7 +193,9 @@ internal static partial class ParityProbe
             LargeMenuState = true, FixedHeightLargeRows = true, ImagelessRowsStayCompact = true,
             ModeChangesPreserveSelection = true, FailureRefreshTargetsAffectedRows = true,
             WholeImageFit = true, CustomLetterboxFill = true, TopAlignedPortraitCrop = true,
-            CenteredWideCrop = true, CropUpdatesOnResize = true, LargeImageAlignsWithIconOrText = true };
+            CenteredWideCrop = true, CropUpdatesOnResize = true, LargeImageAlignsWithIconOrText = true,
+            HiddenModeStopsNewRequests = true, MenuAndPreferencesShareMode = true,
+            FailedPreferenceWritesRestoreSelectionAndReport = true };
     }
 
     private static async Task CheckTimelineThumbnailsAsync(MainWindow window, ArticleThumbnailService service,
@@ -202,7 +207,7 @@ internal static partial class ParityProbe
         var previousItems = model.ArticleItems;
         var previousSelection = model.SelectedArticle;
         bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
-        bool previousLarge = Core.AppDefaults.Shared.TimelineShowsLargeThumbnails;
+        var previousDisplay = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
         bool previousUnified = model.IsUnifiedLayout;
         var list = (ListView)content.FindName("ArticleListView");
         Article ArticleFor(int index, string? image, string? html = null) =>
@@ -222,7 +227,7 @@ internal static partial class ParityProbe
         try
         {
             Core.AppDefaults.Shared.UseColumnLayout = false;
-            Core.AppDefaults.Shared.TimelineShowsLargeThumbnails = false;
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small);
             model.IsUnifiedLayout = false;
             model.SelectedArticle = null;
             content.ProbeSetThumbnailService(service);
@@ -290,15 +295,17 @@ internal static partial class ParityProbe
                 throw;
             }
 
-            var largeMenu = Descendants(window.Content).OfType<MenuBar>().SelectMany(bar => bar.Items)
-                .OfType<MenuBarItem>().SelectMany(item => item.Items).OfType<ToggleMenuFlyoutItem>()
-                .Single(item => item.Name == "MenuLargeThumbnails");
+            var thumbnailsMenu = Descendants(window.Content).OfType<MenuBar>().SelectMany(bar => bar.Items)
+                .OfType<MenuBarItem>().SelectMany(item => item.Items).OfType<MenuFlyoutSubItem>()
+                .Single(item => item.Name == "MenuThumbnails");
+            var modeItems = thumbnailsMenu.Items.OfType<ToggleMenuFlyoutItem>().ToArray();
+            var largeMenu = modeItems.Single(item => item.Tag is TimelineThumbnailsDisplay.Large);
             using var peer = new ViewModels.MainViewModel();
             int modeNotifications = 0;
             bool modeNotificationsOnUI = true;
             peer.PropertyChanged += (_, args) =>
             {
-                if (args.PropertyName != nameof(peer.TimelineShowsLargeThumbnails)) return;
+                if (args.PropertyName != nameof(peer.TimelineThumbnailsDisplay)) return;
                 modeNotifications++;
                 modeNotificationsOnUI &= window.DispatcherQueue.HasThreadAccess;
             };
@@ -309,10 +316,11 @@ internal static partial class ParityProbe
                 "Small row before mode change");
             var originalSmall = Descendants(list).OfType<ThumbnailView>().Single(view =>
                 view.Tag is Article { ArticleID: "timeline-thumbnail-0" }).ImageSource;
-            await Task.Run(() => Core.AppDefaults.Shared.TimelineShowsLargeThumbnails = true);
-            await WaitFor(() => Task.FromResult(modeNotifications > 0 && peer.TimelineShowsLargeThumbnails
+            await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large));
+            await WaitFor(() => Task.FromResult(modeNotifications > 0 && peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
                 && largeMenu.IsChecked && largeMenu.IsEnabled), "Shared large-thumbnail mode");
-            Require(modeNotificationsOnUI && new Core.AppDefaults().TimelineShowsLargeThumbnails,
+            Require(modeNotificationsOnUI && new Core.AppDefaults().GetTimelineThumbnailsDisplay() == TimelineThumbnailsDisplay.Large
+                && modeItems.Count(item => item.IsChecked) == 1,
                 "Large-thumbnail mode was not persisted or a peer notification ran off the UI thread.");
             await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>().Any(view =>
                 view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && Grid.GetRow(view) == 1
@@ -355,14 +363,70 @@ internal static partial class ParityProbe
             await WaitFor(() => Task.FromResult(!largeMenu.IsEnabled && largeMenu.IsChecked
                 && !Descendants(list).OfType<ThumbnailView>().Any()), "Large thumbnails disabled in columns");
             Core.AppDefaults.Shared.UseColumnLayout = false;
-            await Task.Run(() => Core.AppDefaults.Shared.TimelineShowsLargeThumbnails = false);
+            await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small));
             list.ScrollIntoView(rows[0], ScrollIntoViewAlignment.Leading);
-            await WaitFor(() => Task.FromResult(modeNotifications == 2 && !peer.TimelineShowsLargeThumbnails
+            await WaitFor(() => Task.FromResult(modeNotifications == 2 && peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Small
                 && !largeMenu.IsChecked && largeMenu.IsEnabled && Descendants(list).OfType<ThumbnailView>().Any(view =>
                     view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && Grid.GetRow(view) == 0
                     && Grid.GetColumn(view) == 3 && view.ActualHeight <= 76 && view.ImageSource is not null)),
                 "Return to small thumbnails without reopening the window");
             Require(ReferenceEquals(model.SelectedArticle, rows[0]), "Restoring small mode lost article selection.");
+
+            var preferences = new AppWindows.PreferencesWindow();
+            try
+            {
+                preferences.Activate();
+                var preferencesRoot = (FrameworkElement)preferences.Content;
+                var choices = (ComboBox)preferencesRoot.FindName("TimelineThumbnailsCombo");
+                var status = (TextBlock)preferencesRoot.FindName("TimelineThumbnailsStatus");
+                await WaitFor(() => Task.FromResult(choices.IsLoaded
+                    && choices.SelectedItem is ComboBoxItem { Tag: TimelineThumbnailsDisplay.Small }),
+                    "Thumbnail settings picker reflects the menu");
+                using (var locked = new FileStream(Path.Combine(Core.AppConfig.DataDirectory, "AppDefaults.json"),
+                    FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    choices.SelectedItem = choices.Items.OfType<ComboBoxItem>()
+                        .Single(item => item.Tag is TimelineThumbnailsDisplay.None);
+                    Require(choices.SelectedItem is ComboBoxItem { Tag: TimelineThumbnailsDisplay.Small }
+                        && status.Text.Contains("Could not save", StringComparison.Ordinal)
+                        && model.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Small,
+                        "A failed thumbnail preference write did not restore the UI and report the error.");
+                }
+                choices.SelectedItem = choices.Items.OfType<ComboBoxItem>()
+                    .Single(item => item.Tag is TimelineThumbnailsDisplay.None);
+                await WaitFor(() => Task.FromResult(peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.None
+                    && modeItems.Single(item => item.IsChecked).Tag is TimelineThumbnailsDisplay.None
+                    && Descendants(list).OfType<ThumbnailView>().All(view => view.Visibility == Visibility.Collapsed)),
+                    "Hidden thumbnails propagate from Preferences");
+                Require(new Core.AppDefaults().GetTimelineThumbnailsDisplay() == TimelineThumbnailsDisplay.None
+                    && string.IsNullOrEmpty(status.Text), "Hidden mode did not persist or clear the previous error.");
+                var hiddenRow = Row(ArticleFor(80, "https://thumbnail.test/hidden-only.bmp"));
+                rows.Add(hiddenRow);
+                list.ScrollIntoView(hiddenRow, ScrollIntoViewAlignment.Leading);
+                await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>().Any(view =>
+                    ReferenceEquals(view.Tag, hiddenRow.SourceArticle) && view.Visibility == Visibility.Collapsed)),
+                    "Hidden-mode newly realized row");
+                await Task.Delay(150);
+                Require(!requests.Contains("/hidden-only.bmp"),
+                    "Hidden mode discovered/downloaded a thumbnail for a newly realized row.");
+                var commandPeer = FrameworkElementAutomationPeer.FromElement(largeMenu)
+                    ?? FrameworkElementAutomationPeer.CreatePeerForElement(largeMenu);
+                (commandPeer?.GetPattern(PatternInterface.Toggle) as IToggleProvider
+                    ?? throw new InvalidOperationException("The thumbnail menu choice has no Toggle pattern.")).Toggle();
+                await WaitFor(() => Task.FromResult(choices.SelectedItem is ComboBoxItem { Tag: TimelineThumbnailsDisplay.Large }
+                    && modeItems.Count(item => item.IsChecked) == 1 && largeMenu.IsChecked
+                    && ((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex == 0
+                    && Descendants(list).OfType<ThumbnailView>().Any(view =>
+                        ReferenceEquals(view.Tag, rows[0].SourceArticle) && view.ImageSource is not null)),
+                    "Menu choice updates Preferences and restores the selected row to view");
+                Require(modeNotificationsOnUI && ReferenceEquals(model.SelectedArticle, rows[0]),
+                    "Settings/menu mode changes lost selection or notified off the UI thread.");
+            }
+            finally
+            {
+                preferences.Close();
+                window.Activate();
+            }
         }
         finally
         {
@@ -371,7 +435,7 @@ internal static partial class ParityProbe
             model.ArticleItems = previousItems;
             model.SelectedArticle = previousSelection;
             Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
-            Core.AppDefaults.Shared.TimelineShowsLargeThumbnails = previousLarge;
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
             model.IsUnifiedLayout = previousUnified;
             content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
         }

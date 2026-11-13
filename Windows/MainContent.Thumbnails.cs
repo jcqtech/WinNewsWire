@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using WinNewsWire.AppShared;
 using WinNewsWire.Articles;
 using WinNewsWire.Helpers;
 using WinNewsWire.Images;
@@ -38,8 +39,10 @@ public sealed partial class MainContent
     private bool _thumbnailRefreshQueued;
     private bool _visibleThumbnailRefreshQueued;
     private (int Start, int End)? _thumbnailLookahead;
-    private bool ShowsTimelineThumbnails => !_shuttingDown && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout;
-    private ThumbnailMode TimelineThumbnailMode => ViewModel.TimelineShowsLargeThumbnails ? ThumbnailMode.Large : ThumbnailMode.Small;
+    private bool ShowsTimelineThumbnails => !_shuttingDown && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout
+        && ViewModel.TimelineThumbnailsDisplay != TimelineThumbnailsDisplay.None;
+    private ThumbnailMode TimelineThumbnailMode => ViewModel.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
+        ? ThumbnailMode.Large : ThumbnailMode.Small;
 #if PARITY_PROBE
     internal CancellationToken ProbeThumbnailRequestToken(ThumbnailView view)
         => _timelineThumbnails[view].Request?.Token

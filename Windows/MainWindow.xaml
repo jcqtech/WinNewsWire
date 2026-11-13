@@ -210,7 +210,7 @@
                 </MenuFlyoutSubItem>
                 <MenuFlyoutSeparator />
                 <ToggleMenuFlyoutItem x:Name="MenuColumnLayout" Text="Use Column Layout" Click="Menu_ToggleColumnLayout" />
-                <ToggleMenuFlyoutItem x:Name="MenuLargeThumbnails" Click="Menu_ToggleLargeThumbnails" />
+                <MenuFlyoutSubItem x:Name="MenuThumbnails" />
                 <ToggleMenuFlyoutItem x:Name="MenuShowStatusBar" Click="Menu_ToggleStatusBar" />
                 <ToggleMenuFlyoutItem x:Name="MenuShowStatusBarThemes" Click="Menu_ToggleStatusBarThemes" />
                 <ToggleMenuFlyoutItem x:Name="MenuUnifiedLayout" Text="Reading Only"

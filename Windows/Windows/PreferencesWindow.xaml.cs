@@ -18,6 +18,7 @@ public sealed partial class PreferencesWindow : Window
     private bool _closed;
     private bool _populatingBrowsers;
     private bool _updatingUnreadDisplay;
+    private bool _updatingTimelineThumbnails;
     private bool _updatingAutomation;
     private bool _updatingRendering;
 
@@ -53,6 +54,12 @@ public sealed partial class PreferencesWindow : Window
         })
             UnreadCountDisplayCombo.Items.Add(new ComboBoxItem { Content = AppStrings.Get(key), Tag = mode });
         SyncUnreadCountDisplay();
+        TimelineHeading.Text = AppStrings.Get("Timeline");
+        TimelineThumbnailsLabel.Text = AppStrings.Get("Thumbnails");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TimelineThumbnailsCombo, TimelineThumbnailsLabel.Text);
+        foreach (var mode in Enum.GetValues<TimelineThumbnailsDisplay>())
+            TimelineThumbnailsCombo.Items.Add(new ComboBoxItem { Content = mode.DisplayString(), Tag = mode });
+        SyncTimelineThumbnails();
 
         foreach (var v in Enum.GetValues<RefreshInterval>())
             RefreshIntervalCombo.Items.Add(new ComboBoxItem { Content = v.DisplayString(), Tag = (int)v });
@@ -92,6 +99,12 @@ public sealed partial class PreferencesWindow : Window
 
     private void PreferencesDefaultsChanged(object? sender, string key)
     {
+        if (!_closed && key == AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey)
+        {
+            if (DispatcherQueue.HasThreadAccess) SyncTimelineThumbnails();
+            else DispatcherQueue.TryEnqueue(() => { if (!_closed) SyncTimelineThumbnails(); });
+            return;
+        }
         if (!_closed && key is AppDefaults.Key.UseSoftwareRasterization or AppDefaults.Key.UseDirectBrowserScrolling)
         {
             if (DispatcherQueue.HasThreadAccess) SyncRenderingPreference();
@@ -107,6 +120,36 @@ public sealed partial class PreferencesWindow : Window
         if (_closed || key != AppDefaultsSharedExtensions.UnreadCountDisplayKey) return;
         if (DispatcherQueue.HasThreadAccess) SyncUnreadCountDisplay();
         else DispatcherQueue.TryEnqueue(() => { if (!_closed) SyncUnreadCountDisplay(); });
+    }
+
+    private void SyncTimelineThumbnails()
+    {
+        _updatingTimelineThumbnails = true;
+        try
+        {
+            var mode = AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+            TimelineThumbnailsCombo.SelectedItem = TimelineThumbnailsCombo.Items.OfType<ComboBoxItem>()
+                .Single(item => item.Tag is TimelineThumbnailsDisplay value && value == mode);
+        }
+        finally { _updatingTimelineThumbnails = false; }
+    }
+
+    private void TimelineThumbnailsCombo_SelectionChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (!_loaded || _updatingTimelineThumbnails
+            || TimelineThumbnailsCombo.SelectedItem is not ComboBoxItem { Tag: TimelineThumbnailsDisplay mode }) return;
+        try
+        {
+            AppDefaults.Shared.SetTimelineThumbnailsDisplay(mode);
+            TimelineThumbnailsStatus.Text = "";
+        }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
+        {
+            SyncTimelineThumbnails();
+            TimelineThumbnailsStatus.Text = string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                AppStrings.Get("TimelineThumbnailsSaveError"), error.Message);
+            App.LogException("Save timeline thumbnail setting", error);
+        }
     }
 
     private void SyncRenderingPreference()

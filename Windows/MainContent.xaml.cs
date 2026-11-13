@@ -1006,8 +1006,16 @@ public sealed partial class MainContent : UserControl
         if (_shuttingDown) return;
         if (e.PropertyName == nameof(ViewModel.ArticleItems)) ObserveThumbnailItems();
         if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout)
-            or nameof(ViewModel.TimelineShowsLargeThumbnails))
+            or nameof(ViewModel.TimelineThumbnailsDisplay))
             QueueTimelineThumbnailRefresh();
+        if (e.PropertyName == nameof(ViewModel.TimelineThumbnailsDisplay)
+            && ViewModel.SelectedArticle is { } selected && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout)
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_shuttingDown && ReferenceEquals(ViewModel.SelectedArticle, selected)
+                    && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout)
+                    ArticleListView.ScrollIntoView(selected);
+            });
         if (e.PropertyName is nameof(ViewModel.SidebarStatus) or nameof(ViewModel.SelectedArticle)
             or nameof(ViewModel.HoveredLink) or nameof(ViewModel.IsSidebarVisible) or nameof(ViewModel.IsUnifiedLayout))
             QueueStatusBarUpdate();

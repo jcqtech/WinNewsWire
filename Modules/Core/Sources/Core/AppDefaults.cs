@@ -25,7 +25,6 @@ public sealed class AppDefaults
         public const string TimelineSortKey = "timelineSortKey";
         public const string TimelineGroupByFeed = "timelineGroupByFeed";
         public const string UseColumnLayout = "useColumnLayout";
-        public const string TimelineShowsLargeThumbnails = "timelineShowsLargeThumbnails";
         public const string ShowStatusBar = "showStatusBar";
         public const string ShowStatusBarThemeMenu = "showStatusBarThemeMenu";
         public const string StatusBarCountMode = "statusBarCountMode";
@@ -386,12 +385,6 @@ public sealed class AppDefaults
     {
         get => Get(Key.ShowStatusBar, true);
         set => Set(Key.ShowStatusBar, value);
-    }
-
-    public bool TimelineShowsLargeThumbnails
-    {
-        get => Get(Key.TimelineShowsLargeThumbnails, false);
-        set => Set(Key.TimelineShowsLargeThumbnails, value);
     }
 
     public bool ShowStatusBarThemeMenu
