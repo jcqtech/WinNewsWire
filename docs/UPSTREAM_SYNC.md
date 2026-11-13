@@ -10,8 +10,9 @@ not a claim that every change through it has been incorporated.**
 The commit inventory in [UPSTREAM_COMMITS.csv](UPSTREAM_COMMITS.csv) records
 individual source commits, changed paths, disposition, and corresponding Windows
 commits (semicolon-separated when a Windows adaptation needs a follow-up).
-`Pending` means not incorporated; it must not be interpreted as a
-platform-specific skip. Source commit IDs are also recorded in the
+`Pending` means not fully incorporated; it must not be interpreted as a
+platform-specific skip. A pending row with Windows commits is a partial port:
+its notes identify the missing integration. Source commit IDs are also recorded in the
 `NetNewsWire-Commit` trailer of each Windows port commit.
 
 ## Incorporation checkpoint
@@ -35,26 +36,40 @@ Media RSS is parsed in RSS/Atom, including dimensions, media types, durations,
 descriptions, artwork, author Gravatars, rendition selection, and feed-image
 filtering. Ordered attachments are stored as article-scoped JSON, with a migration
 from the old Windows normalized tables. Reader rendering includes audio/video/image
-enclosures, privacy-enhanced YouTube embeds, artwork fallback, and legacy-theme
-enclosure placement. Separate thumbnail URLs now survive parsing, article equality,
+enclosures, privacy-enhanced YouTube embeds, primary video/audio/image placement,
+and legacy-theme enclosure placement. It suppresses resized-image duplicates,
+upgrades Flickr body images, normalizes Engadget size prefixes, and avoids stills
+of already embedded YouTube videos. Modern templates are selected through
+`template7.3.html`, including the shipped Plum and Gray templates.
+Separate thumbnail URLs now survive parsing, article equality,
 database migration, and cold-cache reads. Feedbin, Feedly, NewsBlur, and Reader API
 media metadata is incorporated, including NewsBlur's ordered secure-image mapping.
 
 Other ports include feed-title OPML autosave, feed/theme protocol links, and
 consistent successful-refresh completion dates. Windows-specific shared adapters
 preserve attachment order, dimensions/media types, and thumbnail metadata.
+Attachment-clearing updates have regression coverage. Plain text now renders
+with paragraphs, line breaks, escaping, and explicit web/mail links; detection of
+bare domains, `www` links, and bare email addresses is still a partial port.
 
-The inventory currently has **45 Ported, 9 Covered, 41 Skipped, and 410 Pending**
-source commits, backed by **49 source-attributed Windows commits**. Skips have
+HTML image discovery now has the final upstream lazy-source priority, significant
+image filtering, ordered unique candidates, CSS/hidden-image handling, and
+bandwidth-aware responsive-image selection. It rejects tracking pixels, sharing
+buttons, avatars, and decorative strips. Its integration with the thumbnail
+finder, metadata tables, and shared local-image routes is still pending.
+
+The inventory currently has **68 Ported, 13 Covered, 42 Skipped, and 382 Pending**
+source commits, backed by **81 source-attributed Windows port commits**. Six
+pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
-toolchain adjustments, and deletion of unused Apple asset-catalog resources.
+toolchain adjustments, deletion of unused Apple asset-catalog resources, and
+slot-only updates to eight older theme bundles not shipped by Windows.
 These counts do not imply that the remaining changes have been fully assessed.
 
 Still pending are the desktop status bar and follow-ups, the image-cache/thumbnail
-discovery/downloading rewrite, appearance settings, remaining navigation/scroll
-fixes, primary-media placement and versioned theme-template selection, publisher
-image deduplication, and assessment of iPhone/iPad-specific changes. The bundled
-`template7.3.html` files are shipped but are not yet selected by the theme loader.
+finder/storage/downloading rewrite, shared local-image routing, appearance
+settings, remaining navigation/scroll fixes, detector-equivalent plain-text link
+recognition, and assessment of iPhone/iPad-specific changes.
 
 Attribution correction: Windows commit `dd3c573` records an erroneous source
 trailer, `9b103e929b3580ed0f9fef2de4a9d7303992ebfa`. The correct FreshRSS source is
@@ -64,12 +79,17 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The x64 Windows application builds with zero warnings/errors. Affected remote
-account and OPML paths pass 216 tests; the remote-account compatibility suite
-passes 47, article storage passes 100, RSS/Atom parsing passes 93, and NewsBlur
-models pass 11. New regressions were checked against pre-port behavior, including
-an exact restoration of the original shared remote adapter that loses thumbnails
-and media types; the new synchronization assertions fail without those edits.
+The x64 Windows application builds with zero warnings/errors. The complete parser
+suite passes 532 tests, and the shared application suite passes 444. Earlier
+related checks covered remote-account synchronization, OPML autosave, attachment
+and thumbnail storage/migration, and NewsBlur model decoding.
+
+New regressions were checked against pre-port behavior. Controls include lazy
+image sources, tracking names, responsive-image choice, CSS-hidden images,
+primary media, short untitled posts, versioned templates, and publisher duplicate
+images. Exact restorations of the original shared remote adapter and enclosure
+URL resolver proved the new metadata and protocol-relative-image assertions fail
+without their corresponding Windows adaptations.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
@@ -112,6 +132,10 @@ Theme authors can keep a legacy template for older NetNewsWire releases and put
 the new media slots in the versioned template. Windows continues to accept
 `Info.json` as an alternative to `Info.plist`; optional Apple Finder metadata is
 not used by the Windows reader.
+
+The document base is the extracted-content URL or article link, falling back to
+the feed's home page and then its feed URL. Relative URLs resolve against that
+base, so a template must not assume `document.baseURI` identifies an article.
 
 | Template slot | Rendered content |
 |---|---|
