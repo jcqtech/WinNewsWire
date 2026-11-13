@@ -7,6 +7,7 @@ public enum ThumbnailMode { Small, Large }
 
 public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
 {
+    private const int MaximumCachedArticleCount = 20_000;
     private readonly ImageMetadataDatabase _database = database ?? throw new ArgumentNullException(nameof(database));
     private readonly object _gate = new();
     private readonly Dictionary<string, IReadOnlyList<string>> _htmlUrls = new(StringComparer.Ordinal);
@@ -32,6 +33,7 @@ public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
         Article[] pending;
         lock (_gate)
         {
+            if (_htmlUrls.Count > MaximumCachedArticleCount) _htmlUrls.Clear();
             pending = articles.DistinctBy(article => article.ArticleID)
                 .Where(article => !_htmlUrls.ContainsKey(article.ArticleID) && !_discovering.Contains(article.ArticleID)
                     && ProvidedThumbnailUrl(article, ThumbnailMode.Small) is null).ToArray();

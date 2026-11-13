@@ -109,6 +109,25 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
+    public async Task DiscoveryReloadsPositiveAndNegativeResultsAfterTheCombinedCacheExceedsItsLimit()
+    {
+        using var database = new ImageMetadataDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        var articles = Enumerable.Range(0, 20_001).Select(index => Article(index.ToString(),
+            html: index == 0 ? "<img src='/original.jpg'>" : "<p>No photo.</p>")).ToArray();
+        await finder.DiscoverThumbnailUrlsAsync(articles);
+        await database.SaveArticleThumbnailsAsync([
+            new("0", ["https://example.com/reloaded.jpg"]),
+            new("1", ["https://example.com/new-photo.jpg"])
+        ]);
+        Assert.Equal("https://example.com/original.jpg", finder.ThumbnailUrl(articles[0], ThumbnailMode.Small));
+        Assert.Null(finder.ThumbnailUrl(articles[1], ThumbnailMode.Small));
+        await finder.DiscoverThumbnailUrlsAsync(articles.Take(2));
+        Assert.Equal("https://example.com/reloaded.jpg", finder.ThumbnailUrl(articles[0], ThumbnailMode.Small));
+        Assert.Equal("https://example.com/new-photo.jpg", finder.ThumbnailUrl(articles[1], ThumbnailMode.Small));
+    }
+
+    [Fact]
     public async Task CanceledDiscoveryLeavesArticlesEligibleForRetry()
     {
         using var database = new ImageMetadataDatabase(":memory:");
