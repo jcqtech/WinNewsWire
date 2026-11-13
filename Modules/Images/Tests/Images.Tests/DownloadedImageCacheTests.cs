@@ -156,6 +156,68 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Theory]
+    [InlineData(429, true)]
+    [InlineData(503, true)]
+    [InlineData(408, false)]
+    [InlineData(500, false)]
+    public async Task TransientRevalidationResponsesApplyTheSharedHostRetryPolicy(int status, bool pausesHost)
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            int count = Interlocked.Increment(ref requests);
+            var response = ValidatedResponse(count == 2 ? (HttpStatusCode)status : HttpStatusCode.OK, Fixture.Image);
+            if (count == 2) response.Headers.TryAddWithoutValidation("Retry-After", "120");
+            return Task.FromResult(response);
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
+        await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, requests);
+        Assert.False(fixture.Database.RecentlyFailed(Url("icon")));
+        Assert.Equal(Fixture.Image, File.ReadAllBytes(fixture.PathFor("icon")));
+        Assert.Equal(!pausesHost, await fixture.FetchAsync(cache, "peer") is not null);
+        if (pausesHost)
+        {
+            fixture.Clock.Advance(TimeSpan.FromSeconds(119));
+            Assert.Null(await fixture.FetchAsync(cache, "peer"));
+            Assert.Equal(2, requests);
+            fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+            Assert.NotNull(await fixture.FetchAsync(cache, "peer"));
+        }
+        Assert.Equal(3, requests);
+    }
+
+    [Fact]
+    public async Task ExistingHostPauseSkipsDueRevalidationWithoutMovingItsNextCheck()
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((request, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            return Task.FromResult(ValidatedResponse(request.RequestUri!.AbsolutePath == "/retry.png"
+                ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK, Fixture.Image));
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
+        var due = Assert.IsType<DownloadedImageValidation>(
+            await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon"))).NextCheck;
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
+        await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, requests);
+        Assert.Equal(due, (await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")))?.NextCheck);
+        fixture.Clock.Advance(TimeSpan.FromDays(1));
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
+        await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(3, requests);
+        Assert.True((await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")))?.NextCheck > fixture.Clock.GetUtcNow());
+    }
+
+    [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
     public async Task ThumbnailReadsAndBlockedNetworksDoNotRevalidate(bool checksForUpdates, bool networkAllowed)

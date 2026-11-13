@@ -200,7 +200,8 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         try
         {
             var validation = await _database.FetchDownloadedImageValidationAsync(url).ConfigureAwait(false);
-            if (validation is null || validation.NextCheck > _clock.GetUtcNow() || !_networkAllowsUpdates()) return;
+            if (validation is null || validation.NextCheck > _clock.GetUtcNow()
+                || !_networkAllowsUpdates() || _downloads.IsWaitingToRetry(url)) return;
             ct.ThrowIfCancellationRequested();
             lock (_backgroundGate) _revalidatingImages[url] = _revalidatingImages.GetValueOrDefault(url) + 1;
             inUse = true;
@@ -221,6 +222,8 @@ public sealed class DownloadedImageCache : IAsyncDisposable
                 DownloadedImageChanged?.Invoke(this, url);
                 return;
             }
+            if (ImageResourceDownloader.IsTransientStatus((int)response.StatusCode))
+                _downloads.NoteTransientFailure(url, response.RetryAfter, (int)response.StatusCode);
             if (!response.NotModified)
                 Trace.TraceWarning($"Image revalidation for {url} returned HTTP {(int)response.StatusCode}; keeping the cached image.");
             await _database.SaveDownloadedImageNextCheckAsync(url,

@@ -208,7 +208,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         if (!response.Success || response.Data is not { Length: > 0 } bytes)
         {
-            bool transient = (int)response.StatusCode is >= 500 and <= 599 or 408 or 429;
+            bool transient = IsTransientStatus((int)response.StatusCode);
             _log.DidFail(activity, new HttpRequestException("Image request returned HTTP " + (int)response.StatusCode
                 + (response.Success ? " with no image bytes." : "."), null, response.StatusCode));
             if (transient) NoteTransientFailure(url, response.RetryAfter, (int)response.StatusCode);
@@ -402,7 +402,9 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
     }
 
-    private bool IsWaitingToRetry(string url)
+    internal static bool IsTransientStatus(int statusCode) => statusCode is >= 500 and <= 599 or 408 or 429;
+
+    internal bool IsWaitingToRetry(string url)
     {
         lock (_gate)
         {
@@ -412,7 +414,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
     }
 
-    private void NoteTransientFailure(string url, TimeSpan? retryAfter = null, int? statusCode = null)
+    internal void NoteTransientFailure(string url, TimeSpan? retryAfter = null, int? statusCode = null)
     {
         lock (_gate)
         {
