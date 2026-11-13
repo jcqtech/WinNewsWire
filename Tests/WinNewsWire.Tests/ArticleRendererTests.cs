@@ -85,6 +85,23 @@ public sealed class ArticleRendererTests
         Assert.DoesNotContain("thumbnail.jpg", ArticleRenderer.Render(article, theme: Theme()).Html);
     }
 
+    [Theory]
+    [InlineData("/lead.jpg", "https://example.com/lead.jpg")]
+    [InlineData("//cdn.example.net/lead.jpg", "https://cdn.example.net/lead.jpg")]
+    public void PrimaryImageResolvesRootAndProtocolRelativeUrls(string image, string expected)
+    {
+        var html = ArticleRenderer.Render(Article(image: image),
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.Contains("src=\"" + expected + "\"", html);
+    }
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("file:///C:/private/photo.jpg")]
+    public void PrimaryMediaDoesNotGenerateUnsafeImageUrls(string image)
+        => Assert.Equal("|<p>Body</p>|", ArticleRenderer.Render(Article(image: image),
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html);
+
     [Fact]
     public void ShortUntitledPostsPlaceLeadImagesAfterTheirText()
     {
