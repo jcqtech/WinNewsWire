@@ -125,10 +125,7 @@ public sealed partial class MainContent
             RefreshTimelineThumbnail((ThumbnailView)element));
         _timelineThumbnails.Add(view, new(callback));
         if (view.Parent is Grid grid && grid.Children.OfType<StackPanel>().FirstOrDefault() is { } text)
-        {
             text.SizeChanged += ThumbnailTextSizeChanged;
-            grid.SizeChanged += ThumbnailRowSizeChanged;
-        }
         RefreshTimelineThumbnail(view);
         QueueVisibleThumbnailRefresh();
     }
@@ -145,10 +142,7 @@ public sealed partial class MainContent
         binding.Request?.Dispose();
         view.UnregisterPropertyChangedCallback(FrameworkElement.TagProperty, binding.TagCallback);
         if (view.Parent is Grid grid && grid.Children.OfType<StackPanel>().FirstOrDefault() is { } text)
-        {
             text.SizeChanged -= ThumbnailTextSizeChanged;
-            grid.SizeChanged -= ThumbnailRowSizeChanged;
-        }
         view.ImageSource = null;
         view.Visibility = Visibility.Collapsed;
     }
@@ -233,14 +227,16 @@ public sealed partial class MainContent
     {
         if (view.Visibility != Visibility.Visible || view.Parent is not Grid grid) return;
         bool large = TimelineThumbnailMode == ThumbnailMode.Large;
-        Grid.SetColumn(view, large ? 0 : 3);
-        Grid.SetColumnSpan(view, large ? 4 : 1);
+        int largeColumn = grid.Children.OfType<IconView>().Any(icon => icon.Visibility == Visibility.Visible) ? 1 : 2;
+        Grid.SetColumn(view, large ? largeColumn : 3);
+        Grid.SetColumnSpan(view, large ? 4 - largeColumn : 1);
         Grid.SetRow(view, large ? 1 : 0);
         view.Margin = large ? new Thickness(0, 8, 0, 0) : new Thickness(0);
+        view.Style = (Style)Resources[large ? "LargeTimelineThumbnailStyle" : "SmallTimelineThumbnailStyle"];
         if (large)
         {
             view.Width = double.NaN;
-            view.Height = Math.Floor(grid.ActualWidth / 2);
+            view.Height = 180;
             return;
         }
         double iconHeight = grid.Children.OfType<IconView>().FirstOrDefault()?.ActualHeight ?? 0;
@@ -252,12 +248,6 @@ public sealed partial class MainContent
     private void ThumbnailTextSizeChanged(object sender, SizeChangedEventArgs args)
     {
         if (sender is StackPanel { Parent: Grid grid })
-            foreach (var view in grid.Children.OfType<ThumbnailView>()) UpdateThumbnailSize(view);
-    }
-
-    private void ThumbnailRowSizeChanged(object sender, SizeChangedEventArgs args)
-    {
-        if (sender is Grid grid)
             foreach (var view in grid.Children.OfType<ThumbnailView>()) UpdateThumbnailSize(view);
     }
 

@@ -108,13 +108,13 @@ internal static partial class ParityProbe
             await WaitFor(() => Task.FromResult(image.ActualTheme == ElementTheme.Dark), "Dark thumbnail placeholder");
             await raster.RenderAsync(image, 80, 80);
             var dark = (await raster.GetPixelsAsync()).ToArray();
-            int center = (40 * raster.PixelWidth + 40) * 4;
+            int center = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
             Require(!light.AsSpan(center, 4).SequenceEqual(dark.AsSpan(center, 4)),
                 "The empty thumbnail placeholder did not follow its actual light/dark theme.");
             image.ImageSource = reloaded;
             await raster.RenderAsync(image, 80, 80);
             var pixels = (await raster.GetPixelsAsync()).ToArray();
-            int offset = (10 * raster.PixelWidth + 40) * 4;
+            int offset = (raster.PixelHeight / 8 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
             Require(pixels[offset] < 50 && pixels[offset + 1] < 50 && pixels[offset + 2] > 200 && pixels[offset + 3] == 255,
                 "The decoded thumbnail did not aspect-fill the square with visible red image pixels.");
             Require(pixels[3] == 0, "The thumbnail image was not clipped to its rounded corner.");
@@ -123,6 +123,45 @@ internal static partial class ParityProbe
             var reset = (await raster.GetPixelsAsync()).ToArray();
             Require(reset.AsSpan(center, 4).SequenceEqual(dark.AsSpan(center, 4)),
                 "Recycling the thumbnail view did not restore its placeholder.");
+
+            image.ImageSource = reloaded;
+            image.FitsImage = true;
+            await raster.RenderAsync(image, 80, 80);
+            var fitted = (await raster.GetPixelsAsync()).ToArray();
+            Require(fitted.AsSpan(offset, 4).SequenceEqual(dark.AsSpan(offset, 4))
+                && fitted[center + 2] > 200 && fitted[center] < 50,
+                "Fit mode cropped the wide image or removed its surrounding fill.");
+            image.FitsImage = false;
+            image.ImageSource = ThumbnailBands(portrait: true);
+            await raster.RenderAsync(image, 80, 80);
+            var portrait = (await raster.GetPixelsAsync()).ToArray();
+            Require(portrait[center + 2] > 200 && portrait[center] < 50,
+                "Portrait fill cropped from the center instead of preserving the top.");
+            image.FitsImage = true;
+            image.FillBrush = new SolidColorBrush(Microsoft.UI.Colors.Magenta);
+            await raster.RenderAsync(image, 80, 80);
+            var fullPortrait = (await raster.GetPixelsAsync()).ToArray();
+            int side = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 8) * 4;
+            int bottom = (raster.PixelHeight * 13 / 16 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+            Require(fullPortrait[side] > 200 && fullPortrait[side + 1] < 50 && fullPortrait[side + 2] > 200
+                && fullPortrait[offset + 2] > 200 && fullPortrait[offset] < 50
+                && fullPortrait[bottom] > 200 && fullPortrait[bottom + 2] < 50,
+                "Fit mode lost the custom fill or cropped the portrait's top/bottom.");
+            image.FitsImage = false;
+            image.ImageSource = ThumbnailBands(portrait: false);
+            await raster.RenderAsync(image, 80, 80);
+            var wide = (await raster.GetPixelsAsync()).ToArray();
+            Require(wide[center + 1] > 200 && wide[center] < 50 && wide[center + 2] < 50,
+                "Wide fill did not crop equally from both sides.");
+            image.Width = 160;
+            await WaitFor(() => Task.FromResult(image.ActualWidth == 160), "Resized thumbnail layout");
+            await raster.RenderAsync(image, 160, 80);
+            var resized = (await raster.GetPixelsAsync()).ToArray();
+            int left = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 16) * 4;
+            int right = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth * 15 / 16) * 4;
+            Require(resized[left + 2] > 200 && resized[left] < 50
+                && resized[right] > 200 && resized[right + 2] < 50 && resized[3] == 0,
+                "Resizing did not update the crop or preserve rounded clipping.");
         }
         finally { host.Children.Remove(image); }
 
@@ -148,8 +187,10 @@ internal static partial class ParityProbe
             TimelineRows = true, HTMLDiscovery = true, FailedCandidateFallback = true, FailureNotificationsOnUI = true, BoundedLookahead = true,
             RecycledRowRejectsLateImage = true, ColumnLayoutExcludesThumbnails = true,
             LargeRows = true, LargeModePersists = true, SharedModeNotificationsOnUI = true,
-            LargeMenuState = true, WidthDependentLargeRows = true, ImagelessRowsStayCompact = true,
-            ModeChangesPreserveSelection = true, FailureRefreshTargetsAffectedRows = true };
+            LargeMenuState = true, FixedHeightLargeRows = true, ImagelessRowsStayCompact = true,
+            ModeChangesPreserveSelection = true, FailureRefreshTargetsAffectedRows = true,
+            WholeImageFit = true, CustomLetterboxFill = true, TopAlignedPortraitCrop = true,
+            CenteredWideCrop = true, CropUpdatesOnResize = true, LargeImageAlignsWithIconOrText = true };
     }
 
     private static async Task CheckTimelineThumbnailsAsync(MainWindow window, ArticleThumbnailService service,
@@ -275,7 +316,8 @@ internal static partial class ParityProbe
                 "Large-thumbnail mode was not persisted or a peer notification ran off the UI thread.");
             await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>().Any(view =>
                 view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && Grid.GetRow(view) == 1
-                && Grid.GetColumnSpan(view) == 4 && view.ActualHeight > 76 && view.ImageSource is not null
+                && Grid.GetColumn(view) == 1 && Grid.GetColumnSpan(view) == 3 && view.ActualHeight == 180
+                && view.FitsImage && view.ImageSource is not null
                 && !ReferenceEquals(view.ImageSource, originalSmall))), "Large thumbnail below row text");
             Require(ReferenceEquals(model.SelectedArticle, rows[0]), "Changing thumbnail mode lost article selection.");
             var largeView = Descendants(list).OfType<ThumbnailView>().Single(view =>
@@ -285,8 +327,23 @@ internal static partial class ParityProbe
             try
             {
                 largeRow.Width = 300;
-                await WaitFor(() => Task.FromResult(Math.Abs(largeView.ActualWidth - 300) < 1
-                    && Math.Abs(largeView.ActualHeight - 150) < 1), "Large thumbnail responds to row width");
+                var icon = largeRow.Children.OfType<IconView>().Single();
+                await WaitFor(() => Task.FromResult(Math.Abs(largeView.ActualWidth - 278) < 1
+                    && largeView.ActualHeight == 180
+                    && Math.Abs(largeView.TransformToVisual(largeRow).TransformPoint(new(0, 0)).X
+                        - icon.TransformToVisual(largeRow).TransformPoint(new(0, 0)).X) < 1),
+                    "Large thumbnail keeps fixed height and aligns with the icon after resizing");
+                var previousIconVisibility = icon.Visibility;
+                try
+                {
+                    icon.Visibility = Visibility.Collapsed;
+                    var text = largeRow.Children.OfType<StackPanel>().Single();
+                    await WaitFor(() => Task.FromResult(Grid.GetColumn(largeView) == 2
+                        && Math.Abs(largeView.TransformToVisual(largeRow).TransformPoint(new(0, 0)).X
+                            - text.TransformToVisual(largeRow).TransformPoint(new(0, 0)).X) < 1),
+                        "Large thumbnail aligns with text without an icon");
+                }
+                finally { icon.Visibility = previousIconVisibility; }
             }
             finally { largeRow.Width = previousWidth; }
 
@@ -318,6 +375,28 @@ internal static partial class ParityProbe
             model.IsUnifiedLayout = previousUnified;
             content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
         }
+    }
+
+    private static WriteableBitmap ThumbnailBands(bool portrait)
+    {
+        int width = portrait ? 40 : 120, height = portrait ? 120 : 40;
+        var bitmap = new WriteableBitmap(width, height);
+        var pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+            {
+                int offset = (y * width + x) * 4;
+                bool red = portrait ? y < 40 : x < 40;
+                bool green = !portrait && x is >= 40 and < 80;
+                pixels[offset] = !red && !green ? (byte)255 : (byte)0;
+                pixels[offset + 1] = green ? (byte)255 : (byte)0;
+                pixels[offset + 2] = red ? (byte)255 : (byte)0;
+                pixels[offset + 3] = 255;
+            }
+        using var buffer = bitmap.PixelBuffer.AsStream();
+        buffer.Write(pixels);
+        bitmap.Invalidate();
+        return bitmap;
     }
 
     private static byte[] ThumbnailBitmap()

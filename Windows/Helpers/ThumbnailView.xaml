@@ -3,13 +3,23 @@
     x:Name="Root"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:WinNewsWire.Helpers"
     IsHitTestVisible="False"
     AutomationProperties.AccessibilityView="Raw">
+    <UserControl.Style>
+        <Style TargetType="local:ThumbnailView">
+            <Setter Property="FillBrush" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
+        </Style>
+    </UserControl.Style>
     <Border CornerRadius="{Binding CornerRadius, ElementName=Root}">
         <Grid>
-            <Border x:Name="Placeholder" Background="{ThemeResource ControlAltFillColorTertiaryBrush}" />
-            <Image Source="{Binding ImageSource, ElementName=Root}" Stretch="UniformToFill"
-                   AutomationProperties.AccessibilityView="Raw" />
+            <Border x:Name="Placeholder" Background="{Binding FillBrush, ElementName=Root}" />
+            <Border>
+                <Border.Background>
+                    <ImageBrush x:Name="ThumbnailBrush" ImageSource="{Binding ImageSource, ElementName=Root}"
+                                Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Top" />
+                </Border.Background>
+            </Border>
         </Grid>
     </Border>
 </UserControl>
