@@ -5,27 +5,18 @@ using System.Runtime.Versioning;
 
 namespace WinNewsWire.Core;
 
-public enum ScaledImageFormat { Png, Jpeg }
-
 /// <summary>Windows Imaging Component adapter for RSImage.scaledImageData.</summary>
 [SupportedOSPlatform("windows")]
 public static partial class WindowsImage
 {
     private static readonly Guid PngFormat = new("1b7cfaf4-713f-473c-bbcd-6137425faeaf");
-    private static readonly Guid JpegFormat = new("19e4a5aa-5662-4fc5-a0c0-1758028e1057");
-    private static readonly Guid Bgr24 = new("6fddc324-4e03-4bfe-b185-3d77768dc90c");
     private static readonly Guid Bgra32 = new("6fddc324-4e03-4bfe-b185-3d77768dc90f");
     private static readonly Guid PremultipliedBgra32 = new("6fddc324-4e03-4bfe-b185-3d77768dc910");
 
-    public static byte[] ScaledImageData(byte[] data, int maxPixelSize,
-        ScaledImageFormat format = ScaledImageFormat.Png, double jpegQuality = 0.8)
+    public static byte[] ScaledImageData(byte[] data, int maxPixelSize)
     {
         ArgumentNullException.ThrowIfNull(data);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPixelSize);
-        if (format is not (ScaledImageFormat.Png or ScaledImageFormat.Jpeg))
-            throw new ArgumentOutOfRangeException(nameof(format));
-        if (format == ScaledImageFormat.Jpeg && (!double.IsFinite(jpegQuality) || jpegQuality is < 0 or > 1))
-            throw new ArgumentOutOfRangeException(nameof(jpegQuality));
         if (data.Length == 0) throw new InvalidDataException("The image is empty.");
         try
         {
@@ -67,8 +58,7 @@ public static partial class WindowsImage
                 rotator.Initialize(source, transform);
                 source = rotator;
             }
-            bool jpeg = format == ScaledImageFormat.Jpeg && !HasAlphaChannel(factory, frame, resources);
-            return EncodeImage(factory, source, jpeg ? jpegQuality : null, resources);
+            return EncodeImage(factory, source, resources);
         }
         catch (COMException error) when (IsImageError(error.HResult))
         {
@@ -126,15 +116,6 @@ public static partial class WindowsImage
         }
         if (largestDimension == 0) throw new InvalidDataException("The image has no decodable frames.");
         return (largestIndex, largestWidth, largestHeight);
-    }
-
-    private static bool HasAlphaChannel(IWICImagingFactory factory, IWICBitmapSource source, ComResources resources)
-    {
-        source.GetPixelFormat(out var format);
-        factory.CreateComponentInfo(ref format, out var info);
-        resources.Add(info);
-        info.SupportsTransparency(out bool alpha);
-        return alpha;
     }
 
     private static bool IsImageError(int error)
@@ -216,14 +197,14 @@ public static partial class WindowsImage
         return 0;
     }
 
-    private static byte[] EncodeImage(IWICImagingFactory factory, IWICBitmapSource source, double? jpegQuality, ComResources resources)
+    private static byte[] EncodeImage(IWICImagingFactory factory, IWICBitmapSource source, ComResources resources)
     {
-        var pixelFormat = jpegQuality.HasValue ? Bgr24 : Bgra32;
+        var pixelFormat = Bgra32;
         source = ConvertPixels(factory, source, pixelFormat, resources);
         source.GetSize(out uint width, out uint height);
         CreateStreamOnHGlobal(IntPtr.Zero, true, out var output);
         resources.Add(output);
-        var format = jpegQuality.HasValue ? JpegFormat : PngFormat;
+        var format = PngFormat;
         factory.CreateEncoder(ref format, IntPtr.Zero, out var encoder);
         resources.Add(encoder);
         encoder.Initialize(output, 2);
@@ -231,12 +212,6 @@ public static partial class WindowsImage
         resources.Add(frame);
         if (options is null) throw new InvalidDataException("The image encoder did not provide its options.");
         resources.Add(options);
-        if (jpegQuality is { } quality)
-        {
-            var property = new PropertyBagProperty { Name = "ImageQuality", VariantType = 4 };
-            object value = (float)quality;
-            options.Write(1, ref property, ref value);
-        }
         frame.Initialize(options);
         frame.SetSize(width, height);
         frame.SetPixelFormat(ref pixelFormat);

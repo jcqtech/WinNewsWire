@@ -8,7 +8,7 @@ using ActivityKind = WinNewsWire.ActivityLog.ActivityKind;
 namespace WinNewsWire.Images;
 
 internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransient = false, long? RejectedByteCount = null);
-internal sealed record ImageResourceConfiguration(int MaxPixelSize, ScaledImageFormat Format = ScaledImageFormat.Png,
+internal sealed record ImageResourceConfiguration(int MaxPixelSize,
     long MemoryCacheByteLimit = 0, ThumbnailTaskQueue? DownloadQueue = null,
     Func<bool>? NetworkAllowsDownloads = null,
     bool StoresSourceData = false);
@@ -29,7 +29,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly SemaphoreSlim? _sourceDiskGate;
     private readonly Func<string, ImageResourceRequest, Task>? _sourceWasRead;
     private readonly Func<string, long, Task>? _sourceWasSaved;
-    private string ScaledCopySuffix => FormattableString.Invariant($"{_configuration.MaxPixelSize}-{_configuration.Format}");
+    private string ScaledCopySuffix => FormattableString.Invariant($"{_configuration.MaxPixelSize}-Png");
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, Task<ImageResourceResult>> _pending = new(StringComparer.Ordinal);
@@ -146,7 +146,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             _ = WindowsImage.LargestFramePixelSize(data);
             return data;
         }
-        return WindowsImage.ScaledImageData(data, _configuration.MaxPixelSize, _configuration.Format);
+        return WindowsImage.ScaledImageData(data, _configuration.MaxPixelSize);
     }
 
     private async Task<ImageResourceResult> DownloadImageAsync(string url, CancellationToken ct, ImageResourceRequest request)

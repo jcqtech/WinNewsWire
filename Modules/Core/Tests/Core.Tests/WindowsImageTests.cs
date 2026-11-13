@@ -39,33 +39,20 @@ public sealed class WindowsImageTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void JpegTargetKeepsAlphaChannelImagesAsPng(bool alphaChannel)
+    public void LargeImagesWithOrWithoutAlphaAreResizedToPng(bool alphaChannel)
     {
         var data = Png(2000, 1000, Blue, alphaChannel);
-        var scaled = WindowsImage.ScaledImageData(data, 512, ScaledImageFormat.Jpeg, 0.8);
+        var scaled = WindowsImage.ScaledImageData(data, 512);
         Assert.Equal((512u, 256u), WindowsImage.LargestFramePixelSize(scaled));
-        if (alphaChannel)
-            Assert.Equal(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, scaled[..8]);
-        else
-        {
-            Assert.Equal(new byte[] { 255, 216 }, scaled[..2]);
-            Assert.Equal(ImageLuminanceType.Dark, WindowsImage.ClassifyLuminance(scaled));
-        }
+        Assert.Equal(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, scaled[..8]);
+        Assert.Equal(ImageLuminanceType.Dark, WindowsImage.ClassifyLuminance(scaled));
     }
 
     [Fact]
-    public void JpegTargetDoesNotReencodeSingleFramesAlreadyWithinTheBound()
+    public void OpaqueSingleFramesAlreadyWithinTheBoundKeepTheirOriginalBytes()
     {
         var data = Png(64, 32, Red, alphaChannel: false);
-        Assert.Same(data, WindowsImage.ScaledImageData(data, 64, ScaledImageFormat.Jpeg));
-    }
-
-    [Fact]
-    public void JpegTargetRetainsActualTransparencyAndColor()
-    {
-        byte[] translucentGreen = [0, 255, 0, 128];
-        var image = ReadPng(WindowsImage.ScaledImageData(Png(128, 64, translucentGreen), 48, ScaledImageFormat.Jpeg));
-        Assert.All(image.Pixels.Chunk(4), pixel => Assert.Equal(translucentGreen, pixel));
+        Assert.Same(data, WindowsImage.ScaledImageData(data, 64));
     }
 
     [Fact]
@@ -85,15 +72,6 @@ public sealed class WindowsImageTests
         Assert.Equal((4096u, 2048u), size);
         Assert.InRange(allocated, 0, 1_048_575);
     }
-
-    [Theory]
-    [InlineData(-0.1)]
-    [InlineData(1.1)]
-    [InlineData(double.NaN)]
-    [InlineData(double.PositiveInfinity)]
-    public void InvalidJpegQualityIsRejected(double quality)
-        => Assert.Throws<ArgumentOutOfRangeException>(() =>
-            WindowsImage.ScaledImageData(Png(128, 64, Red), 48, ScaledImageFormat.Jpeg, quality));
 
     [Theory]
     [InlineData(192, 96, 96, 48)]
