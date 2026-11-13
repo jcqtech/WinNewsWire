@@ -12,6 +12,7 @@ public sealed class ImageMetadataDatabase : IDisposable
     public static bool IsSharedCreated => SharedDatabase.IsValueCreated;
     public static readonly TimeSpan FailureRetry = TimeSpan.FromDays(5);
     public static readonly TimeSpan FailureRetention = TimeSpan.FromDays(33);
+    private const string InsignificantDimensionsKeyPrefix = "insignificantDimensions:";
     private readonly DatabaseQueue _queue;
     private readonly TimeProvider _clock;
     private volatile bool _disposed;
@@ -68,6 +69,15 @@ public sealed class ImageMetadataDatabase : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return _failures.TryGetValue(url, out var date) && _clock.GetUtcNow() - date < FailureRetry;
+    }
+
+    public bool RecentlyLackedSignificantDimensions(string url)
+        => RecentlyFailed(InsignificantDimensionsKeyPrefix + url);
+
+    public Task RecordInsignificantDimensionsAsync(string url)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(url);
+        return RecordFailureAsync(InsignificantDimensionsKeyPrefix + url, null);
     }
 
     public Task SaveHomePageFaviconAsync(string homePageUrl, string? faviconUrl)

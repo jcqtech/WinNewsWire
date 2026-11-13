@@ -68,6 +68,25 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     }
 
     [Fact]
+    public async Task InsignificantDimensionsPersistSeparatelyFromDownloadFailuresAndExpire()
+    {
+        const string url = "https://site.test/tiny.png";
+        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+        {
+            await database.RecordInsignificantDimensionsAsync(url);
+            Assert.False(database.RecentlyFailed(url));
+        }
+        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        Assert.True(reopened.RecentlyLackedSignificantDimensions(url));
+        Assert.False(reopened.RecentlyFailed(url));
+        await reopened.RecordFailureAsync(url, 404);
+        await reopened.ClearFailureAsync(url);
+        Assert.True(reopened.RecentlyLackedSignificantDimensions(url));
+        _clock.Advance(ImageMetadataDatabase.FailureRetry);
+        Assert.False(reopened.RecentlyLackedSignificantDimensions(url));
+    }
+
+    [Fact]
     public async Task StartupDeletesFailuresOnlyAfterThirtyThreeDays()
     {
         using (var database = new ImageMetadataDatabase(DatabasePath, _clock)) await database.RecordFailureAsync("https://site.test/icon", 404);

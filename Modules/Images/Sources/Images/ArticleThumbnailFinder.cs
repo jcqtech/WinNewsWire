@@ -81,7 +81,8 @@ public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
         return candidates.FirstOrDefault(url => url is not null && IsUsable(url));
     }
 
-    private bool IsUsable(string url) => SignificantImageFilter.IsSignificant(url, null, null) && !_database.RecentlyFailed(url);
+    private bool IsUsable(string url) => SignificantImageFilter.IsSignificant(url, null, null)
+        && !_database.RecentlyFailed(url) && !_database.RecentlyLackedSignificantDimensions(url);
 
     private static string? NormalizedUrl(string? value)
         => string.IsNullOrEmpty(value) ? null : Uri.TryCreate(value, UriKind.Absolute, out var url) ? url.AbsoluteUri : value;

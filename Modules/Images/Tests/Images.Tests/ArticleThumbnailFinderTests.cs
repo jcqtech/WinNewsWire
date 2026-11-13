@@ -37,6 +37,17 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
+    public async Task InsignificantThumbnailFallsThroughWithoutHidingItsFeedIcon()
+    {
+        using var database = new ImageMetadataDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        var article = Article(thumbnail: "https://example.com/icon.png", image: "https://example.com/photo.jpg");
+        await database.RecordInsignificantDimensionsAsync(article.RawThumbnailLink!);
+        Assert.False(database.RecentlyFailed(article.RawThumbnailLink!));
+        Assert.Equal(article.RawImageLink, finder.ThumbnailUrl(article, ThumbnailMode.Small));
+    }
+
+    [Fact]
     public async Task HtmlDiscoveryPersistsPositiveAndNegativeResultsAndNotifiesOnlyFoundArticles()
     {
         using var database = new ImageMetadataDatabase(":memory:");
