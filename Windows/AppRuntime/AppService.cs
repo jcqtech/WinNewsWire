@@ -129,7 +129,7 @@ public sealed partial class AppService
             await _refreshTimer.DisposeAsync();
             await _syncTimer.DisposeAsync();
             if (HTMLMetadata.HtmlMetadataDatabase.IsSharedCreated) HTMLMetadata.HtmlMetadataDatabase.Shared.Dispose();
-            if (Images.ImageMetadataDatabase.IsSharedCreated) Images.ImageMetadataDatabase.Shared.Dispose();
+            if (Images.ImageDatabase.IsSharedCreated) Images.ImageDatabase.Shared.Dispose();
         }
     }
 
@@ -210,7 +210,7 @@ public sealed partial class AppService
         await ActivityLogger.Shared.LogActivityAsync(ActivityOwner.App, ActivityKind.VacuumDatabase,
             () => HTMLMetadata.HtmlMetadataDatabase.Shared.VacuumAsync(ct), detail: "HTMLMetadata.db");
         await ActivityLogger.Shared.LogActivityAsync(ActivityOwner.App, ActivityKind.VacuumDatabase,
-            () => Images.ImageMetadataDatabase.Shared.VacuumAsync(ct), detail: "ImageMetadata.db");
+            () => Images.ImageDatabase.Shared.VacuumAsync(ct), detail: "ImageMetadata.db");
     }
 
     private void OnDefaultsChanged(object? sender, string key)

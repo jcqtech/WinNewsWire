@@ -5,10 +5,10 @@ namespace WinNewsWire.Images;
 
 public enum ThumbnailMode { Small, Large }
 
-public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
+public sealed class ArticleThumbnailFinder(ImageDatabase database)
 {
     private const int MaximumCachedArticleCount = 20_000;
-    private readonly ImageMetadataDatabase _database = database ?? throw new ArgumentNullException(nameof(database));
+    private readonly ImageDatabase _database = database ?? throw new ArgumentNullException(nameof(database));
     private readonly object _gate = new();
     private readonly Dictionary<string, IReadOnlyList<string>> _htmlUrls = new(StringComparer.Ordinal);
     private readonly HashSet<string> _discovering = new(StringComparer.Ordinal);

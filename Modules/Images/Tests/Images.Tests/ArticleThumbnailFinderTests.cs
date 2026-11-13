@@ -10,7 +10,7 @@ public sealed class ArticleThumbnailFinderTests
     [InlineData(ThumbnailMode.Large, "image.jpg")]
     public void ModesUseTheirOwnProvidedImagePriority(ThumbnailMode mode, string expected)
     {
-        using var database = new ImageMetadataDatabase(":memory:");
+        using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var image = Attachment.Create(null, "https://example.com/attachment.jpg", "image/jpeg",
             null, null, null, 1200, 800)!;
@@ -22,7 +22,7 @@ public sealed class ArticleThumbnailFinderTests
     [Fact]
     public async Task FailedProvidedImagesFallThroughToSignificantAttachments()
     {
-        using var database = new ImageMetadataDatabase(":memory:");
+        using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var small = Attachment.Create(null, "https://example.com/tiny.jpg", "image/jpeg",
             null, null, null, 20, 20)!;
@@ -39,7 +39,7 @@ public sealed class ArticleThumbnailFinderTests
     [Fact]
     public async Task InsignificantThumbnailFallsThroughWithoutHidingItsFeedIcon()
     {
-        using var database = new ImageMetadataDatabase(":memory:");
+        using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var article = Article(thumbnail: "https://example.com/icon.png", image: "https://example.com/photo.jpg");
         await database.SaveDownloadedImageAsync(new(article.RawThumbnailLink!, 1024, (48, 48), null));
@@ -50,7 +50,7 @@ public sealed class ArticleThumbnailFinderTests
     [Fact]
     public void DecodingFailuresFallThroughWithoutBecomingPersistentOrAffectingOtherFinders()
     {
-        using var database = new ImageMetadataDatabase(":memory:");
+        using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var article = Article(thumbnail: "https://example.com/icon.ico", image: "https://example.com/photo.jpg");
         finder.RecordDecodingFailure(article.RawThumbnailLink!);
@@ -63,7 +63,7 @@ public sealed class ArticleThumbnailFinderTests
     [Fact]
     public async Task HtmlDiscoveryPersistsPositiveAndNegativeResultsAndNotifiesOnlyFoundArticles()
     {
-        using var database = new ImageMetadataDatabase(":memory:");
+        using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var photo = Article(html: """
             <a href="https://twitter.com/intent/tweet"><img src="/share.jpg"></a>
@@ -94,7 +94,7 @@ public sealed class ArticleThumbnailFinderTests
     [Fact]
     public async Task DiscoveryKeepsOnlyThreeOrderedHtmlFallbacks()
     {
-        using var database = new ImageMetadataDatabase(":memory:");
+        using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var article = Article(html: string.Concat(Enumerable.Range(1, 4).Select(index => $"<img src='/photo{index}.jpg'>")));
         await finder.DiscoverThumbnailUrlsAsync([article]);
@@ -111,7 +111,7 @@ public sealed class ArticleThumbnailFinderTests
     [Fact]
     public async Task ArticlesWithoutHtmlDoNotLoadStaleDiscoveryRecordsOrPreventLaterDiscovery()
     {
-        using var database = new ImageMetadataDatabase(":memory:");
+        using var database = new ImageDatabase(":memory:");
         await database.SaveArticleThumbnailsAsync([new("1", ["https://example.com/previous.jpg"])]);
         var finder = new ArticleThumbnailFinder(database);
         foreach (var html in new string?[] { null, "" })
@@ -128,7 +128,7 @@ public sealed class ArticleThumbnailFinderTests
     [Fact]
     public async Task DiscoveryReloadsPositiveAndNegativeResultsAfterTheCombinedCacheExceedsItsLimit()
     {
-        using var database = new ImageMetadataDatabase(":memory:");
+        using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var articles = Enumerable.Range(0, 20_001).Select(index => Article(index.ToString(),
             html: index == 0 ? "<img src='/original.jpg'>" : "<p>No photo.</p>")).ToArray();
@@ -147,7 +147,7 @@ public sealed class ArticleThumbnailFinderTests
     [Fact]
     public async Task CanceledDiscoveryLeavesArticlesEligibleForRetry()
     {
-        using var database = new ImageMetadataDatabase(":memory:");
+        using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var article = Article(html: "<img src='/photo.jpg'>");
         using var cancellation = new CancellationTokenSource();

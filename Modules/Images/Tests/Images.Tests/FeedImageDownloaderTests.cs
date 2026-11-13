@@ -191,7 +191,7 @@ public sealed class FeedImageDownloaderTests
         Assert.Contains("HTTP 200", Assert.IsType<InvalidDataException>(failure.Error).Message);
         Assert.Null(await fixture.Images.FaviconAsync(source));
         Assert.Equal(1, calls);
-        fixture.Clock.Advance(ImageMetadataDatabase.FailureRetry);
+        fixture.Clock.Advance(ImageDatabase.FailureRetry);
         Assert.NotNull(await fixture.Images.FaviconAsync(source));
         Assert.Equal(2, calls);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(source.FaviconUrl!));
@@ -723,7 +723,7 @@ public sealed class FeedImageDownloaderTests
         private readonly int? _maxPixelSize;
         private readonly DownloadedImageCache _downloadedImages;
         public TestClock Clock { get; } = new();
-        public ImageMetadataDatabase ImageDatabase { get; }
+        public ImageDatabase ImageDatabase { get; }
         public HtmlMetadataDatabase HtmlDatabase { get; }
         public HtmlMetadataDownloader Metadata { get; }
         public FeedImageDownloader Images { get; private set; }

@@ -7,7 +7,7 @@ namespace WinNewsWire.Images;
 
 public sealed class ThumbnailDownloader : IAsyncDisposable
 {
-    private readonly ImageMetadataDatabase _database;
+    private readonly ImageDatabase _database;
     private readonly Func<bool> _networkAllowsDownloads;
     private readonly DownloadedImageCache _downloadedImages;
     private readonly bool _ownsDownloadedImages;
@@ -18,7 +18,7 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
     /// <summary>Raised on a worker after persisting a non-transient failure; UI subscribers must dispatch.</summary>
     public event EventHandler<string>? DownloadFailed;
 
-    public ThumbnailDownloader(ImageMetadataDatabase database, string cacheFolder, Func<bool> networkAllowsDownloads,
+    public ThumbnailDownloader(ImageDatabase database, string cacheFolder, Func<bool> networkAllowsDownloads,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null,
         DownloadedImageCache? downloadedImages = null)
     {

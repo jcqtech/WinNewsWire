@@ -12,7 +12,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
 {
     public const int MaxPixelSize = 1200;
     private readonly ImageResourceDownloader _downloads;
-    private readonly ImageMetadataDatabase _database;
+    private readonly ImageDatabase _database;
     private readonly BinaryDiskCache _diskCache;
     private readonly TimeProvider _clock;
     private readonly ByteLimit _limit;
@@ -39,7 +39,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         remove => _downloads.DownloadFailed -= value;
     }
 
-    public DownloadedImageCache(ImageMetadataDatabase database, string cacheFolder,
+    public DownloadedImageCache(ImageDatabase database, string cacheFolder,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null,
         Func<bool>? networkAllowsUpdates = null)
         : this(database, cacheFolder, 300L * 1024 * 1024, 1024L * 1024 * 1024,
@@ -47,7 +47,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     {
     }
 
-    internal DownloadedImageCache(ImageMetadataDatabase database, string cacheFolder,
+    internal DownloadedImageCache(ImageDatabase database, string cacheFolder,
         long maximumByteCount, long hardMaximumByteCount,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null,
         Func<bool>? networkAllowsUpdates = null)

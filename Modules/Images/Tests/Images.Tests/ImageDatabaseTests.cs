@@ -4,23 +4,23 @@ using Xunit;
 
 namespace WinNewsWire.Images.Tests;
 
-public sealed class ImageMetadataDatabaseTests : IDisposable
+public sealed class ImageDatabaseTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "image-metadata-" + Guid.NewGuid().ToString("N"));
     private readonly TestClock _clock = new();
     private string DatabasePath => Path.Combine(_directory, "ImageMetadata.db");
-    public ImageMetadataDatabaseTests() => Directory.CreateDirectory(_directory);
+    public ImageDatabaseTests() => Directory.CreateDirectory(_directory);
 
     [Fact]
     public async Task NativeTablesAndPositiveMappingsSurviveRestart()
     {
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+        using (var database = new ImageDatabase(DatabasePath, _clock))
         {
             await database.SaveHomePageFaviconAsync("https://site.test/", "https://site.test/favicon.png");
             await database.SaveFeedIconUrlAsync("https://site.test/feed", "https://site.test/feed.png");
             await database.RecordFailureAsync("https://site.test/broken", 404);
         }
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.Equal("https://site.test/favicon.png", reopened.FaviconUrl("https://site.test/"));
         Assert.Equal("https://site.test/feed.png", reopened.IconUrl("https://site.test/feed"));
         Assert.True(reopened.RecentlyFailed("https://site.test/broken"));
@@ -33,9 +33,9 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     [Fact]
     public async Task NegativeHomepageExpiresInMemoryAtFiveDays()
     {
-        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var database = new ImageDatabase(DatabasePath, _clock);
         await database.SaveHomePageFaviconAsync("https://site.test/", null);
-        _clock.Advance(ImageMetadataDatabase.FailureRetry - TimeSpan.FromSeconds(1));
+        _clock.Advance(ImageDatabase.FailureRetry - TimeSpan.FromSeconds(1));
         Assert.True(database.HomePageHasNoFavicon("https://site.test/"));
         _clock.Advance(TimeSpan.FromSeconds(1));
         Assert.False(database.HomePageHasNoFavicon("https://site.test/"));
@@ -47,18 +47,18 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     [Fact]
     public async Task ExpiredNegativeHomepageDoesNotReturnAfterRestart()
     {
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock)) await database.SaveHomePageFaviconAsync("https://site.test/", null);
-        _clock.Advance(ImageMetadataDatabase.FailureRetry);
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        using (var database = new ImageDatabase(DatabasePath, _clock)) await database.SaveHomePageFaviconAsync("https://site.test/", null);
+        _clock.Advance(ImageDatabase.FailureRetry);
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.False(reopened.HomePageHasNoFavicon("https://site.test/"));
     }
 
     [Fact]
     public async Task FailureRetryBoundaryAndExplicitClearAreDurable()
     {
-        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var database = new ImageDatabase(DatabasePath, _clock);
         await database.RecordFailureAsync("https://site.test/icon", null);
-        _clock.Advance(ImageMetadataDatabase.FailureRetry - TimeSpan.FromSeconds(1));
+        _clock.Advance(ImageDatabase.FailureRetry - TimeSpan.FromSeconds(1));
         Assert.True(database.RecentlyFailed("https://site.test/icon"));
         _clock.Advance(TimeSpan.FromSeconds(1));
         Assert.False(database.RecentlyFailed("https://site.test/icon"));
@@ -76,14 +76,14 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
         uint? width, uint? height, bool unsuitable)
     {
         const string url = "https://site.test/tiny.png";
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+        using (var database = new ImageDatabase(DatabasePath, _clock))
         {
             await database.SaveDownloadedImageAsync(new(url, 1024,
                 width is { } w && height is { } h ? (w, h) : null, null));
             Assert.False(database.RecentlyFailed(url));
         }
-        _clock.Advance(ImageMetadataDatabase.FailureRetention + TimeSpan.FromDays(1));
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        _clock.Advance(ImageDatabase.FailureRetention + TimeSpan.FromDays(1));
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.Equal(unsuitable, reopened.IsUnsuitableForThumbnail(url));
         Assert.False(reopened.RecentlyFailed(url));
         await reopened.RecordFailureAsync(url, 404);
@@ -91,7 +91,7 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
         Assert.Equal(unsuitable, reopened.IsUnsuitableForThumbnail(url));
         await reopened.SaveDownloadedImageAsync(new(url, 2048, (640, 480), null));
         Assert.False(reopened.IsUnsuitableForThumbnail(url));
-        using var refreshed = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var refreshed = new ImageDatabase(DatabasePath, _clock);
         Assert.False(refreshed.IsUnsuitableForThumbnail(url));
     }
 
@@ -99,7 +99,7 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     public async Task FailedDownloadedImageWritesKeepPersistedAndInMemorySuitability()
     {
         const string url = "https://site.test/tiny.png";
-        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var database = new ImageDatabase(DatabasePath, _clock);
         await database.SaveDownloadedImageAsync(new(url, 1024, (48, 48), null));
         using var connection = Open();
         using var command = connection.CreateCommand();
@@ -110,14 +110,14 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
         command.ExecuteNonQuery();
         await Assert.ThrowsAsync<SqliteException>(() => database.SaveDownloadedImageAsync(new(url, 2048, (640, 480), null)));
         Assert.True(database.IsUnsuitableForThumbnail(url));
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.True(reopened.IsUnsuitableForThumbnail(url));
     }
 
     [Fact]
     public async Task AccessDateUpdatesOrderUsageAndDeletionClearsSuitabilityAcrossBatches()
     {
-        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var database = new ImageDatabase(DatabasePath, _clock);
         var urls = Enumerable.Range(0, 501).Select(index => "https://site.test/" + index).ToArray();
         foreach (var url in urls) await database.SaveDownloadedImageAsync(new(url, 100, null, null));
         _clock.Advance(TimeSpan.FromDays(1));
@@ -128,14 +128,14 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
         await database.DeleteDownloadedImagesAsync(urls);
         Assert.Empty(await database.FetchDownloadedImageUsageByLeastRecentAccessAsync());
         Assert.All(urls, url => Assert.False(database.IsUnsuitableForThumbnail(url)));
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.Empty(await reopened.FetchDownloadedImageUsageByLeastRecentAccessAsync());
     }
 
     [Fact]
     public async Task FailedBatchedDeletionRollsBackEarlierRowsAndKeepsSuitability()
     {
-        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var database = new ImageDatabase(DatabasePath, _clock);
         var urls = Enumerable.Range(0, 501).Select(index => "https://site.test/" + index).ToArray();
         foreach (var url in urls) await database.SaveDownloadedImageAsync(new(url, 100, null, null));
         using var connection = Open();
@@ -163,13 +163,13 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
                 """;
             command.ExecuteNonQuery();
         }
-        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var database = new ImageDatabase(DatabasePath, _clock);
         var old = Assert.IsType<DownloadedImageValidation>(await database.FetchDownloadedImageValidationAsync("https://site.test/icon"));
         Assert.Equal(DateTimeOffset.UnixEpoch, old.NextCheck);
         Assert.Equal("\"old\"", old.ConditionalGet?.ETag);
         Assert.True(database.IsUnsuitableForThumbnail("https://site.test/icon"));
         await database.SaveDownloadedImageNextCheckAsync("https://site.test/icon", _clock.GetUtcNow().AddDays(3));
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.Equal(_clock.GetUtcNow().AddDays(3),
             (await reopened.FetchDownloadedImageValidationAsync("https://site.test/icon"))?.NextCheck);
     }
@@ -177,18 +177,18 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     [Fact]
     public async Task StartupDeletesFailuresOnlyAfterThirtyThreeDays()
     {
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock)) await database.RecordFailureAsync("https://site.test/icon", 404);
-        _clock.Advance(ImageMetadataDatabase.FailureRetention);
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock)) Assert.Equal(1L, FailureCount());
+        using (var database = new ImageDatabase(DatabasePath, _clock)) await database.RecordFailureAsync("https://site.test/icon", 404);
+        _clock.Advance(ImageDatabase.FailureRetention);
+        using (var database = new ImageDatabase(DatabasePath, _clock)) Assert.Equal(1L, FailureCount());
         _clock.Advance(TimeSpan.FromSeconds(1));
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.Equal(0L, FailureCount());
     }
 
     [Fact]
     public async Task FailedWritesLeaveThePreviousCacheEntryUntouched()
     {
-        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var database = new ImageDatabase(DatabasePath, _clock);
         await database.SaveHomePageFaviconAsync("https://site.test/", "old");
         using (var connection = Open())
         using (var command = connection.CreateCommand())
@@ -203,7 +203,7 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     [Fact]
     public async Task VacuumKeepsMappingsAndDisposedReadsFail()
     {
-        var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        var database = new ImageDatabase(DatabasePath, _clock);
         await database.SaveFeedIconUrlAsync("feed", "icon");
         await database.VacuumAsync();
         Assert.Equal("icon", database.IconUrl("feed"));
@@ -216,14 +216,14 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     public async Task StartupVacuumSharesNativeBookkeepingAndPreservesImageMappings()
     {
         var first = _clock.GetUtcNow();
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+        using (var database = new ImageDatabase(DatabasePath, _clock))
             await database.SaveFeedIconUrlAsync("feed", "icon");
         using (var connection = Open()) Assert.Equal(first, RSDatabaseInfoTable.LastVacuumDate(connection));
         _clock.Advance(TimeSpan.FromDays(13) - TimeSpan.FromSeconds(1));
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+        using (var database = new ImageDatabase(DatabasePath, _clock))
         using (var connection = Open()) Assert.Equal(first, RSDatabaseInfoTable.LastVacuumDate(connection));
         _clock.Advance(TimeSpan.FromSeconds(1));
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         using var saved = Open();
         Assert.Equal(_clock.GetUtcNow(), RSDatabaseInfoTable.LastVacuumDate(saved));
         Assert.Equal("icon", reopened.IconUrl("feed"));
@@ -236,9 +236,9 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
             .Select(index => new ArticleThumbnailRecord(index.ToString(), index % 2 == 0
                 ? [$"https://example.com/{index}.jpg", $"https://example.com/{index}-second.jpg"] : []))
             .ToArray();
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+        using (var database = new ImageDatabase(DatabasePath, _clock))
             await database.SaveArticleThumbnailsAsync(records);
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         var loaded = await reopened.FetchArticleThumbnailsAsync(records.Select(record => record.ArticleId).Append("missing"));
         Assert.Equal(records.Length, loaded.Count);
         Assert.True(records.ToHashSet().SetEquals(loaded));
@@ -247,20 +247,20 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     [Fact]
     public async Task StartupExpiresThumbnailResultsOnlyAfterThirtyThreeDays()
     {
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+        using (var database = new ImageDatabase(DatabasePath, _clock))
             await database.SaveArticleThumbnailsAsync([new("article", [])]);
-        _clock.Advance(ImageMetadataDatabase.FailureRetention);
-        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+        _clock.Advance(ImageDatabase.FailureRetention);
+        using (var database = new ImageDatabase(DatabasePath, _clock))
             Assert.Single(await database.FetchArticleThumbnailsAsync(["article"]));
         _clock.Advance(TimeSpan.FromSeconds(1));
-        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.Empty(await reopened.FetchArticleThumbnailsAsync(["article"]));
     }
 
     [Fact]
     public async Task FailedThumbnailBatchRollsBackEarlierRows()
     {
-        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        using var database = new ImageDatabase(DatabasePath, _clock);
         await database.SaveArticleThumbnailsAsync([new("existing", ["https://example.com/old.jpg"])]);
         using (var connection = Open())
         using (var command = connection.CreateCommand())

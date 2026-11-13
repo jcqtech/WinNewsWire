@@ -17,7 +17,7 @@ internal sealed record ImageResourceRequest(ActivityOwner Owner, ActivityKind Ki
 
 internal sealed class ImageResourceDownloader : IAsyncDisposable
 {
-    private readonly ImageMetadataDatabase _database;
+    private readonly ImageDatabase _database;
     private readonly BinaryDiskCache _diskCache;
     private readonly DownloadedImageCache? _sourceCache;
     private readonly ImageResourceConfiguration _configuration;
@@ -41,7 +41,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private Task? _shutdown;
     internal event EventHandler<string>? DownloadFailed;
 
-    internal ImageResourceDownloader(ImageMetadataDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
+    internal ImageResourceDownloader(ImageDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
         TimeProvider? clock = null, ActivityLogger? activityLog = null,
         DownloadedImageCache? sourceCache = null, SemaphoreSlim? sourceDiskGate = null,

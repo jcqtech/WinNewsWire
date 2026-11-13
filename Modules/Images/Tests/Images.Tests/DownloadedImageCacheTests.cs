@@ -342,7 +342,7 @@ public sealed class DownloadedImageCacheTests
         private readonly HttpClient _http;
         private readonly Downloader _downloader;
         internal TestClock Clock { get; } = new();
-        internal ImageMetadataDatabase Database { get; }
+        internal ImageDatabase Database { get; }
         internal bool UpdatesAllowed { get; set; } = true;
         internal string SourceDirectory => Path.Combine(_directory, "DownloadedImages");
         internal string PathFor(string name) => Path.Combine(SourceDirectory, Url(name).Md5Hex());

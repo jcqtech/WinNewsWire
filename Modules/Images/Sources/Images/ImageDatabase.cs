@@ -6,10 +6,10 @@ using WinNewsWire.Parsers;
 
 namespace WinNewsWire.Images;
 
-public sealed class ImageMetadataDatabase : IDisposable
+public sealed class ImageDatabase : IDisposable
 {
-    private static readonly Lazy<ImageMetadataDatabase> SharedDatabase = new(() => new(Path.Combine(AppConfig.DataDirectory, "ImageMetadata.db")));
-    public static ImageMetadataDatabase Shared => SharedDatabase.Value;
+    private static readonly Lazy<ImageDatabase> SharedDatabase = new(() => new(Path.Combine(AppConfig.DataDirectory, "ImageMetadata.db")));
+    public static ImageDatabase Shared => SharedDatabase.Value;
     public static bool IsSharedCreated => SharedDatabase.IsValueCreated;
     public static readonly TimeSpan FailureRetry = TimeSpan.FromDays(5);
     public static readonly TimeSpan FailureRetention = TimeSpan.FromDays(33);
@@ -22,7 +22,7 @@ public sealed class ImageMetadataDatabase : IDisposable
     private readonly ConcurrentDictionary<string, byte> _unsuitableThumbnails = new(StringComparer.Ordinal);
     public string DatabasePath { get; }
 
-    public ImageMetadataDatabase(string databasePath, TimeProvider? clock = null)
+    public ImageDatabase(string databasePath, TimeProvider? clock = null)
     {
         DatabasePath = databasePath;
         _clock = clock ?? TimeProvider.System;

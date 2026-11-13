@@ -16,7 +16,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
 {
     private static Func<bool> _sharedBackgroundNetworkPolicy = () => NetworkMonitor.IsAvailable;
     private static readonly Lazy<FeedImageDownloader> SharedDownloader = new(() =>
-        new(ImageMetadataDatabase.Shared, HtmlMetadataDownloader.Shared, AppConfig.CachesDirectory,
+        new(ImageDatabase.Shared, HtmlMetadataDownloader.Shared, AppConfig.CachesDirectory,
             networkAllowsUpdates: () => Volatile.Read(ref _sharedBackgroundNetworkPolicy)()));
     // Opening and maintaining the metadata databases must not happen on a UI caller's first image request.
     private static readonly Lazy<Task<FeedImageDownloader>> SharedInitialization = new(() => Task.Run(() => Shared));
@@ -50,7 +50,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
 
     private static readonly string[] IgnoredFeedIconHosts =
         ["propublica.org", "clubic.com", "comptoir-hardware.com", "cowcotland", "404media.co", "awfulannouncing.com", "michalzelazny.com"];
-    private readonly ImageMetadataDatabase _database;
+    private readonly ImageDatabase _database;
     private readonly HtmlMetadataDownloader _metadata;
     private readonly ImageResourceDownloader _favicons;
     private readonly ImageResourceDownloader _images;
@@ -62,7 +62,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private bool _stopping;
     private Task? _shutdown;
 
-    public FeedImageDownloader(ImageMetadataDatabase database, HtmlMetadataDownloader metadata, string cacheFolder,
+    public FeedImageDownloader(ImageDatabase database, HtmlMetadataDownloader metadata, string cacheFolder,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null, int? maxPixelSize = null,
         DownloadedImageCache? downloadedImages = null,
         Func<bool>? networkAllowsUpdates = null)

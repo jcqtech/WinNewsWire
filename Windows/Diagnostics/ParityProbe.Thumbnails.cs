@@ -63,7 +63,7 @@ internal static partial class ParityProbe
                 ? HttpStatusCode.NotFound : HttpStatusCode.OK) { Content = new ByteArrayContent(data) };
         }));
         var downloader = new Downloader(http);
-        using var database = new ImageMetadataDatabase(Path.Combine(OutputDirectory, "thumbnail-metadata.db"));
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "thumbnail-metadata.db"));
         await using var service = new ArticleThumbnailService(window.DispatcherQueue, () =>
         {
             initializationOnUI = window.DispatcherQueue.HasThreadAccess;
