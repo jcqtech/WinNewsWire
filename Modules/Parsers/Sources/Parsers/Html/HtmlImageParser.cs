@@ -4,22 +4,20 @@ using WinNewsWire.Parsers.Xml;
 
 namespace WinNewsWire.Parsers;
 
-public sealed record HtmlImage(string Url, int? Width, int? Height);
-
 public static class HtmlImageParser
 {
-    public static IReadOnlyList<HtmlImage> SignificantImages(string html, Uri? baseUrl, int maximumCount)
+    public static IReadOnlyList<string> SignificantImageUrlStrings(string html, Uri? baseUrl, int maximumCount)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maximumCount);
         if (maximumCount == 0) return [];
         var receiver = new ImageParserDelegate(baseUrl, maximumCount);
         new HtmlScanner(receiver).Parse(Encoding.UTF8.GetBytes(html));
-        return receiver.Images;
+        return receiver.UrlStrings;
     }
 
     private sealed class ImageParserDelegate(Uri? baseUrl, int maximumCount) : IHtmlScannerDelegate
     {
-        public List<HtmlImage> Images { get; } = [];
+        public List<string> UrlStrings { get; } = [];
         private readonly HashSet<string> _seenUrls = new(StringComparer.Ordinal);
         private string? _enclosingLinkUrl;
 
@@ -40,8 +38,8 @@ public static class HtmlImageParser
             {
                 var url = ResolveUrl(source);
                 if (url is null || !SignificantImageFilter.IsSignificant(url, width, height, attributes["class"], _enclosingLinkUrl)) continue;
-                if (_seenUrls.Add(url)) Images.Add(new(url, width, height));
-                if (Images.Count >= maximumCount) scanner.StopParsing();
+                if (_seenUrls.Add(url)) UrlStrings.Add(url);
+                if (UrlStrings.Count >= maximumCount) scanner.StopParsing();
                 return;
             }
         }

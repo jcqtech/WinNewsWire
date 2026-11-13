@@ -14,31 +14,31 @@ public class HtmlImageTests
             <img src="photos/first.jpg" width="640" height="480">
             <img src="/second.jpg">
             """;
-        Assert.Equal(new HtmlImage("https://example.com/posts/photos/first.jpg", 640, 480), First(html));
+        Assert.Equal("https://example.com/posts/photos/first.jpg", First(html));
     }
 
     [Fact]
     public void UsesLargestSrcsetWhenSourceIsInlinePlaceholder()
     {
         var html = """<IMG SRC="data:image/gif;base64,abc" SRCSET="/small.jpg 300w, /large.jpg 1024w, /medium.jpg 768w">""";
-        Assert.Equal("https://example.com/large.jpg", First(html)?.Url);
+        Assert.Equal("https://example.com/large.jpg", First(html));
     }
 
     [Fact]
     public void SrcsetTakesPrecedenceOverOrdinarySource()
         => Assert.Equal("https://example.com/large.jpg",
-            First("""<img src="/placeholder.jpg" srcset="/small.jpg 300w, /large.jpg 1024w">""")?.Url);
+            First("""<img src="/placeholder.jpg" srcset="/small.jpg 300w, /large.jpg 1024w">"""));
 
     [Fact]
     public void SrcsetAvoidsUnnecessarilyLargeDownloads()
         => Assert.Equal("https://example.com/1536.jpg",
-            First("""<img srcset="/2048.jpg 2048w, /640.jpg 640w, /1536.jpg 1536w">""")?.Url);
+            First("""<img srcset="/2048.jpg 2048w, /640.jpg 640w, /1536.jpg 1536w">"""));
 
     [Theory]
     [InlineData("/small.jpg 400w 300h, /photo.jpg 800w 600h")]
     [InlineData("\n/small.jpg 400w,\n/photo.jpg 800w\n")]
     public void SrcsetAcceptsHeightDescriptorsAndLineBreaks(string srcset)
-        => Assert.Equal("https://example.com/photo.jpg", First($"""<img srcset="{srcset}">""")?.Url);
+        => Assert.Equal("https://example.com/photo.jpg", First($"""<img srcset="{srcset}">"""));
 
     [Fact]
     public void SharingButtonsAndGravatarsDoNotDisplaceArticlePhoto()
@@ -50,7 +50,7 @@ public class HtmlImageTests
             <img src="https://secure.gravatar.com/avatar/0123456789abcdef?s=96&amp;d=identicon">
             <a href="/photo-large.jpg"><img src="/photo.jpg"></a>
             """;
-        Assert.Equal("https://example.com/photo.jpg", First(html)?.Url);
+        Assert.Equal("https://example.com/photo.jpg", First(html));
     }
 
     [Fact]
@@ -94,25 +94,25 @@ public class HtmlImageTests
     [InlineData("https://example.com/track/racing.jpg")]
     [InlineData("https://example.com/open/landscape.PNG")]
     public void TrackingPathWordsDoNotExcludeRealPhotographs(string url)
-        => Assert.Equal(url, First($"""<img src="{url}">""")?.Url);
+        => Assert.Equal(url, First($"""<img src="{url}">"""));
 
     [Fact]
     public void UndeclaredDimensionsAreAccepted()
-        => Assert.Equal(new HtmlImage("https://example.com/photo.jpg", null, null), First("""<img src="/photo.jpg">"""));
+        => Assert.Equal("https://example.com/photo.jpg", First("""<img src="/photo.jpg">"""));
 
     [Fact]
     public void PixelDimensionsAreParsedButPercentagesAreNot()
-        => Assert.Equal(new HtmlImage("https://example.com/photo.jpg", null, 300),
+        => Assert.Equal("https://example.com/photo.jpg",
             First("""<img src="/photo.jpg" width="50%" height="300px">"""));
 
     [Fact]
     public void ProtocolRelativeSourceUsesDocumentScheme()
-        => Assert.Equal("https://cdn.example.net/photo.jpg", First("""<img src="//cdn.example.net/photo.jpg">""")?.Url);
+        => Assert.Equal("https://cdn.example.net/photo.jpg", First("""<img src="//cdn.example.net/photo.jpg">"""));
 
     [Fact]
     public void ScriptMarkupDoesNotSupplyImages()
         => Assert.Equal("https://example.com/photo.jpg",
-            First("""<script>var img = '<img src="/fake.jpg">';</script><img src="/photo.jpg">""")?.Url);
+            First("""<script>var img = '<img src="/fake.jpg">';</script><img src="/photo.jpg">"""));
 
     [Theory]
     [InlineData(64, 64)]
@@ -126,14 +126,14 @@ public class HtmlImageTests
     [InlineData("""<img data-lazy-src="/placeholder.svg" data-src="/photo.jpg" src="/other.jpg">""")]
     [InlineData("""<img src="/placeholder.svg" srcset="/photo.jpg 1024w">""")]
     public void TriesLazySourcesAndRejectsPlaceholdersBeforeFallback(string html)
-        => Assert.Equal("https://example.com/photo.jpg", First(html)?.Url);
+        => Assert.Equal("https://example.com/photo.jpg", First(html));
 
     [Theory]
     [InlineData("""<img data-lazy-srcset="/small.jpg 300w, /photo.jpg 1024w" data-src="/other.jpg">""")]
     [InlineData("""<img data-srcset="/small.jpg 300w, /photo.jpg 1024w" src="/other.jpg">""")]
     [InlineData("""<img data-original="/photo.jpg" src="/other.jpg">""")]
     public void FindsLazySrcsetsAndOriginalSources(string html)
-        => Assert.Equal("https://example.com/photo.jpg", First(html)?.Url);
+        => Assert.Equal("https://example.com/photo.jpg", First(html));
 
     [Theory]
     [InlineData("""hidden""")]
@@ -141,7 +141,7 @@ public class HtmlImageTests
     [InlineData("""width="640" height="480" style="width: 1px; height: 1px" """)]
     public void HiddenAndCssSizedTrackingImagesAreSkipped(string attributes)
         => Assert.Equal("https://example.com/photo.jpg",
-            First($"""<img src="/hidden.jpg" {attributes}><img src="/photo.jpg">""")?.Url);
+            First($"""<img src="/hidden.jpg" {attributes}><img src="/photo.jpg">"""));
 
     [Fact]
     public void CssDimensionsOverrideTinyHtmlAttributes()
@@ -154,18 +154,18 @@ public class HtmlImageTests
             <img src="/first.jpg"><img src="https://example.com/first.jpg">
             <img src="/tiny.gif" width="1" height="1"><img src="/second.jpg"><img src="/third.jpg">
             """;
-        var images = HtmlImageParser.SignificantImages(html, new Uri("https://example.com/"), 2);
-        Assert.Equal(["https://example.com/first.jpg", "https://example.com/second.jpg"], images.Select(image => image.Url));
+        var images = HtmlImageParser.SignificantImageUrlStrings(html, new Uri("https://example.com/"), 2);
+        Assert.Equal(["https://example.com/first.jpg", "https://example.com/second.jpg"], images);
     }
 
     [Fact]
     public void RelativeImagesAreSkippedWithoutDocumentBase()
     {
-        var images = HtmlImageParser.SignificantImages(
+        var images = HtmlImageParser.SignificantImageUrlStrings(
             """<img src="/images/a.jpg"><img src="https://example.com/b.jpg">""", null, 3);
-        Assert.Equal(["https://example.com/b.jpg"], images.Select(image => image.Url));
+        Assert.Equal(["https://example.com/b.jpg"], images);
     }
 
-    private static HtmlImage? First(string html)
-        => HtmlImageParser.SignificantImages(html, new Uri("https://example.com/posts/1"), 1).FirstOrDefault();
+    private static string? First(string html)
+        => HtmlImageParser.SignificantImageUrlStrings(html, new Uri("https://example.com/posts/1"), 1).FirstOrDefault();
 }
