@@ -269,9 +269,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         if (downloaded is null) return null;
         SoftwareBitmap decoded;
         try { decoded = await DecodeAsync(downloaded.Data, mode, ct).ConfigureAwait(false); }
-        catch (Exception error) when (error is InsignificantThumbnailDimensionsException
-            || (unchecked((uint)error.HResult) & 0xffff0000) == 0x88980000
-            || error.HResult == unchecked((int)0x80004005))
+        catch (Exception error) when (error is InsignificantThumbnailDimensionsException || IsImageDecodingError(error))
         {
             Trace.TraceWarning($"Could not decode thumbnail {url}: {error.Message}");
             finder.RecordDecodingFailure(url);
@@ -320,16 +318,31 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         await stream.WriteAsync(data.AsBuffer()).AsTask(ct).ConfigureAwait(false);
         stream.Seek(0);
         var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(ct).ConfigureAwait(false);
-        if (!SignificantImageFilter.HasSignificantDimensions(decoder.PixelWidth, decoder.PixelHeight))
-            throw new InsignificantThumbnailDimensionsException(decoder.PixelWidth, decoder.PixelHeight);
+        BitmapFrame? frame = null;
+        for (uint index = 0; index < decoder.FrameCount; index++)
+        {
+            try
+            {
+                var candidate = await decoder.GetFrameAsync(index).AsTask(ct).ConfigureAwait(false);
+                if (frame is null || Math.Max(candidate.PixelWidth, candidate.PixelHeight) > Math.Max(frame.PixelWidth, frame.PixelHeight))
+                    frame = candidate;
+            }
+            catch (Exception error) when (IsImageDecodingError(error))
+            {
+                Trace.TraceWarning($"Could not read thumbnail frame {index}: {error.Message}");
+            }
+        }
+        if (frame is null) throw new InvalidDataException("The image has no readable frames.");
+        if (!SignificantImageFilter.HasSignificantDimensions(frame.PixelWidth, frame.PixelHeight))
+            throw new InsignificantThumbnailDimensionsException(frame.PixelWidth, frame.PixelHeight);
         int maxPixelSize = mode == ThumbnailMode.Small ? SmallThumbnailMaxPixelSize : LargeThumbnailMaxPixelSize;
-        double scale = Math.Min(1, (double)maxPixelSize / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
+        double scale = Math.Min(1, (double)maxPixelSize / Math.Max(frame.PixelWidth, frame.PixelHeight));
         var transform = new BitmapTransform
         {
-            ScaledWidth = (uint)Math.Max(1, Math.Round(decoder.PixelWidth * scale)),
-            ScaledHeight = (uint)Math.Max(1, Math.Round(decoder.PixelHeight * scale))
+            ScaledWidth = (uint)Math.Max(1, Math.Round(frame.PixelWidth * scale)),
+            ScaledHeight = (uint)Math.Max(1, Math.Round(frame.PixelHeight * scale))
         };
-        var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
+        var bitmap = await frame.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
                 transform, ExifOrientationMode.RespectExifOrientation, ColorManagementMode.ColorManageToSRgb)
             .AsTask(ct).ConfigureAwait(false);
 #if PARITY_PROBE
@@ -337,6 +350,10 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 #endif
         return bitmap;
     }
+
+    private static bool IsImageDecodingError(Exception error)
+        => error is InvalidDataException || (unchecked((uint)error.HResult) & 0xffff0000) == 0x88980000
+            || error.HResult == unchecked((int)0x80004005);
 
     private Task<T> OnDispatcherAsync<T>(Func<Task<T>> work)
     {

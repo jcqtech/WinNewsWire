@@ -32,6 +32,7 @@ internal static partial class ParityProbe
         var orientedData = OrientedThumbnailTiff();
         var smallData = ThumbnailBitmap(48, 48);
         var narrowData = ThumbnailBitmap(1000, 64);
+        var framesData = MultiFrameThumbnailTiff();
         int requests = 0, notifications = 0;
         bool initializationOnUI = true, notificationOnUI = true;
         bool networkAllowed = true;
@@ -57,6 +58,7 @@ internal static partial class ParityProbe
                 "/oriented.tiff" => orientedData,
                 "/small.bmp" => smallData,
                 "/narrow.bmp" => narrowData,
+                "/frames.tiff" => framesData,
                 _ => imageData
             };
             return new HttpResponseMessage(request.RequestUri.AbsolutePath == "/missing.bmp"
@@ -117,6 +119,9 @@ internal static partial class ParityProbe
         var oriented = await service.ThumbnailAsync(FixtureFor("oriented.tiff"), ThumbnailMode.Small);
         Require(oriented is not null && service.ProbeLastDecodedSize == (200, 400),
             "The native thumbnail decoder ignored EXIF orientation.");
+        Require(await service.ThumbnailAsync(FixtureFor("frames.tiff"), ThumbnailMode.Small) is not null
+            && service.ProbeLastDecodedSize == (400, 200),
+            "The native decoder must select the first largest-dimension frame, not the first frame or largest area.");
         foreach (var filename in new[] { "small.bmp", "narrow.bmp" })
         {
             string url = "https://thumbnail.test/" + filename;
@@ -247,6 +252,7 @@ internal static partial class ParityProbe
         return new { InitializationOffUI = true, DecodingOffUI = true, NotificationsOnUI = true,
             CoalescedDiscoveryAndDecode = true, SeparateModes = true, DecodedLRUBudget = true,
             DisplaySizeDecode = true, ExifOrientation = true, NativeDimensionRejection = true,
+            LargestFrameDecode = true,
             ReaderUsesOriginalSharedImage = true,
             RenderedImagesUseSharedSources = true, FailedLocalImagesFallBackWithoutPublisherScripts = true,
             HiddenModeLeavesReaderImagesRemote = true,
@@ -749,6 +755,52 @@ internal static partial class ParityProbe
         {
             writer.Write((byte)0); writer.Write((byte)0); writer.Write((byte)255);
         }
+        return output.ToArray();
+    }
+
+    private static byte[] MultiFrameThumbnailTiff()
+    {
+        (int Width, int Height)[] frames = [(32, 32), (400, 200), (400, 400)];
+        const int entries = 10, directoryBytes = 2 + entries * 12 + 4;
+        int bitsStart = 8 + frames.Length * directoryBytes;
+        int pixelsOffset = bitsStart + frames.Length * 6;
+        using var output = new MemoryStream();
+        using var writer = new BinaryWriter(output);
+        writer.Write((ushort)0x4949);
+        writer.Write((ushort)42);
+        writer.Write(8);
+        void Entry(ushort tag, ushort type, int count, int value)
+        {
+            writer.Write(tag); writer.Write(type); writer.Write(count); writer.Write(value);
+        }
+        for (int index = 0; index < frames.Length; index++)
+        {
+            var (width, height) = frames[index];
+            writer.Write((ushort)entries);
+            Entry(256, 4, 1, width);
+            Entry(257, 4, 1, height);
+            Entry(258, 3, 3, bitsStart + index * 6);
+            Entry(259, 3, 1, 1);
+            Entry(262, 3, 1, 2);
+            Entry(273, 4, 1, pixelsOffset);
+            Entry(277, 3, 1, 3);
+            Entry(278, 4, 1, height);
+            Entry(279, 4, 1, width * height * 3);
+            Entry(284, 3, 1, 1);
+            writer.Write(index + 1 < frames.Length ? 8 + (index + 1) * directoryBytes : 0);
+            pixelsOffset += width * height * 3;
+        }
+        foreach (var _ in frames)
+        {
+            writer.Write((ushort)8); writer.Write((ushort)8); writer.Write((ushort)8);
+        }
+        for (int index = 0; index < frames.Length; index++)
+            for (int pixel = 0; pixel < frames[index].Width * frames[index].Height; pixel++)
+            {
+                writer.Write(index == 1 ? (byte)255 : (byte)0);
+                writer.Write(index == 0 ? (byte)255 : (byte)0);
+                writer.Write(index == 2 ? (byte)255 : (byte)0);
+            }
         return output.ToArray();
     }
 
