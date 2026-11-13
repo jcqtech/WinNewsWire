@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`cf281b2eaf98bc83cf5704431a031e886d539973`**. This synchronization is in progress.
+`5294cab58213ae56d45f070b989e88af2c2598aa`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is the desktop status-bar merge, `840137d2bcf0ac6f54a579605a136c6956d97362`;
+is copyable Settings version text, `d732f6dc7693d748bf5b95e185c62281a260c746`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -67,15 +67,26 @@ Virtualized rows and template changes are handled after layout, and obsolete
 requests are canceled during selection changes and shutdown. Sidebar unread
 badges already use native constrained WinUI layout rather than cached row widths.
 
-The inventory currently has **71 Ported, 14 Covered, 42 Skipped, and 378 Pending**
-source commits, backed by **84 source-attributed Windows port commits**. Six
+The desktop status bar now includes subscription commands, count-mode cycling,
+the latest successful refresh among active accounts, theme selection, full-link
+Copy, shared visibility settings, and a pane-aligned resize grip. Refresh actions
+respect active account sessions. Clicking progress opens Current Activity rather
+than changing the saved count mode. Local RSS completion dates are now persisted,
+including empty/successful refreshes, but not canceled refreshes.
+Midnight, clock, locale, time-zone, and resume updates use the UI dispatcher;
+timers and native message hooks are released during shutdown.
+
+The inventory currently has **76 Ported, 19 Covered, 53 Skipped, and 357 Pending**
+source commits, backed by **91 source-attributed Windows port commits**. Six
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
-slot-only updates to eight older theme bundles not shipped by Windows.
+slot-only updates to eight older theme bundles not shipped by Windows,
+Swift-only lock substitutions and database-wrapper simplification, and
+iOS 18 deployment-target/older-UIKit compatibility cleanup.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are the desktop status bar and follow-ups, the image-cache/thumbnail
+Still pending are copyable version labels, the image-cache/thumbnail
 finder/storage/downloading rewrite, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, detector-equivalent plain-text link
 recognition, and assessment of iPhone/iPad-specific changes.
@@ -89,7 +100,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 ## Verification at this checkpoint
 
 The x64 Windows application builds with zero warnings/errors. The complete parser
-suite passes 532 tests, and the shared application suite passes 456. Earlier
+suite passes 532 tests, and the shared application suite passes 467. Earlier
 related checks covered remote-account synchronization, OPML autosave, attachment
 and thumbnail storage/migration, and NewsBlur model decoding.
 
@@ -105,6 +116,19 @@ layouts, including virtualized rows, pinned headers, minimum upward movement,
 centered downward movement, following-row context, and no-op movement. Restoring
 the exact original selection-scroll path makes this probe fail. Three geometry
 regressions also failed against the earlier minimum-scroll implementation.
+
+The standalone `--status-bar` WinUI probe passes count cycling with hidden unread
+counts, worker-thread and native clock notifications, full-URL Copy, gear-menu
+sidebar toggling, divider alignment at three sidebar widths, Current Activity
+actions, theme sharing, and two-window visibility. Original menu, count-action,
+clock-hook, and centered-divider controls fail their new assertions. Restoring
+the original refresh-session disposal also fails the completion-metadata
+notification regression. The original local delegate fails the successful
+refresh timestamp assertion, while cancellation preserves the prior date.
+
+The existing reader/header/sidebar/navigation gate passes 36 image tests and
+33 UI groups. The selected refresh/progress/lifecycle/worker tests pass all
+50 cases. Regular and probe x64 Windows builds have zero warnings/errors.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
