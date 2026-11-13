@@ -425,6 +425,30 @@ internal static partial class ParityProbe
             }
             finally { largeRow.Width = previousWidth; }
 
+            list.ScrollIntoView(rows[20], ScrollIntoViewAlignment.Leading);
+            await WaitFor(() => Task.FromResult(((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex >= 19
+                && content.ProbeThumbnailWorkIsIdle), "Scrolled large-thumbnail rows settle before height changes");
+            await new RenderTargetBitmap().RenderAsync(list);
+            int topIndex = ((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex;
+            var topRow = (FrameworkElement)list.ContainerFromItem(rows[topIndex]);
+            var precedingRow = list.ContainerFromItem(rows[topIndex - 1]) as FrameworkElement
+                ?? throw new InvalidOperationException("The anchoring fixture needs a realized row above the viewport.");
+            double topY = topRow.TransformToVisual(list).TransformPoint(new(0, 0)).Y;
+            double precedingHeight = precedingRow.ActualHeight;
+            Require(precedingHeight > 180, "The preceding row did not initially contain a large thumbnail.");
+            var precedingArticle = rows[topIndex - 1].SourceArticle!;
+            foreach (bool restoreImage in new[] { false, true })
+            {
+                rows[topIndex - 1].UpdateFrom(Row(restoreImage ? precedingArticle : ArticleFor(topIndex - 1, null)));
+                await WaitFor(() => Task.FromResult(content.ProbeThumbnailWorkIsIdle
+                    && (restoreImage ? precedingRow.ActualHeight > 180 : precedingRow.ActualHeight < precedingHeight - 100)),
+                    "Large-thumbnail row above the viewport changes height");
+                await new RenderTargetBitmap().RenderAsync(list);
+                Require(ReferenceEquals(list.ContainerFromItem(rows[topIndex]), topRow)
+                    && Math.Abs(topRow.TransformToVisual(list).TransformPoint(new(0, 0)).Y - topY) <= 1,
+                    "Changing a large-thumbnail row above the viewport moved the top visible article.");
+            }
+
             list.ScrollIntoView(rows[3], ScrollIntoViewAlignment.Leading);
             await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>().Any(view =>
                 view.Tag is Article { ArticleID: "timeline-thumbnail-3" } && view.Visibility == Visibility.Collapsed
