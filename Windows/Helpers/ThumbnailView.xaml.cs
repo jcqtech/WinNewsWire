@@ -8,11 +8,7 @@ public sealed partial class ThumbnailView : UserControl
 {
     public static readonly DependencyProperty ImageSourceProperty =
         DependencyProperty.Register(nameof(ImageSource), typeof(ImageSource), typeof(ThumbnailView),
-            new PropertyMetadata(null, PresentationChanged));
-
-    public static readonly DependencyProperty FitsImageProperty =
-        DependencyProperty.Register(nameof(FitsImage), typeof(bool), typeof(ThumbnailView),
-            new PropertyMetadata(false, PresentationChanged));
+            new PropertyMetadata(null));
 
     public static readonly DependencyProperty FillBrushProperty =
         DependencyProperty.Register(nameof(FillBrush), typeof(Brush), typeof(ThumbnailView),
@@ -24,12 +20,6 @@ public sealed partial class ThumbnailView : UserControl
         set => SetValue(ImageSourceProperty, value);
     }
 
-    public bool FitsImage
-    {
-        get => (bool)GetValue(FitsImageProperty);
-        set => SetValue(FitsImageProperty, value);
-    }
-
     public Brush? FillBrush
     {
         get => (Brush?)GetValue(FillBrushProperty);
@@ -39,16 +29,5 @@ public sealed partial class ThumbnailView : UserControl
     public ThumbnailView()
     {
         InitializeComponent();
-        UpdatePresentation();
-    }
-
-    private static void PresentationChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
-        => ((ThumbnailView)sender).UpdatePresentation();
-
-    private void UpdatePresentation()
-    {
-        ThumbnailBrush.Stretch = FitsImage ? Stretch.Uniform : Stretch.UniformToFill;
-        ThumbnailBrush.AlignmentY = FitsImage ? AlignmentY.Center : AlignmentY.Top;
-        Placeholder.Visibility = ImageSource is null || FitsImage ? Visibility.Visible : Visibility.Collapsed;
     }
 }

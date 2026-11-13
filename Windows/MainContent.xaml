@@ -563,7 +563,7 @@
                                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                                             </StackPanel>
                                         </StackPanel>
-                                        <helpers:ThumbnailView Grid.Column="3" Width="0" Height="0" CornerRadius="4" FitsImage="True"
+                                        <helpers:ThumbnailView Grid.Column="3" Width="0" Height="0" CornerRadius="4"
                                                                VerticalAlignment="Top" Visibility="Collapsed"
                                                                Tag="{x:Bind SourceArticle, Mode=OneWay}"
                                                                Loaded="TimelineThumbnail_Loaded" Unloaded="TimelineThumbnail_Unloaded" />

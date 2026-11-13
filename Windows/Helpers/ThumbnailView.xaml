@@ -13,11 +13,11 @@
     </UserControl.Style>
     <Border CornerRadius="{Binding CornerRadius, ElementName=Root}">
         <Grid>
-            <Border x:Name="Placeholder" Background="{Binding FillBrush, ElementName=Root}" />
+            <Border Background="{Binding FillBrush, ElementName=Root}" />
             <Border>
                 <Border.Background>
-                    <ImageBrush x:Name="ThumbnailBrush" ImageSource="{Binding ImageSource, ElementName=Root}"
-                                Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Top" />
+                    <ImageBrush ImageSource="{Binding ImageSource, ElementName=Root}"
+                                Stretch="Uniform" AlignmentX="Center" AlignmentY="Center" />
                 </Border.Background>
             </Border>
         </Grid>
