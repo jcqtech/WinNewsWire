@@ -233,7 +233,28 @@ public sealed class ArticleRendererTests
     public void PlainTextContentIsNotInterpretedAsMarkup()
     {
         var rendering = ArticleRenderer.Render(Article(body: null, text: "<script>literal</script>"), theme: Theme("[[body]]"));
-        Assert.Equal("<pre>&lt;script&gt;literal&lt;/script&gt;</pre>", rendering.Html);
+        Assert.Equal("<p>&lt;script&gt;literal&lt;/script&gt;</p>", rendering.Html);
+    }
+
+    [Fact]
+    public void PlainTextUsesParagraphsLineBreaksAndEscapedWebLinks()
+    {
+        const string text = "HomeView & <everyone>.\r\n\r\nLearn more: https://example.test/shop?a=1&b=2\r\n"
+            + "Listen: https://music.example.test/episode\r\n \t\r\nLast paragraph.";
+        var rendering = ArticleRenderer.Render(Article(body: null, text: text), theme: Theme("[[body]]"));
+        Assert.Equal("<p>HomeView &amp; &lt;everyone&gt;.</p>\n"
+            + "<p>Learn more: <a href=\"https://example.test/shop?a=1&amp;b=2\">https://example.test/shop?a=1&amp;b=2</a><br>\n"
+            + "Listen: <a href=\"https://music.example.test/episode\">https://music.example.test/episode</a></p>\n"
+            + "<p>Last paragraph.</p>", rendering.Html);
+    }
+
+    [Fact]
+    public void PlainTextLinksKeepBalancedParenthesesAndDoNotIncludeSentencePunctuation()
+    {
+        const string text = "(https://example.test/a_(b)). mailto:reader@example.test! javascript:alert(1)";
+        var html = ArticleRenderer.Render(Article(body: null, text: text), theme: Theme("[[body]]")).Html;
+        Assert.Equal("<p>(<a href=\"https://example.test/a_(b)\">https://example.test/a_(b)</a>). "
+            + "<a href=\"mailto:reader@example.test\">mailto:reader@example.test</a>! javascript:alert(1)</p>", html);
     }
 
     [Fact]

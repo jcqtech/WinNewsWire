@@ -31,7 +31,7 @@ public static partial class ArticleRenderer
         var title = ArticleStringFormatter.SanitizedTitle(article.Title, forHtml: true) ?? "";
         var baseUrl = BaseUrl(article, feed, extracted?.Url);
         var rawBody = extracted?.Content ?? article.ContentHtml
-            ?? (article.ContentText is { } text ? "<pre>" + Html(text) + "</pre>" : article.Summary ?? "");
+            ?? (article.ContentText is { } text ? text.ConvertingPlainTextToHtml() : article.Summary ?? "");
         var body = ArticleRenderingSpecialCases.ExtractBodyFragmentIfNeeded(rawBody);
         if (extracted?.Content is null)
         {
