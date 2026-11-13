@@ -96,6 +96,17 @@ public class HtmlImageTests
     public void TriesLazySourcesAndRejectsPlaceholdersBeforeFallback(string html)
         => Assert.Equal("https://example.com/photo.jpg", First(html)?.Url);
 
+    [Fact]
+    public void MultipleCandidatesRemainUniqueAndInDocumentOrderWithinLimit()
+    {
+        var html = """
+            <img src="/first.jpg"><img src="https://example.com/first.jpg">
+            <img src="/tiny.gif" width="1" height="1"><img src="/second.jpg"><img src="/third.jpg">
+            """;
+        var images = HtmlImageParser.SignificantImages(new ParserData("https://example.com/", Encoding.UTF8.GetBytes(html)), 2);
+        Assert.Equal(["https://example.com/first.jpg", "https://example.com/second.jpg"], images.Select(image => image.Url));
+    }
+
     private static HtmlImage? First(string html)
-        => HtmlImageParser.FirstSignificantImage(new ParserData("https://example.com/posts/1", Encoding.UTF8.GetBytes(html)));
+        => HtmlImageParser.SignificantImages(new ParserData("https://example.com/posts/1", Encoding.UTF8.GetBytes(html)), 1).FirstOrDefault();
 }

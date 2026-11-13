@@ -7,16 +7,19 @@ public sealed record HtmlImage(string Url, int? Width, int? Height);
 
 public static class HtmlImageParser
 {
-    public static HtmlImage? FirstSignificantImage(ParserData parserData)
+    public static IReadOnlyList<HtmlImage> SignificantImages(ParserData parserData, int maximumCount)
     {
-        var receiver = new ImageParserDelegate(Uri.TryCreate(parserData.Url, UriKind.Absolute, out var baseUrl) ? baseUrl : null);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumCount);
+        if (maximumCount == 0) return [];
+        var receiver = new ImageParserDelegate(Uri.TryCreate(parserData.Url, UriKind.Absolute, out var baseUrl) ? baseUrl : null, maximumCount);
         new HtmlScanner(receiver).Parse(parserData.Data);
-        return receiver.Image;
+        return receiver.Images;
     }
 
-    private sealed class ImageParserDelegate(Uri? baseUrl) : IHtmlScannerDelegate
+    private sealed class ImageParserDelegate(Uri? baseUrl, int maximumCount) : IHtmlScannerDelegate
     {
-        public HtmlImage? Image { get; private set; }
+        public List<HtmlImage> Images { get; } = [];
+        private readonly HashSet<string> _seenUrls = new(StringComparer.Ordinal);
         private string? _enclosingLinkUrl;
 
         public void DidStartTag(HtmlScanner scanner, ReadOnlyMemory<byte> name, HtmlAttributes attributes, bool selfClosing)
@@ -33,8 +36,8 @@ public static class HtmlImageParser
             {
                 var url = ResolveUrl(source);
                 if (url is null || !SignificantImageFilter.IsSignificant(url, width, height, attributes["class"], _enclosingLinkUrl)) continue;
-                Image = new(url, width, height);
-                scanner.StopParsing();
+                if (_seenUrls.Add(url)) Images.Add(new(url, width, height));
+                if (Images.Count >= maximumCount) scanner.StopParsing();
                 return;
             }
         }
