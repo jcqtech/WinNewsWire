@@ -63,6 +63,17 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         CacheRecords(records);
     }
 
+    public async Task FindThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default,
+        Func<Article, Uri?>? baseUrlResolver = null, Action? savedUrlsLoaded = null)
+    {
+        ArgumentNullException.ThrowIfNull(articles);
+        var snapshot = articles.ToArray();
+        await LoadSavedThumbnailUrlsAsync(snapshot, ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        savedUrlsLoaded?.Invoke();
+        await DiscoverThumbnailUrlsAsync(snapshot, ct, baseUrlResolver).ConfigureAwait(false);
+    }
+
     public async Task DiscoverThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default,
         Func<Article, Uri?>? baseUrlResolver = null)
     {

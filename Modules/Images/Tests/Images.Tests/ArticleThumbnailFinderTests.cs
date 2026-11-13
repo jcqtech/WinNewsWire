@@ -36,6 +36,38 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
+    public async Task CombinedDiscoveryMakesSavedUrlsReadyBeforeParsingOnlyTheRemainingArticles()
+    {
+        using var database = new ImageDatabase(":memory:");
+        await database.SaveArticleThumbnailsAsync([new("saved", ["https://example.com/saved.jpg"]), new("negative", [])]);
+        var finder = new ArticleThumbnailFinder(database);
+        var saved = Article("saved", html: "<img src='/changed.jpg'>");
+        var negative = Article("negative", html: "<img src='/not-parsed.jpg'>");
+        var missing = Article("missing", html: "<img src='/new.jpg'>");
+        bool ready = false;
+        var parsed = new List<string>();
+        var notified = new HashSet<string>();
+        finder.ThumbnailUrlsAvailable += (_, ids) => notified.UnionWith(ids);
+        await finder.FindThumbnailUrlsAsync([saved, negative, missing], baseUrlResolver: article =>
+        {
+            Assert.True(ready);
+            parsed.Add(article.ArticleID);
+            return article.BaseUrl();
+        }, savedUrlsLoaded: () =>
+        {
+            Assert.Equal("https://example.com/saved.jpg", finder.ThumbnailUrl(saved, ThumbnailMode.Large));
+            Assert.Null(finder.ThumbnailUrl(negative, ThumbnailMode.Small));
+            Assert.Null(finder.ThumbnailUrl(missing, ThumbnailMode.Small));
+            Assert.Empty(notified);
+            ready = true;
+        });
+        Assert.True(ready);
+        Assert.Equal(["missing"], parsed);
+        Assert.True(notified.SetEquals(["missing"]));
+        Assert.Equal("https://example.com/new.jpg", finder.ThumbnailUrl(missing, ThumbnailMode.Small));
+    }
+
+    [Fact]
     public async Task CanceledSavedUrlLoadingDoesNotConsumeLaterPreload()
     {
         using var database = new ImageDatabase(":memory:");
