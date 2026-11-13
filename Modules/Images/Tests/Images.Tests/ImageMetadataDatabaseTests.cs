@@ -126,7 +126,8 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     public async Task ThumbnailResultsSurviveRestartIncludingNegativeResultsAndChunkedQueries()
     {
         var records = Enumerable.Range(0, 501)
-            .Select(index => new ArticleThumbnailRecord(index.ToString(), index % 2 == 0 ? $"https://example.com/{index}.jpg" : null))
+            .Select(index => new ArticleThumbnailRecord(index.ToString(), index % 2 == 0
+                ? [$"https://example.com/{index}.jpg", $"https://example.com/{index}-second.jpg"] : []))
             .ToArray();
         using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
             await database.SaveArticleThumbnailsAsync(records);
@@ -140,7 +141,7 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     public async Task StartupExpiresThumbnailResultsOnlyAfterThirtyThreeDays()
     {
         using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
-            await database.SaveArticleThumbnailsAsync([new("article", null)]);
+            await database.SaveArticleThumbnailsAsync([new("article", [])]);
         _clock.Advance(ImageMetadataDatabase.FailureRetention);
         using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
             Assert.Single(await database.FetchArticleThumbnailsAsync(["article"]));
@@ -153,20 +154,20 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     public async Task FailedThumbnailBatchRollsBackEarlierRows()
     {
         using var database = new ImageMetadataDatabase(DatabasePath, _clock);
-        await database.SaveArticleThumbnailsAsync([new("existing", "https://example.com/old.jpg")]);
+        await database.SaveArticleThumbnailsAsync([new("existing", ["https://example.com/old.jpg"])]);
         using (var connection = Open())
         using (var command = connection.CreateCommand())
         {
             command.CommandText = """
-                CREATE TRIGGER reject_thumbnail BEFORE INSERT ON articleThumbnail
+                CREATE TRIGGER reject_thumbnail BEFORE INSERT ON articleThumbnailURLs
                 WHEN NEW.articleID='rejected' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;
                 """;
             command.ExecuteNonQuery();
         }
         await Assert.ThrowsAsync<SqliteException>(() => database.SaveArticleThumbnailsAsync(
-            [new("existing", "https://example.com/new.jpg"), new("rejected", null)]));
+            [new("existing", ["https://example.com/new.jpg"]), new("rejected", [])]));
         var saved = Assert.Single(await database.FetchArticleThumbnailsAsync(["existing", "rejected"]));
-        Assert.Equal("https://example.com/old.jpg", saved.ThumbnailUrl);
+        Assert.Equal(["https://example.com/old.jpg"], saved.ThumbnailUrls);
     }
 
     private long FailureCount()

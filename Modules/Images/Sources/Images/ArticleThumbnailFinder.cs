@@ -9,7 +9,7 @@ public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
 {
     private readonly ImageMetadataDatabase _database = database ?? throw new ArgumentNullException(nameof(database));
     private readonly object _gate = new();
-    private readonly Dictionary<string, string?> _htmlUrls = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<string>> _htmlUrls = new(StringComparer.Ordinal);
     private readonly HashSet<string> _discovering = new(StringComparer.Ordinal);
 
     /// <summary>Raised after discovery; UI subscribers must dispatch to their UI thread.</summary>
@@ -18,9 +18,10 @@ public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
     public string? ThumbnailUrl(Article article, ThumbnailMode mode)
     {
         ArgumentNullException.ThrowIfNull(article);
+        if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
         if (ProvidedThumbnailUrl(article, mode) is { } provided) return provided;
         lock (_gate)
-            return _htmlUrls.TryGetValue(article.ArticleID, out var url) && url is not null && IsUsable(url) ? url : null;
+            return _htmlUrls.TryGetValue(article.ArticleID, out var urls) ? urls.FirstOrDefault(IsUsable) : null;
     }
 
     public async Task DiscoverThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default)
@@ -49,7 +50,7 @@ public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
                     var html = article.ContentHtml ?? article.Summary;
                     if (string.IsNullOrEmpty(html)) continue;
                     Uri.TryCreate(article.RawLink ?? article.RawExternalLink, UriKind.Absolute, out var baseUrl);
-                    records.Add(new(article.ArticleID, HtmlImageParser.SignificantImageUrlStrings(html, baseUrl, 1).FirstOrDefault()));
+                    records.Add(new(article.ArticleID, HtmlImageParser.SignificantImageUrlStrings(html, baseUrl, 3)));
                 }
                 return records;
             }, ct).ConfigureAwait(false);
@@ -57,8 +58,8 @@ public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
             if (parsed.Count > 0) await _database.SaveArticleThumbnailsAsync(parsed).ConfigureAwait(false);
             var records = saved.Concat(parsed).ToArray();
             lock (_gate)
-                foreach (var record in records) _htmlUrls[record.ArticleId] = record.ThumbnailUrl;
-            var found = records.Where(record => record.ThumbnailUrl is not null)
+                foreach (var record in records) _htmlUrls[record.ArticleId] = record.ThumbnailUrls;
+            var found = records.Where(record => record.ThumbnailUrls.Count > 0)
                 .Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
             if (found.Count > 0) ThumbnailUrlsAvailable?.Invoke(this, found);
         }
