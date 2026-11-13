@@ -25,6 +25,7 @@ public static class AtomParser
         private AtomAuthor? _currentAuthor;
         private bool _parsingArticle, _parsingAuthor, _parsingSource, _endFeedFound;
         private int _namespaceElementDepth;
+        private readonly MediaElementTracker _media = new();
         private readonly List<XmlAttributes> _attributesStack = [];
         private readonly List<Uri?> _baseUrlStack = [];
         private RssItem? CurrentArticle => _items.LastOrDefault();
@@ -48,12 +49,19 @@ public static class AtomParser
             _attributesStack.Add(attributes);
             PushBaseUrl(attributes);
             if (_namespaceElementDepth > 0) { _namespaceElementDepth++; return; }
+            if (_parsingArticle && ns.IsMediaRss && CurrentArticle is { } mediaItem)
+            {
+                if (_media.Start(localName.Span, attributes, mediaItem, ResolvedUrlString)) _namespaceElementDepth = 1;
+                return;
+            }
+            if (_media.ContainerDepth > 0) { _namespaceElementDepth = 1; return; }
             if (_parsingArticle && ns.Prefix is not null) { _namespaceElementDepth = 1; return; }
 
             var name = Encoding.UTF8.GetString(localName.Span);
             if (name == "entry")
             {
                 _parsingArticle = true;
+                _media.Reset();
                 var item = new RssItem();
                 _items.Add(item);
                 _legacyIdentities.Add(item, new());
@@ -87,6 +95,11 @@ public static class AtomParser
                 if (name == "feed") { _endFeedFound = true; return; }
                 if (_endFeedFound) return;
                 if (_namespaceElementDepth > 0) { _namespaceElementDepth--; return; }
+                if (_parsingArticle && ns.IsMediaRss && CurrentArticle is { } mediaItem)
+                {
+                    _media.End(localName.Span, mediaItem);
+                    return;
+                }
                 if (_parsingAuthor) { HandleAuthorElementEnd(parser, name); return; }
                 if (name == "entry") { _parsingArticle = false; return; }
                 if (_parsingArticle && !_parsingSource) { HandleArticleElementEnd(parser, name, ns); return; }

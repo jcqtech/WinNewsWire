@@ -11,6 +11,36 @@ public class AtomParserTests
     private static ParserData Load(string f, string url) => TestResources.Load($"{f}.atom", url);
 
     [Fact]
+    public void MediaGroupResolvesUrlsAndMergesWithAtomEnclosure()
+    {
+        const string xml = """
+            <feed xmlns="http://www.w3.org/2005/Atom" xmlns:m="http://search.yahoo.com/mrss/"
+                  xml:base="https://example.com/">
+            <entry><id>video</id><title>Article</title><link href="watch"/>
+              <link rel="enclosure" href="media/video.mp4" type="video/mp4"/>
+              <m:group xml:base="media/">
+                <m:title>Wrong media title</m:title>
+                <m:content url="low.mp4" width="320"/>
+                <m:content url="video.mp4" medium="video" width="640" height="390" isDefault="true">
+                  <title xmlns="">Wrong child title</title>
+                </m:content>
+                <m:thumbnail url="preview.jpg"/>
+              </m:group>
+            </entry></feed>
+            """;
+        var item = Assert.Single(AtomParser.Parse(new ParserData("https://example.com/feed",
+            Encoding.UTF8.GetBytes(xml))).Items);
+        Assert.Equal("Article", item.Title);
+        Assert.Equal("https://example.com/watch", item.Url);
+        Assert.Equal("https://example.com/media/preview.jpg", item.ImageUrl);
+        var attachment = Assert.Single(item.Attachments!);
+        Assert.Equal("https://example.com/media/video.mp4", attachment.Url);
+        Assert.Equal("video/mp4", attachment.MimeType);
+        Assert.Equal(640, attachment.Width);
+        Assert.Equal(390, attachment.Height);
+    }
+
+    [Fact]
     public void XhtmlTitleWithCData()
     {
         const string xml = """
