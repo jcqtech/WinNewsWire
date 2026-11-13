@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`73f7b374adc08fa6ea9997d40bcf357e06ec2583`**. This synchronization is in progress.
+`a1a93abacf4adb5bccd23baf4a7d794735517f9a`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is metadata-column cleanup, `feedf2913dc0b3bb172b7f048fbd19b14e16a315`;
+is automatic replacement of recovered feed icons, `9cdcdfe222f68ed05a751450bbe9eda50a9c83cc`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -118,7 +118,9 @@ Shared **Small / Large / None** settings now replace the initial large-mode
 boolean. The localized View submenu and native Preferences picker stay in sync
 across windows. Hidden mode stops new discovery/download admission and retains
 compact rows; switching modes restores the selected row to view. Windows retains
-an existing large preference until the user explicitly picks a new mode.
+existing explicit thumbnail choices, including the earlier Windows boolean
+preference, until the user explicitly picks a new mode. New preferences default
+to None; unknown display values are logged and also hide thumbnails.
 Preference-save failures restore the picker and display the error.
 Shared **Automatic / Always / Never** feed-icon settings now have a native
 Preferences picker and localized Automatic explanation. Automatic shows icons
@@ -201,8 +203,11 @@ independent pre-existing 64-MiB transport safety limit remains.
 The obsolete Energy Saver prefetch restriction has been removed. Windows retains its existing stricter
 connection-cost policy for visible downloads rather than silently permitting
 metered traffic to match Apple's visible-image policy.
-Stored source byte counts, pixel dimensions, last access, ETag and Last-Modified
-are persisted. Known unsuitable thumbnails are skipped using those dimensions,
+Source pixel dimensions, last access, ETag and Last-Modified are persisted.
+Unused failure status codes, feed-icon timestamps and stored byte counts are
+removed, including from existing Windows NOT NULL schemas and legacy imports.
+Failure records are pruned after their five-day retry lifetime, not 33 days.
+Known unsuitable thumbnails are skipped using those dimensions,
 independently of transient download failures or their expiry. Native decoding
 still checks dimensions; unreadable thumbnails are excluded for that finder's
 lifetime without suppressing otherwise usable feed icons. Nonempty unreadable
@@ -210,12 +215,19 @@ HTTP-200 sources now receive a timed 37-minute retry in the shared source
 downloader, without a persisted five-day
 failure. Candidate fallback receives the transient decoding verdict.
 Network notifications reset decoding exclusions and chosen URL caches, enabling
-the same article instance to retry. Subsequent requests for a feed icon waiting
-to retry may use homepage icon metadata, including URL-only transient failures.
+the same article instance to retry. A failed declared or persisted feed icon
+falls back to homepage metadata within the same awaited request, including
+URL-only transient failures. Declared feed icon URLs remain in feed metadata;
+only homepage-discovered URLs are saved in the independent icon mapping.
+Warm representations and stored sources remain readable during retry cooldowns.
 Favicons share the same disk source and conditional-update policy, retaining
 only their small display representation in memory. Windows repairs missing
 display paths through the shared downloader without replacing full-size source
-bytes with a small icon. Activity details identify the homepage. Retired favicon
+bytes with a small icon. Activity details identify the homepage. Favicon
+searches persist their URL only after a successful image load; an exhausted
+explicit candidate list records no favicon only if no candidate failed
+transiently. Unavailable homepage metadata does not record an empty search.
+Retired favicon
 folders, including the former SHA1 cache, are removed once on upgrade; they are
 no longer imported or periodically purged. Windows retains native decoder
 failure reporting instead of the Apple-specific unreadable-data fallback.
@@ -224,7 +236,10 @@ retaining atomic preference markers. The independent resizing purge and periodic
 legacy mapping flush are removed; completed retirement never repeats deletion
 because of an obsolete date/marker. Shared sources now use the upstream desktop disk
 budget instead of periodic folder purges: startup pruning removes least-recently
-used sources until they total at most 300 MiB. Downloads may exceed that budget
+used sources until their actual original-file lengths total at most 300 MiB.
+Replaced or truncated files use their current disk sizes; missing recent files
+count zero, and derived sidecars remain outside the original-source budget.
+Downloads may exceed that budget
 until the next launch. Soft/hard thresholds, the 80-percent target, the three-day
 use exemption and recurring passes are removed. One-minute save and active-work
 protection remain. Startup also reconciles orphan files/records.
@@ -344,8 +359,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **197 Ported, 68 Covered, 84 Skipped, and 156 Pending**
-source commits, backed by **212 source-attributed Windows port commits**.
+The inventory currently has **204 Ported, 68 Covered, 85 Skipped, and 148 Pending**
+source commits, backed by **219 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -385,7 +400,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **219 tests** after memory-only/fetch-time HTML
+The current image suite passes **228 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
 visible-only loading, priority-free queues, fixed retry dates and launch-only pruning.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
