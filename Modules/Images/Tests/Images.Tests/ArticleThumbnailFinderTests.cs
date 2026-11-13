@@ -387,6 +387,36 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
+    public async Task ParsedThumbnailUrlsBecomeAvailableInOrderedBatchesAndCanceledRemaindersCanRetry()
+    {
+        using var database = new ImageDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        var articles = Enumerable.Range(0, 101).Select(index => Article(index.ToString(),
+            html: index == 99 ? "<p>No image</p>" : "<img src='/photo.jpg'>")).ToArray();
+        using var cancellation = new CancellationTokenSource();
+        var batches = new List<IReadOnlySet<string>>();
+        finder.ThumbnailUrlsAvailable += (_, ids) =>
+        {
+            batches.Add(ids);
+            if (batches.Count == 1)
+            {
+                Assert.Null(finder.ThumbnailUrl(articles[100], ThumbnailMode.Small));
+                cancellation.Cancel();
+            }
+        };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finder.FindThumbnailUrlsAsync(articles, cancellation.Token));
+        var saved = await database.FetchArticleThumbnailsAsync(articles.Select(article => article.ArticleID));
+        Assert.Equal(100, saved.Count);
+        Assert.Empty(saved.Single(record => record.ArticleId == "99").ThumbnailUrls);
+        Assert.True(batches[0].SetEquals(articles.Take(99).Select(article => article.ArticleID)));
+        await finder.FindThumbnailUrlsAsync(articles);
+        Assert.Equal([99, 1], batches.Select(ids => ids.Count));
+        Assert.True(batches[1].SetEquals(["100"]));
+        Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(articles[100], ThumbnailMode.Small));
+        Assert.Equal(101, (await database.FetchArticleThumbnailsAsync(articles.Select(article => article.ArticleID))).Count);
+    }
+
+    [Fact]
     public async Task CanceledDiscoveryLeavesArticlesEligibleForRetry()
     {
         using var database = new ImageDatabase(":memory:");

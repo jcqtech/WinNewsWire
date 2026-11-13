@@ -82,24 +82,27 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             if (toParse.Length == 0) return;
             var baseUrls = toParse.ToDictionary(article => article.ArticleID,
                 article => baseUrlResolver is null ? article.BaseUrl() : baseUrlResolver(article), StringComparer.Ordinal);
-            var parsed = await Task.Run(() =>
+            foreach (var batch in toParse.Chunk(100))
             {
-                var records = new List<ArticleThumbnailRecord>();
-                foreach (var article in toParse)
+                var parsed = await Task.Run(() =>
                 {
-                    ct.ThrowIfCancellationRequested();
-                    var html = article.ContentHtml ?? article.Summary;
-                    if (string.IsNullOrEmpty(html)) continue;
-                    records.Add(new(article.ArticleID, HtmlImageParser.SignificantImageUrlStrings(html, baseUrls[article.ArticleID], 3)));
-                }
-                return records;
-            }, ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            if (parsed.Count > 0) await _database.SaveArticleThumbnailsAsync(parsed).ConfigureAwait(false);
-            CacheRecords(parsed);
-            var found = parsed.Where(record => record.ThumbnailUrls.Count > 0)
-                .Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
-            if (found.Count > 0) ThumbnailUrlsAvailable?.Invoke(this, found);
+                    var records = new List<ArticleThumbnailRecord>();
+                    foreach (var article in batch)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var html = article.ContentHtml ?? article.Summary;
+                        if (string.IsNullOrEmpty(html)) continue;
+                        records.Add(new(article.ArticleID, HtmlImageParser.SignificantImageUrlStrings(html, baseUrls[article.ArticleID], 3)));
+                    }
+                    return records;
+                }, ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                if (parsed.Count > 0) await _database.SaveArticleThumbnailsAsync(parsed).ConfigureAwait(false);
+                CacheRecords(parsed);
+                var found = parsed.Where(record => record.ThumbnailUrls.Count > 0)
+                    .Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
+                if (found.Count > 0) ThumbnailUrlsAvailable?.Invoke(this, found);
+            }
         }
         finally
         {
