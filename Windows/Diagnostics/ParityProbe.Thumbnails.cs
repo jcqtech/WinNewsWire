@@ -269,6 +269,7 @@ internal static partial class ParityProbe
         finally { account.RemoveFeed(baseFeed); }
         Require(failureOnUI && failures == 4, "Permanent thumbnail failures were not dispatched once to the UI.");
         await CheckThumbnailDecodeQueueAsync(window);
+        await CheckDirectionalThumbnailPrefetchAsync(window);
         await CheckChangedFeedIconsAsync(window);
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
@@ -412,6 +413,86 @@ internal static partial class ParityProbe
         }
         Require(running == 0 && service.ProbeWaitingDecodeCount == 0,
             "Shutdown retained an active decode or a queued lease.");
+    }
+
+    private static async Task CheckDirectionalThumbnailPrefetchAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSelection = model.SelectedArticle;
+        bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
+        bool previousUnified = model.IsUnifiedLayout;
+        var previousDisplay = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "prefetch-direction.db"));
+        await using var service = new ArticleThumbnailService(window.DispatcherQueue,
+            () => (new ArticleThumbnailFinder(database),
+                new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "prefetch-direction-cache"), () => false)),
+            networkAllowsDownloads: () => false, networkAllowsPrefetch: () => true);
+        var rows = new ObservableCollection<Models.FeedItem>(Enumerable.Range(0, 120).Select(index =>
+        {
+            string id = "prefetch-direction-" + index;
+            var article = new Article("account", id, "feed", id, "Directional prefetch fixture " + index,
+                null, null, null, "https://thumbnail.test/article/" + index, null, "A short preview.",
+                $"https://thumbnail.test/prefetch-direction-{index}.bmp", null, null, null, null,
+                new ArticleStatus(id, true, false, DateTime.UnixEpoch));
+            return new Models.FeedItem { Id = id, AccountID = article.AccountID, SourceArticle = article,
+                FeedTitle = "Directional prefetch", IsRead = true };
+        }));
+        var list = (ListView)content.FindName("ArticleListView");
+        var scheduled = new List<(int First, int Last, int Row)>();
+        content.ProbePrefetchingThumbnailRow = row =>
+        {
+            var panel = (ItemsStackPanel)list.ItemsPanelRoot;
+            scheduled.Add((panel.FirstVisibleIndex, panel.LastVisibleIndex, row));
+        };
+        try
+        {
+            Core.AppDefaults.Shared.UseColumnLayout = false;
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small);
+            model.IsUnifiedLayout = false;
+            model.SelectedArticle = null;
+            content.ProbeSetThumbnailService(service);
+            model.ArticleItems = rows;
+            foreach (var (target, up) in new[] { (0, false), (70, false), (40, true) })
+            {
+                scheduled.Clear();
+                list.ScrollIntoView(rows[target], ScrollIntoViewAlignment.Leading);
+                await WaitFor(() =>
+                {
+                    if (list.ItemsPanelRoot is not ItemsStackPanel panel) return Task.FromResult(false);
+                    return Task.FromResult(panel.FirstVisibleIndex >= Math.Max(0, target - 1)
+                        && panel.FirstVisibleIndex <= target && content.ProbeThumbnailWorkIsIdle
+                        && scheduled.Any(item => item.First == panel.FirstVisibleIndex && item.Last == panel.LastVisibleIndex));
+                }, "Directional prefetch after native viewport settles");
+                var settled = (ItemsStackPanel)list.ItemsPanelRoot;
+                int first = settled.FirstVisibleIndex, last = settled.LastVisibleIndex;
+                int count = last - first + 1;
+                int start = up ? Math.Max(0, first - count) : last + 1;
+                int end = up ? first : Math.Min(rows.Count, start + count);
+                var expected = Enumerable.Range(start, end - start);
+                if (!up) expected = expected.Reverse();
+                Require(scheduled.Where(item => item.First == first && item.Last == last).Select(item => item.Row)
+                    .SequenceEqual(expected), "Thumbnail lookahead did not request exactly one screen in scroll direction, nearest last.");
+                int before = scheduled.Count;
+                list.UpdateLayout();
+                var pulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                Require(window.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    () => pulse.TrySetResult()), "The prefetch probe dispatcher was unavailable.");
+                await pulse.Task;
+                Require(scheduled.Count == before, "An unchanged viewport repeated thumbnail prefetch.");
+            }
+        }
+        finally
+        {
+            content.ProbePrefetchingThumbnailRow = null;
+            content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            model.IsUnifiedLayout = previousUnified;
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
+            Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
+        }
     }
 
     private static async Task CheckChangedFeedIconsAsync(MainWindow window)
