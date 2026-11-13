@@ -14,7 +14,6 @@ public sealed class ImageDatabase : IDisposable
     public static ImageDatabase Shared => SharedDatabase.Value;
     public static bool IsSharedCreated => SharedDatabase.IsValueCreated;
     public static readonly TimeSpan FailureRetry = TimeSpan.FromDays(5);
-    public static readonly TimeSpan FailureRetention = TimeSpan.FromDays(33);
     private readonly DatabaseQueue _queue;
     private readonly TimeProvider _clock;
     private volatile bool _disposed;
@@ -39,16 +38,19 @@ public sealed class ImageDatabase : IDisposable
             {
                 using var command = connection.CreateCommand();
                 command.CommandText = """
-                    CREATE TABLE IF NOT EXISTS downloadFailure (url TEXT PRIMARY KEY NOT NULL, statusCode INTEGER, lastChecked REAL NOT NULL);
+                    CREATE TABLE IF NOT EXISTS downloadFailure (url TEXT PRIMARY KEY NOT NULL, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS homePageFavicon (homePageURL TEXT PRIMARY KEY NOT NULL, faviconURL TEXT, lastChecked REAL NOT NULL);
-                    CREATE TABLE IF NOT EXISTS feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL, lastChecked REAL NOT NULL);
+                    CREATE TABLE IF NOT EXISTS feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL);
                     DROP TABLE IF EXISTS articleThumbnailURLs;
                     CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, byteCount INTEGER NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT, nextCheck REAL NOT NULL DEFAULT 0);
                     """;
                 command.ExecuteNonQuery();
+                foreach (var (table, column) in new[] { ("downloadFailure", "statusCode"), ("feedIconURL", "lastChecked") })
+                    if (connection.Query($"PRAGMA table_info({table});", row => row.GetString(1)).Contains(column, StringComparer.OrdinalIgnoreCase))
+                        connection.Execute($"ALTER TABLE {table} DROP COLUMN {column};");
                 DownloadedImageTable.EnsureValidationColumn(connection);
                 bool imported = legacyDatabasePath is not null && ImportLegacyDatabase(connection, legacyDatabasePath);
-                DownloadFailureTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
+                DownloadFailureTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetry);
                 foreach (var row in HomePageFaviconTable.FetchAll(connection)) _favicons[row.HomePageUrl] = row;
                 foreach (var pair in FeedIconUrlTable.FetchAll(connection)) _feedIcons[pair.Key] = pair.Value;
                 foreach (var pair in DownloadFailureTable.FetchAll(connection)) _failures[pair.Key] = pair.Value;
@@ -74,9 +76,9 @@ public sealed class ImageDatabase : IDisposable
         {
             using var transaction = connection.BeginTransaction();
             (string Table, string Columns, bool Optional)[] tables = [
-                ("downloadFailure", "url,statusCode,lastChecked", false),
+                ("downloadFailure", "url,lastChecked", false),
                 ("homePageFavicon", "homePageURL,faviconURL,lastChecked", false),
-                ("feedIconURL", "feedURL,iconURL,lastChecked", false),
+                ("feedIconURL", "feedURL,iconURL", false),
                 ("downloadedImage", "url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck", true)
             ];
             foreach (var (table, columns, optional) in tables)
@@ -222,19 +224,19 @@ public sealed class ImageDatabase : IDisposable
         ArgumentException.ThrowIfNullOrEmpty(iconUrl);
         return _queue.RunAsync(connection =>
         {
-            FeedIconUrlTable.Save(connection, feedUrl, iconUrl, _clock.GetUtcNow());
+            FeedIconUrlTable.Save(connection, feedUrl, iconUrl);
             _feedIcons[feedUrl] = iconUrl;
             return Task.CompletedTask;
         });
     }
 
-    public Task RecordFailureAsync(string url, int? statusCode)
+    public Task RecordFailureAsync(string url)
     {
         ArgumentException.ThrowIfNullOrEmpty(url);
         return _queue.RunAsync(connection =>
         {
             var now = _clock.GetUtcNow();
-            DownloadFailureTable.Save(connection, url, statusCode, now);
+            DownloadFailureTable.Save(connection, url, now);
             _failures[url] = now;
             return Task.CompletedTask;
         });
@@ -253,7 +255,7 @@ public sealed class ImageDatabase : IDisposable
 
     public Task RemoveExpiredFailuresAsync() => _queue.RunAsync(connection =>
     {
-        var cutoff = _clock.GetUtcNow() - FailureRetention;
+        var cutoff = _clock.GetUtcNow() - FailureRetry;
         DownloadFailureTable.RemoveExpired(connection, cutoff);
         foreach (var pair in _failures)
             if (pair.Value < cutoff) _failures.TryRemove(pair.Key, out _);

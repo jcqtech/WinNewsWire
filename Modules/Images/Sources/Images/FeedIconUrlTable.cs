@@ -14,13 +14,12 @@ internal static class FeedIconUrlTable
         return result;
     }
 
-    internal static void Save(SqliteConnection connection, string feedUrl, string iconUrl, DateTimeOffset now)
+    internal static void Save(SqliteConnection connection, string feedUrl, string iconUrl)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "INSERT OR REPLACE INTO feedIconURL (feedURL,iconURL,lastChecked) VALUES ($feed,$icon,$checked);";
+        command.CommandText = "INSERT OR REPLACE INTO feedIconURL (feedURL,iconURL) VALUES ($feed,$icon);";
         command.Parameters.AddWithValue("$feed", feedUrl);
         command.Parameters.AddWithValue("$icon", iconUrl);
-        command.Parameters.AddWithValue("$checked", (now - DateTimeOffset.UnixEpoch).TotalSeconds);
         command.ExecuteNonQuery();
     }
 }

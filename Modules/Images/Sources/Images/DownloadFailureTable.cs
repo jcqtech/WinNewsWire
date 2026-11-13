@@ -14,12 +14,11 @@ internal static class DownloadFailureTable
         return result;
     }
 
-    internal static void Save(SqliteConnection connection, string url, int? statusCode, DateTimeOffset now)
+    internal static void Save(SqliteConnection connection, string url, DateTimeOffset now)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "INSERT OR REPLACE INTO downloadFailure (url,statusCode,lastChecked) VALUES ($url,$status,$checked);";
+        command.CommandText = "INSERT OR REPLACE INTO downloadFailure (url,lastChecked) VALUES ($url,$checked);";
         command.Parameters.AddWithValue("$url", url);
-        command.Parameters.AddWithValue("$status", (object?)statusCode ?? DBNull.Value);
         command.Parameters.AddWithValue("$checked", (now - DateTimeOffset.UnixEpoch).TotalSeconds);
         command.ExecuteNonQuery();
     }

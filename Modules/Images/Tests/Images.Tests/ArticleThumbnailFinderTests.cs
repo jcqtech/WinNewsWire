@@ -54,7 +54,7 @@ public sealed class ArticleThumbnailFinderTests
         Assert.Equal(fallback, finder.ThumbnailUrl(first, ThumbnailMode.Large));
         Assert.Equal(shared, finder.ThumbnailUrl(second, ThumbnailMode.Large));
         Assert.Equal(unrelated.RawImageLink, finder.ThumbnailUrl(unrelated, ThumbnailMode.Small));
-        await database.RecordFailureAsync(shared, 404);
+        await database.RecordFailureAsync(shared);
         Assert.Equal(shared, finder.ThumbnailUrl(first, ThumbnailMode.Small));
         ThumbnailUrlFailure? failure = null;
         finder.ThumbnailDownloadFailed += (_, value) =>
@@ -120,7 +120,7 @@ public sealed class ArticleThumbnailFinderTests
         const string original = "https://example.com/original.jpg";
         const string replacement = "https://example.com/replacement.jpg";
         Assert.Equal(original, finder.ThumbnailUrl(WithImage(original, "<p>Original body</p>"), mode));
-        await database.RecordFailureAsync(original, 404);
+        await database.RecordFailureAsync(original);
         Assert.Equal(original, finder.ThumbnailUrl(WithImage(original), mode));
         Assert.Equal(replacement, finder.ThumbnailUrl(WithImage(replacement), mode));
 
@@ -140,7 +140,7 @@ public sealed class ArticleThumbnailFinderTests
         var article = Article(image: url);
         Assert.Equal(url, finder.ThumbnailUrl(article, ThumbnailMode.Small));
         Assert.Equal(url, finder.ThumbnailUrl(article, ThumbnailMode.Large));
-        await database.RecordFailureAsync(url, 404);
+        await database.RecordFailureAsync(url);
         for (int index = 0; index < 49_999; index++)
             Assert.Null(finder.ThumbnailUrl(Article("empty-" + index), ThumbnailMode.Small));
         Assert.Equal(url, finder.ThumbnailUrl(article, ThumbnailMode.Small));
@@ -197,7 +197,7 @@ public sealed class ArticleThumbnailFinderTests
         Assert.Equal(image, finder.ThumbnailUrl(article, ThumbnailMode.Large));
         Assert.Equal(thumbnail, finder.ThumbnailUrl(article, ThumbnailMode.Small));
         Assert.Equal(thumbnail, finder.ThumbnailUrl(noHtmlImage, ThumbnailMode.Large));
-        await database.RecordFailureAsync(image, 404);
+        await database.RecordFailureAsync(image);
         finder.ThumbnailUrlDidFail(image);
         Assert.Equal(thumbnail, finder.ThumbnailUrl(article, ThumbnailMode.Large));
     }
@@ -241,8 +241,8 @@ public sealed class ArticleThumbnailFinderTests
             null, null, null, 800, 600)!;
         var article = Article(image: "https://example.com/image.jpg", thumbnail: "https://example.com/thumbnail.jpg",
             attachments: [small, large]);
-        await database.RecordFailureAsync(article.RawThumbnailLink!, 404);
-        await database.RecordFailureAsync(article.RawImageLink!, 404);
+        await database.RecordFailureAsync(article.RawThumbnailLink!);
+        await database.RecordFailureAsync(article.RawImageLink!);
         Assert.Equal(large.URL, finder.ThumbnailUrl(article, ThumbnailMode.Small));
         Assert.Equal(large.URL, finder.ThumbnailUrl(article, ThumbnailMode.Large));
     }
@@ -297,7 +297,7 @@ public sealed class ArticleThumbnailFinderTests
         var article = Article(thumbnail: provided, html: "<img src='/photo.jpg' width='640' height='480'>");
         await finder.FindThumbnailUrlsAsync([article]);
         Assert.Equal(provided, finder.ThumbnailUrl(article, ThumbnailMode.Small));
-        await database.RecordFailureAsync(provided, 404);
+        await database.RecordFailureAsync(provided);
         finder.ThumbnailUrlDidFail(provided);
         Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(article, ThumbnailMode.Small));
     }
@@ -316,7 +316,7 @@ public sealed class ArticleThumbnailFinderTests
         await finder.FindThumbnailUrlsAsync([photo, noPhoto]);
         Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(photo, ThumbnailMode.Small));
         Assert.Null(finder.ThumbnailUrl(noPhoto, ThumbnailMode.Small));
-        await database.RecordFailureAsync("https://example.com/photo.jpg", 404);
+        await database.RecordFailureAsync("https://example.com/photo.jpg");
         finder.ThumbnailUrlDidFail("https://example.com/photo.jpg");
         Assert.Equal("https://example.com/second-photo.jpg", finder.ThumbnailUrl(photo, ThumbnailMode.Small));
 
@@ -335,7 +335,7 @@ public sealed class ArticleThumbnailFinderTests
         foreach (var url in Enumerable.Range(1, 3).Select(index => $"https://example.com/photo{index}.jpg"))
         {
             Assert.Equal(url, finder.ThumbnailUrl(article, ThumbnailMode.Small));
-            await database.RecordFailureAsync(url, 404);
+            await database.RecordFailureAsync(url);
             finder.ThumbnailUrlDidFail(url);
         }
         Assert.Null(finder.ThumbnailUrl(article, ThumbnailMode.Small));
@@ -397,7 +397,7 @@ public sealed class ArticleThumbnailFinderTests
             Assert.Equal(provided.RawImageLink, finder.ThumbnailUrl(provided, mode));
             Assert.Equal("https://example.com/original.jpg", finder.ThumbnailUrl(html, mode));
         }
-        await database.RecordFailureAsync(provided.RawImageLink!, 404);
+        await database.RecordFailureAsync(provided.RawImageLink!);
         html = Article("html", html: "<img src='/reloaded.jpg'>");
         finder.EmptyCache();
         foreach (var mode in new[] { ThumbnailMode.Small, ThumbnailMode.Large })

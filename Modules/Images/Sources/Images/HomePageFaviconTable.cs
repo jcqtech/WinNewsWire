@@ -2,7 +2,7 @@ using Microsoft.Data.Sqlite;
 
 namespace WinNewsWire.Images;
 
-public sealed record HomePageFaviconRecord(string HomePageUrl, string? FaviconUrl, DateTimeOffset LastChecked);
+internal sealed record HomePageFaviconRecord(string HomePageUrl, string? FaviconUrl, DateTimeOffset LastChecked);
 
 internal static class HomePageFaviconTable
 {

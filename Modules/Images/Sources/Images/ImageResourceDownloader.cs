@@ -207,7 +207,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             else
             {
                 ClearRetryDelay(url);
-                await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
+                await _database.RecordFailureAsync(url).ConfigureAwait(false);
                 DownloadFailed?.Invoke(this, url);
             }
             return new(null, transient);
@@ -240,7 +240,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                 return new(null, IsTransient: true, DecodingFailed: true);
             }
             ClearRetryDelay(url);
-            await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
+            await _database.RecordFailureAsync(url).ConfigureAwait(false);
             DownloadFailed?.Invoke(this, url);
             return new(null);
         }
@@ -330,7 +330,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             Trace.TraceWarning($"Could not decode stored image {url}: {error.Message}");
             ct.ThrowIfCancellationRequested();
-            await _database.RecordFailureAsync(url, null).ConfigureAwait(false);
+            await _database.RecordFailureAsync(url).ConfigureAwait(false);
         }
         DownloadFailed?.Invoke(this, url);
         return new(null);

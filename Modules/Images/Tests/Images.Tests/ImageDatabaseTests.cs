@@ -11,6 +11,27 @@ public sealed class ImageDatabaseTests : IDisposable
     private string DatabasePath => Path.Combine(_directory, "Images.db");
     public ImageDatabaseTests() => Directory.CreateDirectory(_directory);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CurrentAndUpgradedSchemasAcceptMappingsAndFailuresWithoutObsoleteColumns(bool upgrade)
+    {
+        if (upgrade) WriteLegacyDatabase(DatabasePath);
+        using var database = new ImageDatabase(DatabasePath, _clock);
+        if (upgrade)
+        {
+            Assert.Equal("https://site.test/icon.png", database.IconUrl("https://site.test/feed"));
+            Assert.True(database.RecentlyFailed("https://site.test/missing"));
+        }
+        await database.SaveFeedIconUrlAsync("https://site.test/feed", "updated");
+        await database.RecordFailureAsync("https://site.test/new-failure");
+        Assert.Equal("updated", database.IconUrl("https://site.test/feed"));
+        Assert.True(database.RecentlyFailed("https://site.test/new-failure"));
+        using var connection = Open();
+        Assert.DoesNotContain("statusCode", connection.Query("PRAGMA table_info(downloadFailure);", row => row.GetString(1)));
+        Assert.DoesNotContain("lastChecked", connection.Query("PRAGMA table_info(feedIconURL);", row => row.GetString(1)));
+    }
+
     [Fact]
     public void OriginalThreeTableDatabaseIsImportedAndDeletedOnlyAfterItsDataIsAvailable()
     {
@@ -37,7 +58,7 @@ public sealed class ImageDatabaseTests : IDisposable
         {
             await source.SaveHomePageFaviconAsync("https://site.test/", null);
             await source.SaveFeedIconUrlAsync("https://site.test/feed", "legacy");
-            await source.RecordFailureAsync("https://site.test/missing", 404);
+            await source.RecordFailureAsync("https://site.test/missing");
             await source.SaveDownloadedImageAsync(new(image, 1024, (48, 48),
                 new(null, "\"legacy\""), _clock.GetUtcNow().AddDays(3)));
             {
@@ -123,7 +144,7 @@ public sealed class ImageDatabaseTests : IDisposable
         {
             await database.SaveHomePageFaviconAsync("https://site.test/", "https://site.test/favicon.png");
             await database.SaveFeedIconUrlAsync("https://site.test/feed", "https://site.test/feed.png");
-            await database.RecordFailureAsync("https://site.test/broken", 404);
+            await database.RecordFailureAsync("https://site.test/broken");
         }
         using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.Equal("https://site.test/favicon.png", reopened.FaviconUrl("https://site.test/"));
@@ -162,12 +183,12 @@ public sealed class ImageDatabaseTests : IDisposable
     public async Task FailureRetryBoundaryAndExplicitClearAreDurable()
     {
         using var database = new ImageDatabase(DatabasePath, _clock);
-        await database.RecordFailureAsync("https://site.test/icon", null);
+        await database.RecordFailureAsync("https://site.test/icon");
         _clock.Advance(ImageDatabase.FailureRetry - TimeSpan.FromSeconds(1));
         Assert.True(database.RecentlyFailed("https://site.test/icon"));
         _clock.Advance(TimeSpan.FromSeconds(1));
         Assert.False(database.RecentlyFailed("https://site.test/icon"));
-        await database.RecordFailureAsync("https://site.test/icon", 404);
+        await database.RecordFailureAsync("https://site.test/icon");
         await database.ClearFailureAsync("https://site.test/icon");
         Assert.False(database.RecentlyFailed("https://site.test/icon"));
     }
@@ -187,11 +208,11 @@ public sealed class ImageDatabaseTests : IDisposable
                 width is { } w && height is { } h ? (w, h) : null, null));
             Assert.False(database.RecentlyFailed(url));
         }
-        _clock.Advance(ImageDatabase.FailureRetention + TimeSpan.FromDays(1));
+        _clock.Advance(ImageDatabase.FailureRetry + TimeSpan.FromDays(1));
         using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.Equal(unsuitable, reopened.IsUnsuitableForThumbnail(url));
         Assert.False(reopened.RecentlyFailed(url));
-        await reopened.RecordFailureAsync(url, 404);
+        await reopened.RecordFailureAsync(url);
         await reopened.ClearFailureAsync(url);
         Assert.Equal(unsuitable, reopened.IsUnsuitableForThumbnail(url));
         await reopened.SaveDownloadedImageAsync(new(url, 2048, (640, 480), null));
@@ -280,10 +301,10 @@ public sealed class ImageDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task StartupDeletesFailuresOnlyAfterThirtyThreeDays()
+    public async Task StartupDeletesFailuresAfterFiveDays()
     {
-        using (var database = new ImageDatabase(DatabasePath, _clock)) await database.RecordFailureAsync("https://site.test/icon", 404);
-        _clock.Advance(ImageDatabase.FailureRetention);
+        using (var database = new ImageDatabase(DatabasePath, _clock)) await database.RecordFailureAsync("https://site.test/icon");
+        _clock.Advance(ImageDatabase.FailureRetry);
         using (var database = new ImageDatabase(DatabasePath, _clock)) Assert.Equal(1L, FailureCount());
         _clock.Advance(TimeSpan.FromSeconds(1));
         using var reopened = new ImageDatabase(DatabasePath, _clock);
