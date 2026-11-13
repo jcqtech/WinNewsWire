@@ -137,6 +137,26 @@ public class HtmlLinkTests
     public void UnterminatedRawTextDoesNotExposeMarkup()
         => Assert.Empty(Urls("<textarea>example <a href='/not-a-link'>text</a>"));
 
+    [Theory]
+    [InlineData("title", "News & Notes")]
+    [InlineData("TEXTAREA", "News & Notes")]
+    [InlineData("xmp", "News &amp; Notes")]
+    [InlineData("noembed", "News &amp; Notes")]
+    public void RawTextDecodesEntitiesOnlyInEscapableElements(string tag, string expected)
+    {
+        var links = HtmlLinkParser.ParseLinks(new("https://example.com/",
+            Encoding.UTF8.GetBytes($"<a href='/feed'><svg><{tag}>News &amp; Notes</{tag}></svg></a>")));
+        Assert.Equal(expected, Assert.Single(links).Text);
+    }
+
+    [Fact]
+    public void UnterminatedTitleStillDecodesEntities()
+    {
+        var links = HtmlLinkParser.ParseLinks(new("https://example.com/",
+            "<a href='/feed'><title>News &amp; Notes"u8.ToArray()));
+        Assert.Equal("News & Notes", Assert.Single(links).Text);
+    }
+
     private static string[] Urls(string html, string url = "http://example.com/")
         => HtmlLinkParser.ParseLinks(new(url, Encoding.UTF8.GetBytes(html))).Select(link => link.Href).OfType<string>().ToArray();
     private sealed class NoopDelegate : IHtmlScannerDelegate { }

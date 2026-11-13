@@ -147,6 +147,7 @@ public sealed class HtmlScanner(IHtmlScannerDelegate scannerDelegate)
     private void ConsumeRawText(ReadOnlySpan<byte> name)
     {
         var start = _position;
+        bool decodeEntities = XmlAscii.EqualsCaseInsensitive(name, "textarea"u8) || XmlAscii.EqualsCaseInsensitive(name, "title"u8);
         while (_position < _input.Length)
         {
             if (_input[_position] == XmlAscii.LessThan && Peek(1) == XmlAscii.Slash)
@@ -157,7 +158,7 @@ public sealed class HtmlScanner(IHtmlScannerDelegate scannerDelegate)
                 var candidate = _input.AsMemory(closerStart, nameEnd - closerStart);
                 if (XmlAscii.EqualsCaseInsensitive(candidate.Span, name))
                 {
-                    if (_position > start) Delegate?.DidFindCharacters(this, _input.AsMemory(start, _position - start));
+                    EmitRawText(start, _position - start, decodeEntities);
                     _position = nameEnd;
                     ConsumeThroughGreaterThan();
                     Delegate?.DidEndTag(this, candidate);
@@ -166,7 +167,31 @@ public sealed class HtmlScanner(IHtmlScannerDelegate scannerDelegate)
             }
             _position++;
         }
-        if (_position > start) Delegate?.DidFindCharacters(this, _input.AsMemory(start, _position - start));
+        EmitRawText(start, _position - start, decodeEntities);
+    }
+
+    private void EmitRawText(int start, int length, bool decodeEntities)
+    {
+        if (length == 0) return;
+        var bytes = _input.AsMemory(start, length);
+        if (!decodeEntities || !bytes.Span.Contains(XmlAscii.Ampersand))
+        {
+            Delegate?.DidFindCharacters(this, bytes);
+            return;
+        }
+        var output = new ArrayBufferWriter<byte>(length);
+        int end = start + length;
+        for (int index = start; index < end;)
+        {
+            if (_input[index] == XmlAscii.Ampersand)
+            {
+                var entity = XmlEntities.Decode(_input, index, XmlEntities.Mode.Html);
+                output.Write(entity.Bytes.Span);
+                index = Math.Max(entity.NextIndex, index + 1);
+            }
+            else output.Write(_input.AsSpan(index++, 1));
+        }
+        Delegate?.DidFindCharacters(this, output.WrittenMemory);
     }
 
     private void ConsumeCData()
