@@ -123,7 +123,7 @@ public sealed class FeedImageDownloaderTests
         Assert.Null(await fixture.Images.FaviconAsync(new(Feed, Home)));
         Assert.False(fixture.ImageDatabase.HomePageHasNoFavicon(Home));
         Assert.False(fixture.ImageDatabase.RecentlyFailed(Home + "favicon.ico"));
-        fixture.Clock.Advance(TimeSpan.FromMinutes(30));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.NotNull(await fixture.Images.FaviconAsync(new(Feed, Home)));
     }
 
@@ -167,15 +167,17 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task KnownNonImageFeedIconsUseHomepageFallbackAndRecoverAfterNetworkChanges(bool declared)
+    [InlineData(false, HttpStatusCode.OK)]
+    [InlineData(true, HttpStatusCode.OK)]
+    [InlineData(false, HttpStatusCode.InternalServerError)]
+    [InlineData(true, HttpStatusCode.InternalServerError)]
+    public async Task WaitingFeedIconsUseHomepageFallbackAndRecoverAfterNetworkChanges(bool declared, HttpStatusCode failure)
     {
         int requests = 0;
         const string icon = Home + "declared.png";
         await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
         {
-            "/declared.png" => Response(HttpStatusCode.OK, ++requests == 1 ? "<html>Login</html>"u8.ToArray() : Image),
+            "/declared.png" => Response(++requests == 1 ? failure : HttpStatusCode.OK, requests == 1 ? "<html>Login</html>"u8.ToArray() : Image),
             "/" => HtmlResponse("<link rel='apple-touch-icon' sizes='180x180' href='/touch.png'>"),
             "/touch.png" => Response(HttpStatusCode.OK, Image),
             _ => throw new InvalidOperationException("Unexpected URL.")
@@ -208,7 +210,7 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task UndecodableSuccessIsLoggedAndExcludedUntilNetworkChanges()
+    public async Task UndecodableSuccessIsLoggedAndRetriesAfterTheCooldown()
     {
         int calls = 0;
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK,
@@ -222,16 +224,10 @@ public sealed class FeedImageDownloaderTests
         Assert.Contains("HTTP 200", Assert.IsType<InvalidDataException>(failure.Error).Message);
         Assert.Null(await fixture.Images.FaviconAsync(source));
         Assert.Equal(1, calls);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(59));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37) - TimeSpan.FromSeconds(1));
         Assert.Null(await fixture.Images.FaviconAsync(source));
         Assert.Equal(1, calls);
         fixture.Clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.Null(await fixture.Images.FaviconAsync(source));
-        Assert.Equal(1, calls);
-        fixture.Clock.Advance(TimeSpan.FromDays(7));
-        Assert.Null(await fixture.Images.FaviconAsync(source));
-        Assert.Equal(1, calls);
-        fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
         Assert.NotNull(await fixture.Images.FaviconAsync(source));
         Assert.Equal(2, calls);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(source.FaviconUrl!));
@@ -887,7 +883,7 @@ public sealed class FeedImageDownloaderTests
         Assert.False(fixture.ImageDatabase.IsUnsuitableForThumbnail(url));
         decodeFailure = null;
         Assert.Null(await fixture.Thumbnails.SourceAsync(url));
-        Assert.Equal(url, decodeFailure);
+        Assert.Null(decodeFailure);
         Assert.Single(fixture.Requests);
     }
 
@@ -914,7 +910,7 @@ public sealed class FeedImageDownloaderTests
         {
             Assert.Null(await fixture.Thumbnails.SourceAsync(url));
             Assert.Single(fixture.Requests);
-            fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+            fixture.Clock.Advance(TimeSpan.FromMinutes(37));
             Assert.Null(await fixture.Thumbnails.SourceAsync(url));
             Assert.Equal(2, fixture.Requests.Count);
             Assert.Null(notified);

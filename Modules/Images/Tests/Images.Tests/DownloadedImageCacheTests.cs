@@ -187,7 +187,7 @@ public sealed class DownloadedImageCacheTests
         Assert.Equal(!pausesHost, await fixture.FetchAsync(cache, "peer") is not null);
         if (pausesHost)
         {
-            fixture.Clock.Advance(TimeSpan.FromSeconds(119));
+            fixture.Clock.Advance(TimeSpan.FromMinutes(37) - TimeSpan.FromSeconds(1));
             Assert.Null(await fixture.FetchAsync(cache, "peer"));
             Assert.Equal(2, requests);
             fixture.Clock.Advance(TimeSpan.FromSeconds(1));
@@ -637,7 +637,7 @@ public sealed class DownloadedImageCacheTests
         Assert.Null(await fixture.FetchAsync(cache, "write-blocked"));
         Assert.Equal(1, requests);
         Assert.NotNull(await fixture.FetchAsync(cache, "peer"));
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.NotNull(await fixture.FetchAsync(cache, "write-blocked"));
         Assert.Equal(3, requests);
         Assert.Equal(2, (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
@@ -710,7 +710,7 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
-    public async Task TransientRetriesDoubleFromOneMinuteToOneHourAndSuccessResetsTheDelay()
+    public async Task TransientRetriesUseAFixed37MinuteWaitAndSuccessClearsIt()
     {
         int requests = 0;
         bool succeeds = false;
@@ -724,11 +724,11 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(10, 20);
         int expected = 0;
-        foreach (int minutes in new[] { 1, 2, 4, 8, 16, 32, 60, 60 })
+        for (int attempt = 0; attempt < 4; attempt++)
         {
             Assert.Null(await fixture.FetchAsync(cache, "retry"));
             Assert.Equal(++expected, requests);
-            fixture.Clock.Advance(TimeSpan.FromMinutes(minutes) - TimeSpan.FromSeconds(1));
+            fixture.Clock.Advance(TimeSpan.FromMinutes(37) - TimeSpan.FromSeconds(1));
             Assert.Null(await fixture.FetchAsync(cache, "retry"));
             Assert.Equal(expected, requests);
             fixture.Clock.Advance(TimeSpan.FromSeconds(1));
@@ -740,7 +740,7 @@ public sealed class DownloadedImageCacheTests
         succeeds = false;
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Equal(++expected, requests);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(59));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37) - TimeSpan.FromSeconds(1));
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Equal(expected, requests);
         fixture.Clock.Advance(TimeSpan.FromSeconds(1));
@@ -769,7 +769,7 @@ public sealed class DownloadedImageCacheTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task NetworkChangesClearTransientDelaysAndRestartAtOneMinute(bool available)
+    public async Task NetworkChangesClearTransientDelaysAndRestartThe37MinuteWait(bool available)
     {
         int requests = 0;
         await using var fixture = new Fixture((_, _) =>
@@ -784,7 +784,7 @@ public sealed class DownloadedImageCacheTests
         await Task.Run(() => cache.NetworkStatusChanged(null, available));
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Equal(2, requests);
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Equal(3, requests);
     }
@@ -808,25 +808,25 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(10, 20);
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Equal(2, requests);
         Assert.True(fixture.Database.RecentlyFailed(Url("retry")));
         fixture.Clock.Advance(ImageDatabase.FailureRetry);
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Equal(3, requests);
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.NotNull(await fixture.FetchAsync(cache, "retry"));
         Assert.Equal(4, requests);
     }
 
     [Theory]
-    [InlineData(null, 60)]
-    [InlineData("5", 60)]
-    [InlineData("120", 120)]
+    [InlineData(null, 2220)]
+    [InlineData("5", 2220)]
+    [InlineData("120", 2220)]
     [InlineData("7200", 7200)]
-    [InlineData("invalid", 60)]
-    [InlineData("315537897599", 60)]
+    [InlineData("invalid", 2220)]
+    [InlineData("315537897599", 2220)]
     public async Task HostCooldownHonorsRetryAfterWithoutBlockingDiskOrOtherHosts(string? retryAfter, int seconds)
     {
         int requests = 0;
@@ -859,10 +859,12 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Theory]
-    [InlineData(429, 120)]
-    [InlineData(500, 120)]
-    [InlineData(429, 5)]
-    public async Task ServerRetryAfterWaitsSurviveNetworkNotificationsForUrlsAndHosts(int status, int retryAfter)
+    [InlineData(429, 7200, true)]
+    [InlineData(500, 7200, true)]
+    [InlineData(429, 2250, false)]
+    [InlineData(500, 120, false)]
+    [InlineData(429, 5, false)]
+    public async Task NetworkChangesKeepOnlyRetryDatesMoreThan37MinutesAway(int status, int retryAfter, bool kept)
     {
         int requests = 0;
         await using var fixture = new Fixture((_, _) =>
@@ -878,11 +880,18 @@ public sealed class DownloadedImageCacheTests
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         fixture.Clock.Advance(TimeSpan.FromSeconds(30));
         cache.NetworkStatusChanged(null, false);
+        if (!kept)
+        {
+            Assert.NotNull(await fixture.FetchAsync(cache, "retry"));
+            Assert.NotNull(await fixture.FetchAsync(cache, "peer"));
+            Assert.Equal(3, requests);
+            return;
+        }
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         Assert.Equal(status == 500, await fixture.FetchAsync(cache, "peer") is not null);
         cache.NetworkStatusChanged(null, true);
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
-        fixture.Clock.Advance(TimeSpan.FromSeconds(Math.Max(60, retryAfter) - 31));
+        fixture.Clock.Advance(TimeSpan.FromSeconds(retryAfter - 31));
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
         fixture.Clock.Advance(TimeSpan.FromSeconds(1));
         Assert.NotNull(await fixture.FetchAsync(cache, "retry"));
@@ -890,13 +899,12 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Theory]
-    [InlineData(null, 60, false)]
-    [InlineData("5", 60, false)]
-    [InlineData("120", 121, false)]
+    [InlineData(null, 2221, false)]
+    [InlineData("5", 2221, false)]
+    [InlineData("120", 2221, false)]
     [InlineData("7200", 7201, false)]
-    [InlineData("120", 121, true)]
     [InlineData("7200", 7201, true)]
-    public async Task ConcurrentHostFailuresDoNotExtendAnActiveWaitWithoutALongerRetryAfter(
+    public async Task ConcurrentHostFailuresKeepTheLatestRetryDeadline(
         string? retryAfter, int retryAtSeconds, bool networkChanged)
     {
         int requests = 0;
@@ -1023,7 +1031,7 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
-    public async Task ConsecutiveTransientFailuresOnDifferentUrlsDoubleTheirHostDelay()
+    public async Task ConsecutiveTransientFailuresOnDifferentUrlsKeepTheSameHostDelay()
     {
         int requests = 0;
         await using var fixture = new Fixture((_, _) =>
@@ -1033,13 +1041,13 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(10, 20);
         Assert.Null(await fixture.FetchAsync(cache, "first"));
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.Null(await fixture.FetchAsync(cache, "second"));
         Assert.Equal(2, requests);
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37) - TimeSpan.FromSeconds(1));
         Assert.Null(await fixture.FetchAsync(cache, "third"));
         Assert.Equal(2, requests);
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
         Assert.Null(await fixture.FetchAsync(cache, "third"));
         Assert.Equal(3, requests);
     }
@@ -1077,10 +1085,8 @@ public sealed class DownloadedImageCacheTests
         Assert.Equal(3, requests);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task CaptivePortalDataStaysExcludedUntilNetworkNotificationWithoutPersistingFailure(bool available)
+    [Fact]
+    public async Task CaptivePortalDataRetriesAfter37MinutesWithoutNetworkChangesOrPersistedFailure()
     {
         int requests = 0;
         await using var fixture = new Fixture((_, _) =>
@@ -1093,21 +1099,15 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(10, 20);
         Assert.Null(await fixture.FetchAsync(cache, "portal"));
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37));
         Assert.Null(await fixture.FetchAsync(cache, "portal"));
         Assert.Equal(2, requests);
         Assert.False(fixture.Database.RecentlyFailed(Url("portal")));
         Assert.False(File.Exists(fixture.PathFor("portal")));
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(37) - TimeSpan.FromSeconds(1));
         Assert.Null(await fixture.FetchAsync(cache, "portal"));
         Assert.Equal(2, requests);
-        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
-        Assert.Null(await fixture.FetchAsync(cache, "portal"));
-        Assert.Equal(2, requests);
-        fixture.Clock.Advance(TimeSpan.FromDays(7));
-        Assert.Null(await fixture.FetchAsync(cache, "portal"));
-        Assert.Equal(2, requests);
-        await Task.Run(() => cache.NetworkStatusChanged(null, available));
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
         Assert.NotNull(await fixture.FetchAsync(cache, "portal"));
         Assert.Equal(3, requests);
     }

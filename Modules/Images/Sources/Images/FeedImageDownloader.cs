@@ -205,7 +205,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private Task<ImageResourceResult> FetchImageAsync(string url, bool favicon, CancellationToken ct, string? activityDetail = null)
     {
         ct.ThrowIfCancellationRequested();
-        return !favicon && DownloadedImages.ReturnedNonImage(url)
+        return !favicon && DownloadedImages.IsWaitingToRetry(url)
             ? Task.FromResult(new ImageResourceResult(null))
             : (favicon ? _favicons : _images).FetchAsync(url, ct, activityDetail);
     }

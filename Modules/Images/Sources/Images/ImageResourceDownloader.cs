@@ -36,10 +36,9 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly Dictionary<string, Task<ImageResourceResult>> _pending = new(StringComparer.Ordinal);
     private readonly HashSet<string> _unlimitedPending = new(StringComparer.Ordinal);
     private readonly HashSet<Task> _operations = [];
-    private readonly record struct RetryDelay(DateTimeOffset RetryDate, TimeSpan Delay, bool IsFromRetryAfter = false);
-    private readonly Dictionary<string, RetryDelay> _retryDelays = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, RetryDelay> _hostRetryDelays = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _nonImageUrls = new(StringComparer.Ordinal);
+    private static readonly TimeSpan RetryWait = TimeSpan.FromMinutes(37);
+    private readonly Dictionary<string, DateTimeOffset> _retryDates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> _hostRetryDates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LinkedListNode<DownloadedImage>> _cache = new(StringComparer.Ordinal);
     private readonly LinkedList<DownloadedImage> _cacheOrder = [];
     private long _cacheBytes;
@@ -50,11 +49,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     internal HashSet<string> CopyPendingUrls()
     {
         lock (_gate) return _pending.Keys.ToHashSet(StringComparer.Ordinal);
-    }
-
-    internal bool ReturnedNonImage(string url)
-    {
-        lock (_gate) return _nonImageUrls.Contains(url);
     }
 
     internal ImageResourceDownloader(ImageDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
@@ -172,8 +166,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             }
         }
         finally { _sourceDiskGate?.Release(); }
-        lock (_gate)
-            if (_nonImageUrls.Contains(url)) return new(null, IsTransient: true, DecodingFailed: true);
         if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
         var limiter = !_configuration.StoresSourceData || request.UsesDownloadQueue
@@ -244,7 +236,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             if (_configuration.StoresSourceData)
             {
-                lock (_gate) _nonImageUrls.Add(url);
                 NoteTransientFailure(url, statusCode: (int)response.StatusCode);
                 return new(null, IsTransient: true, DecodingFailed: true);
             }
@@ -381,7 +372,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     {
         lock (_gate)
         {
-            _retryDelays.Remove(image.Url);
+            _retryDates.Remove(image.Url);
             if (_configuration.StoresSourceData) return new(image);
             if (_cache.Remove(image.Url, out var previous))
             {
@@ -420,8 +411,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         lock (_gate)
         {
             var now = _clock.GetUtcNow();
-            return _retryDelays.TryGetValue(url, out var retry) && retry.RetryDate > now
-                || _hostRetryDelays.TryGetValue(new Uri(url).IdnHost, out var hostRetry) && hostRetry.RetryDate > now;
+            return _retryDates.TryGetValue(url, out var retry) && retry > now
+                || _hostRetryDates.TryGetValue(new Uri(url).IdnHost, out var hostRetry) && hostRetry > now;
         }
     }
 
@@ -430,38 +421,21 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         lock (_gate)
         {
             var now = _clock.GetUtcNow();
-            RetryDelay NextDelay(RetryDelay previous)
+            var delay = RetryWait;
+            if (retryAfter is { } serverDelay && serverDelay > delay)
             {
-                if (previous.RetryDate > now)
-                {
-                    if (retryAfter is not { } extension || extension <= previous.RetryDate - now) return previous;
-                    if (extension <= DateTimeOffset.MaxValue - now)
-                        return new(now + extension, extension > previous.Delay ? extension : previous.Delay, IsFromRetryAfter: true);
-                    Trace.TraceWarning($"Ignoring an unrepresentable image Retry-After interval at {url}.");
-                    return previous;
-                }
-                var delay = previous.Delay > TimeSpan.Zero
-                    ? TimeSpan.FromSeconds(Math.Min(previous.Delay.TotalSeconds * 2, 3600))
-                    : TimeSpan.FromMinutes(1);
-                bool fromRetryAfter = retryAfter.HasValue;
-                if (retryAfter is { } serverDelay && serverDelay > delay)
-                {
-                    if (serverDelay <= DateTimeOffset.MaxValue - now) delay = serverDelay;
-                    else
-                    {
-                        Trace.TraceWarning($"Ignoring an unrepresentable image Retry-After interval at {url}.");
-                        fromRetryAfter = false;
-                    }
-                }
-                return new(now + delay, delay, fromRetryAfter);
+                if (serverDelay <= DateTimeOffset.MaxValue - now) delay = serverDelay;
+                else Trace.TraceWarning($"Ignoring an unrepresentable image Retry-After interval at {url}.");
             }
-            _retryDelays.TryGetValue(url, out var previous);
-            _retryDelays[url] = NextDelay(previous);
+            var next = now + delay;
+            DateTimeOffset NextDate(DateTimeOffset previous) => previous > next ? previous : next;
+            _retryDates.TryGetValue(url, out var previous);
+            _retryDates[url] = NextDate(previous);
             if (statusCode is null or 429 or 503)
             {
                 string host = new Uri(url).IdnHost;
-                _hostRetryDelays.TryGetValue(host, out var previousHost);
-                _hostRetryDelays[host] = NextDelay(previousHost);
+                _hostRetryDates.TryGetValue(host, out var previousHost);
+                _hostRetryDates[host] = NextDate(previousHost);
             }
         }
     }
@@ -470,8 +444,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     {
         lock (_gate)
         {
-            _retryDelays.Remove(url);
-            _hostRetryDelays.Remove(new Uri(url).IdnHost);
+            _retryDates.Remove(url);
+            _hostRetryDates.Remove(new Uri(url).IdnHost);
         }
     }
 
@@ -479,14 +453,14 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     {
         lock (_gate)
         {
-            KeepServerWaits(_retryDelays);
-            KeepServerWaits(_hostRetryDelays);
-            _nonImageUrls.Clear();
-        }
-        static void KeepServerWaits(Dictionary<string, RetryDelay> delays)
-        {
-            foreach (var url in delays.Where(pair => !pair.Value.IsFromRetryAfter).Select(pair => pair.Key).ToArray())
-                delays.Remove(url);
+            var latestAutomaticRetry = _clock.GetUtcNow() + RetryWait;
+            KeepLongWaits(_retryDates);
+            KeepLongWaits(_hostRetryDates);
+            void KeepLongWaits(Dictionary<string, DateTimeOffset> dates)
+            {
+                foreach (var url in dates.Where(pair => pair.Value <= latestAutomaticRetry).Select(pair => pair.Key).ToArray())
+                    dates.Remove(url);
+            }
         }
     }
 
