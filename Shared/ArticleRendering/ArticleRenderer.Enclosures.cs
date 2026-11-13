@@ -84,7 +84,8 @@ public static partial class ArticleRenderer
         if (!Uri.TryCreate(value, UriKind.Absolute, out var url)) return null;
         var components = Uri.UnescapeDataString(url.AbsolutePath).Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (components.Length == 0) return null;
-        components[^1] = WordPressImageSize.Replace(components[^1], "");
+        components[^1] = WordPressImageSize.Replace(
+            ArticleRenderingSpecialCases.RemovingEngadgetImagePrefix(components[^1], url.AbsoluteUri), "");
         return string.Join("/", components.TakeLast(2)).ToLowerInvariant();
     }
 

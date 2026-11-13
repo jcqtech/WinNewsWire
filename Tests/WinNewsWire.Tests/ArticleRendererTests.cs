@@ -155,6 +155,19 @@ public sealed class ArticleRendererTests
         Assert.DoesNotContain("<img ", html);
     }
 
+    [Theory]
+    [InlineData("www.engadget.com", 1)]
+    [InlineData("example.com", 2)]
+    public void EngadgetLargeImagePrefixIsNormalizedOnlyForThatPublisher(string host, int imageCount)
+    {
+        var imageUrl = $"https://{host}/img/gallery/story/l-intro-1794240937.jpg";
+        var image = Attachment.Create(null, imageUrl, "image/jpeg", null, null, null)!;
+        var html = ArticleRenderer.Render(Article(image: imageUrl, attachments: [image],
+            body: $"<p><img src=\"https://{host}/img/gallery/story/intro-1794240937.jpg\"></p>"),
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.Equal(imageCount, System.Text.RegularExpressions.Regex.Matches(html, "<img ").Count);
+    }
+
     [Fact]
     public void EnclosuresPreserveFeedOrderInsteadOfSortingUrls()
     {

@@ -64,6 +64,10 @@ public static class ArticleRenderingSpecialCases
         return false;
     }
 
+    public static string RemovingEngadgetImagePrefix(string fileName, string imageUrl)
+        => fileName.StartsWith("l-", StringComparison.Ordinal) && SpecialCases.UrlStringMatchesDomain(imageUrl, ["engadget.com"])
+            ? fileName[2..] : fileName;
+
     public static string RemoveStrayLineBreaksIfNeeded(string html, string? feedUrl, string? homePageUrl)
         => new[] { feedUrl, homePageUrl }.Any(url => url is not null
             && SpecialCases.UrlStringMatchesDomain(url, ["macrumors.com"]))
