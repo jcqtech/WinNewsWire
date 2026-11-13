@@ -35,6 +35,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly HashSet<Task> _operations = [];
     private readonly record struct RetryDelay(DateTimeOffset RetryDate, TimeSpan Delay);
     private readonly Dictionary<string, RetryDelay> _retryDelays = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RetryDelay> _hostRetryDelays = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LinkedListNode<DownloadedImage>> _cache = new(StringComparer.Ordinal);
     private readonly LinkedList<DownloadedImage> _cacheOrder = [];
     private long _cacheBytes;
@@ -152,9 +153,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             }
         }
         finally { _sourceDiskGate?.Release(); }
-        lock (_gate)
-            if (_retryDelays.TryGetValue(url, out var retry) && retry.RetryDate > _clock.GetUtcNow())
-                return new(null, IsTransient: true);
+        if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
         var limiter = !_configuration.StoresSourceData || request.DownloadPriority is not null
             ? _configuration.DownloadLimiter : null;
@@ -163,6 +162,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         if (limiter is not null && lease is null) return new(null, IsTransient: true);
         ct.ThrowIfCancellationRequested();
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
+        if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
         int activity = _log.CreateActivity(request.Owner, request.Kind, request.Detail);
         _log.DidStart(activity);
         DownloadResult response;
@@ -183,10 +183,10 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             bool transient = (int)response.StatusCode is >= 500 and <= 599 or 408 or 429;
             _log.DidFail(activity, new HttpRequestException("Image request returned HTTP " + (int)response.StatusCode
                 + (response.Success ? " with no image bytes." : "."), null, response.StatusCode));
-            if (transient) NoteTransientFailure(url);
+            if (transient) NoteTransientFailure(url, response.RetryAfter);
             else
             {
-                lock (_gate) _retryDelays.Remove(url);
+                ClearRetryDelay(url);
                 await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
                 DownloadFailed?.Invoke(this, url);
             }
@@ -202,7 +202,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             _log.DidFail(activity, new InvalidDataException($"Could not decode image bytes (HTTP {(int)response.StatusCode}).", error));
             ct.ThrowIfCancellationRequested();
-            lock (_gate) _retryDelays.Remove(url);
+            ClearRetryDelay(url);
             await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
             DownloadFailed?.Invoke(this, url);
             return new(null);
@@ -223,6 +223,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             throw;
         }
         _log.DidComplete(activity, ActivityLogger.DataSizeMessage(bytes.LongLength), returnedFromCache: response.ReturnedFromCache);
+        ClearRetryDelay(url);
         return Cache(new(url, path, processed));
     }
 
@@ -338,20 +339,57 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
     }
 
-    private void NoteTransientFailure(string url)
+    private bool IsWaitingToRetry(string url)
     {
         lock (_gate)
         {
-            var delay = _retryDelays.TryGetValue(url, out var previous)
-                ? TimeSpan.FromSeconds(Math.Min(previous.Delay.TotalSeconds * 2, 3600))
-                : TimeSpan.FromMinutes(1);
-            _retryDelays[url] = new(_clock.GetUtcNow() + delay, delay);
+            var now = _clock.GetUtcNow();
+            return _retryDelays.TryGetValue(url, out var retry) && retry.RetryDate > now
+                || _hostRetryDelays.TryGetValue(new Uri(url).IdnHost, out var hostRetry) && hostRetry.RetryDate > now;
+        }
+    }
+
+    private void NoteTransientFailure(string url, TimeSpan? retryAfter = null)
+    {
+        lock (_gate)
+        {
+            var now = _clock.GetUtcNow();
+            RetryDelay NextDelay(RetryDelay previous)
+            {
+                var delay = previous.Delay > TimeSpan.Zero
+                    ? TimeSpan.FromSeconds(Math.Min(previous.Delay.TotalSeconds * 2, 3600))
+                    : TimeSpan.FromMinutes(1);
+                if (retryAfter is { } serverDelay && serverDelay > delay)
+                {
+                    if (serverDelay <= DateTimeOffset.MaxValue - now) delay = serverDelay;
+                    else Trace.TraceWarning($"Ignoring an unrepresentable image Retry-After interval at {url}.");
+                }
+                return new(now + delay, delay);
+            }
+            _retryDelays.TryGetValue(url, out var previous);
+            _retryDelays[url] = NextDelay(previous);
+            string host = new Uri(url).IdnHost;
+            _hostRetryDelays.TryGetValue(host, out var previousHost);
+            _hostRetryDelays[host] = NextDelay(previousHost);
+        }
+    }
+
+    private void ClearRetryDelay(string url)
+    {
+        lock (_gate)
+        {
+            _retryDelays.Remove(url);
+            _hostRetryDelays.Remove(new Uri(url).IdnHost);
         }
     }
 
     internal void ResetRetryDelays()
     {
-        lock (_gate) _retryDelays.Clear();
+        lock (_gate)
+        {
+            _retryDelays.Clear();
+            _hostRetryDelays.Clear();
+        }
     }
 
     internal void EmptyCache()

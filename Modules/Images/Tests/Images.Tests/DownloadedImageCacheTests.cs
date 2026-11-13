@@ -561,6 +561,99 @@ public sealed class DownloadedImageCacheTests
         Assert.Equal(4, requests);
     }
 
+    [Theory]
+    [InlineData(null, 60)]
+    [InlineData("5", 60)]
+    [InlineData("120", 120)]
+    [InlineData("7200", 7200)]
+    [InlineData("invalid", 60)]
+    [InlineData("315537897599", 60)]
+    public async Task HostCooldownHonorsRetryAfterWithoutBlockingDiskOrOtherHosts(string? retryAfter, int seconds)
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            var response = new HttpResponseMessage(++requests == 1 ? HttpStatusCode.TooManyRequests : HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(Fixture.Image)
+            };
+            if (retryAfter is not null) response.Headers.TryAddWithoutValidation("Retry-After", retryAfter);
+            return Task.FromResult(response);
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Null(await fixture.FetchAsync(cache, "peer"));
+        Assert.Equal(1, requests);
+        var other = await cache.FetchAsync("https://other.test/icon.png", new(ActivityOwner.FeedImageDownloader,
+            ActivityKind.DownloadFeedImage("https://other.test/icon.png"), null, null), default);
+        Assert.NotNull(other.Image);
+        await fixture.SeedAsync("cached");
+        Assert.NotNull(await fixture.FetchAsync(cache, "cached"));
+        Assert.Null(await fixture.FetchAsync(cache, "peer"));
+        Assert.Equal(2, requests);
+        fixture.Clock.Advance(TimeSpan.FromSeconds(seconds - 1));
+        Assert.Null(await fixture.FetchAsync(cache, "peer"));
+        Assert.Equal(2, requests);
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.NotNull(await fixture.FetchAsync(cache, "peer"));
+        Assert.Equal(3, requests);
+    }
+
+    [Fact]
+    public async Task ConsecutiveTransientFailuresOnDifferentUrlsDoubleTheirHostDelay()
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.Null(await fixture.FetchAsync(cache, "first"));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(await fixture.FetchAsync(cache, "second"));
+        Assert.Equal(2, requests);
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(await fixture.FetchAsync(cache, "third"));
+        Assert.Equal(2, requests);
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(await fixture.FetchAsync(cache, "third"));
+        Assert.Equal(3, requests);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.NotFound)]
+    public async Task AnAlreadyRunningNonTransientResponseEndsItsHostCooldown(HttpStatusCode status)
+    {
+        int requests = 0;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            Interlocked.Increment(ref requests);
+            if (request.RequestUri!.AbsolutePath == "/healthy.png")
+            {
+                started.TrySetResult();
+                await release.Task.WaitAsync(ct);
+                return new HttpResponseMessage(status) { Content = new ByteArrayContent(Fixture.Image) };
+            }
+            return new HttpResponseMessage(request.RequestUri.AbsolutePath == "/retry.png"
+                ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) { Content = new ByteArrayContent(Fixture.Image) };
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        var healthy = fixture.FetchAsync(cache, "healthy");
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Null(await fixture.FetchAsync(cache, "peer"));
+        Assert.Equal(2, requests);
+        release.TrySetResult();
+        await healthy;
+        Assert.NotNull(await fixture.FetchAsync(cache, "peer"));
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(3, requests);
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         internal static readonly byte[] Image = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZssAAAAASUVORK5CYII=");
