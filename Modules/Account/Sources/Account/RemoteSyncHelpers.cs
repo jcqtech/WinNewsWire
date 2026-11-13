@@ -125,7 +125,7 @@ public static class RemoteSyncHelpers
             item.Url, item.ExternalUrl, item.Summary, item.ImageUrl, item.DatePublished, item.DateModified,
             item.Authors?.Select(a => Author.Create(null, a.Name, a.Url, a.AvatarUrl, a.EmailAddress)).OfType<Author>().ToHashSet(),
             item.Attachments?.Select(a => Attachment.Create(null, a.Url, a.MimeType, a.Title, a.SizeInBytes, a.DurationInSeconds)).OfType<Attachment>().ToHashSet(),
-            new ArticleStatus(id, defaultRead, false, DateTime.UtcNow));
+            new ArticleStatus(id, defaultRead, false, DateTime.UtcNow), item.ThumbnailUrl);
     }
 }
 
