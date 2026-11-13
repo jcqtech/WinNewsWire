@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`f7ee842823d5a8d62a65d74698adc061429adffa`**. This synchronization is in progress.
+`f5f9043b05386b6e3984aace76aae9520c4fac81`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is timeline thumbnail presentation, `f5f9043b05386b6e3984aace76aae9520c4fac81`;
+is large timeline thumbnails, `19ce7a87bf1db70a59c6de32227c1dd4800b93a6`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -65,8 +65,13 @@ buttons, avatars, and decorative strips. The new finder selects provided images
 by thumbnail mode, discovers HTML images off the caller thread, and persists up
 to three ordered candidates plus negative results. Queries are bounded, writes
 transactional, and results expire after 33 days. Failed URLs fall through to the
-next candidate after warm or cold reads. Timeline row integration and shared
-local-image routes remain pending.
+next candidate after warm or cold reads. Standard timeline rows now display
+small thumbnails with local HTML discovery, persisted-failure notifications,
+automatic candidate fallback, and a one-screen download lookahead. Recycled
+views reject stale/canceled results and release their image references; models
+do not retain a decoded bitmap for every offscreen article. Visible downloads
+wait until native layout has settled. Column layout remains thumbnail-free.
+Large/hidden display settings and shared local-image routes remain pending.
 
 Thumbnail downloading now shares the existing icon resource pipeline without
 duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
@@ -108,8 +113,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **92 Ported, 25 Covered, 67 Skipped, and 321 Pending**
-source commits, backed by **108 source-attributed Windows port commits**. Two
+The inventory currently has **93 Ported, 25 Covered, 67 Skipped, and 320 Pending**
+source commits, backed by **109 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -122,7 +127,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are timeline thumbnail presentation and later image-cache
+Still pending are large/hidden thumbnail modes and later image-cache
 rewrites, finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
@@ -162,8 +167,11 @@ the original refresh-session disposal also fails the completion-metadata
 notification regression. The original local delegate fails the successful
 refresh timestamp assertion, while cancellation preserves the prior date.
 
-The existing reader/header/sidebar/navigation gate passes 36 image tests and
-33 UI groups. The selected refresh/progress/lifecycle/worker tests pass all
+The reader/header/sidebar/navigation gate passes 57 image tests and
+33 UI groups after the standard timeline integration. Its first run hit the
+unchanged open-menu resize timing assertion; the repeat passed all groups.
+Three subsequent focused failure-notification cases bring the image suite to
+60 passing tests. The selected refresh/progress/lifecycle/worker tests pass all
 50 cases. Regular and probe x64 Windows builds have zero warnings/errors.
 
 The isolated version-label probe passes full-label Copy in both Preferences and
@@ -172,7 +180,7 @@ the corresponding assertion. Seven plain-text address assertions also fail
 after restoring the exact original explicit-link-only implementation; the
 restored port passes all 18 targeted plain-text cases.
 
-The image suite passes 57 tests, including thumbnail priority, recent-failure
+The image suite passes 60 tests, including thumbnail priority, recent-failure
 fallback, metadata restart/batching/expiry, atomic-write rollback, HTML discovery,
 and ordered fallback after cold reads. Restoring the exact single-image finder
 with record-shape compatibility only fails both multi-candidate regressions.
@@ -189,6 +197,12 @@ cleanup, and shutdown. Original PNG-only processing and unlimited-memory cache
 paths fail four new regressions; removing the network gate fails the offline
 case. The original finder fails size-only fallback, and shared failure storage
 fails both icon-safety regressions. All temporary controls were restored.
+
+The same probe also verifies actual standard timeline rows, HTML-only
+thumbnails, failing-provided-image fallback, UI-thread permanent-failure events,
+bounded lookahead, immutable article replacement, rejection of a late previous
+image, column exclusion, and scrolling after template changes. Restoring the
+exact original row template or model update fails its respective new check.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
