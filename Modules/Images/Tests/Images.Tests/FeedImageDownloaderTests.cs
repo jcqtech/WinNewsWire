@@ -792,6 +792,7 @@ public sealed class FeedImageDownloaderTests
 
     [Theory]
     [InlineData(HttpStatusCode.NotFound, true)]
+    [InlineData(HttpStatusCode.Forbidden, true)]
     [InlineData(HttpStatusCode.ServiceUnavailable, false)]
     [InlineData(HttpStatusCode.RequestTimeout, false)]
     [InlineData(HttpStatusCode.TooManyRequests, false)]
