@@ -459,6 +459,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         _cache.Clear();
         _cacheOrder.Clear();
         _cacheBytes = 0;
+        _finder?.EmptyCache();
     }
 
     private void VerifyAccess()

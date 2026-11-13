@@ -155,6 +155,15 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         }
     }
 
+    public void EmptyCache()
+    {
+        lock (_gate)
+        {
+            _htmlUrls.Clear();
+            _chosenUrls.Clear();
+        }
+    }
+
     public void ThumbnailUrlDidFail(string url)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);

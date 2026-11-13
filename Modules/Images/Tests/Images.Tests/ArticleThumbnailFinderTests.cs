@@ -358,6 +358,32 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
+    public async Task LowMemoryInvalidatesProvidedChoicesAndReloadsSavedHtmlUrls()
+    {
+        using var database = new ImageDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        var provided = Article(image: "https://example.com/provided.jpg");
+        var html = Article("html", html: "<img src='/original.jpg'>");
+        await finder.DiscoverThumbnailUrlsAsync([html]);
+        foreach (var mode in new[] { ThumbnailMode.Small, ThumbnailMode.Large })
+        {
+            Assert.Equal(provided.RawImageLink, finder.ThumbnailUrl(provided, mode));
+            Assert.Equal("https://example.com/original.jpg", finder.ThumbnailUrl(html, mode));
+        }
+        await database.RecordFailureAsync(provided.RawImageLink!, 404);
+        await database.SaveArticleThumbnailsAsync([new("html", ["https://example.com/reloaded.jpg"])]);
+        finder.EmptyCache();
+        foreach (var mode in new[] { ThumbnailMode.Small, ThumbnailMode.Large })
+        {
+            Assert.Null(finder.ThumbnailUrl(provided, mode));
+            Assert.Null(finder.ThumbnailUrl(html, mode));
+        }
+        await finder.LoadSavedThumbnailUrlsAsync([html]);
+        foreach (var mode in new[] { ThumbnailMode.Small, ThumbnailMode.Large })
+            Assert.Equal("https://example.com/reloaded.jpg", finder.ThumbnailUrl(html, mode));
+    }
+
+    [Fact]
     public async Task CanceledDiscoveryLeavesArticlesEligibleForRetry()
     {
         using var database = new ImageDatabase(":memory:");
