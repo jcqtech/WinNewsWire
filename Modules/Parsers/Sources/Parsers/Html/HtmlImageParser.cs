@@ -15,6 +15,16 @@ public static class HtmlImageParser
         return receiver.UrlStrings;
     }
 
+    internal static string? ResolveUrl(string? value, Uri? baseUrl)
+    {
+        if (value is null || value.AsSpan().TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return null;
+        value = value.Trim();
+        if (string.IsNullOrEmpty(value)) return null;
+        if (baseUrl is not null && Uri.TryCreate(baseUrl, value, out var resolved)) return resolved.AbsoluteUri;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var absolute)) return absolute.AbsoluteUri;
+        return null;
+    }
+
     private sealed class ImageParserDelegate(Uri? baseUrl, int maximumCount) : IHtmlScannerDelegate
     {
         public List<string> UrlStrings { get; } = [];
@@ -25,7 +35,7 @@ public static class HtmlImageParser
         {
             if (XmlAscii.EqualsCaseInsensitive(name.Span, "a"u8))
             {
-                _enclosingLinkUrl = ResolveUrl(attributes["href"]);
+                _enclosingLinkUrl = ResolveUrl(attributes["href"], baseUrl);
                 return;
             }
             if (!XmlAscii.EqualsCaseInsensitive(name.Span, "img"u8)) return;
@@ -37,7 +47,7 @@ public static class HtmlImageParser
             if (!SignificantImageFilter.HasSignificantDimensions(width, height)) return;
             foreach (var source in ImageSources(attributes))
             {
-                var url = ResolveUrl(source);
+                var url = ResolveUrl(source, baseUrl);
                 if (url is null || !SignificantImageFilter.IsSignificant(url, width, height, attributes["class"], _enclosingLinkUrl)) continue;
                 if (_seenUrls.Add(url)) UrlStrings.Add(url);
                 if (UrlStrings.Count >= maximumCount) scanner.StopParsing();
@@ -48,16 +58,6 @@ public static class HtmlImageParser
         public void DidEndTag(HtmlScanner scanner, ReadOnlyMemory<byte> name)
         {
             if (XmlAscii.EqualsCaseInsensitive(name.Span, "a"u8)) _enclosingLinkUrl = null;
-        }
-
-        private string? ResolveUrl(string? value)
-        {
-            if (value is null || value.AsSpan().TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return null;
-            value = value.Trim();
-            if (string.IsNullOrEmpty(value)) return null;
-            if (baseUrl is not null && Uri.TryCreate(baseUrl, value, out var resolved)) return resolved.AbsoluteUri;
-            if (Uri.TryCreate(value, UriKind.Absolute, out var absolute)) return absolute.AbsoluteUri;
-            return null;
         }
 
         private static IEnumerable<string?> ImageSources(HtmlAttributes attributes)

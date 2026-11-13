@@ -174,6 +174,47 @@ public class HtmlImageTests
         Assert.Equal(["https://example.com/b.jpg"], images);
     }
 
+    [Fact]
+    public void InsertsAttributesAtEveryMatchingTagNameWithoutReformattingOrChangingResponsiveImages()
+    {
+        string html = "<p>Caf\u00e9</p><img src=\"/images/photo.jpg\" alt=\"Photo\"><IMG SRC=\"https://example.com/images/photo.jpg\">"
+            + "<img src=\"/images/photo.jpg\" srcset=\"/images/photo-2x.jpg 2x\"><picture><img src=\"/images/photo.jpg\"></picture>"
+            + "<img src=\"/images/other.jpg\">";
+        string expected = "<p>Caf\u00e9</p><img src=\"nnw:x\" src=\"/images/photo.jpg\" alt=\"Photo\"><IMG src=\"nnw:x\" SRC=\"https://example.com/images/photo.jpg\">"
+            + "<img src=\"/images/photo.jpg\" srcset=\"/images/photo-2x.jpg 2x\"><picture><img src=\"/images/photo.jpg\"></picture>"
+            + "<img src=\"/images/other.jpg\">";
+        Assert.Equal(expected, HtmlImageAttributeInserter.InsertAttributes(" src=\"nnw:x\"",
+            "https://example.com/images/photo.jpg", html, new Uri("https://example.com/2026/10/post.html")));
+    }
+
+    [Fact]
+    public void AttributeInsertionResolvesEntitiesAndSkipsCommentsRawTextAndCanonicalOverrides()
+    {
+        string protectedHtml = """
+            <!-- <img src="/photo?a=1&amp;b=2"> --><script>let image = '<img src="/photo?a=1&amp;b=2">';</script>
+            <textarea><img src="/photo?a=1&amp;b=2"></textarea>
+            <img src="/photo?a=1&amp;b=2" srcset><img src="/photo?a=1&amp;b=2" data-canonical-src>
+            """;
+        const string image = """<img src=" /photo?a=1&amp;b=2 " alt='unchanged'>""";
+        Assert.Equal(protectedHtml + """<img data-test="&quot;" src=" /photo?a=1&amp;b=2 " alt='unchanged'>""",
+            HtmlImageAttributeInserter.InsertAttributes(" data-test=\"&quot;\"",
+                "https://example.com/photo?a=1&b=2", protectedHtml + image, new Uri("https://example.com/")));
+    }
+
+    [Fact]
+    public void AttributeInsertionTracksNestedAndSelfClosingPicturesAndFirstDuplicateSources()
+    {
+        const string protectedHtml = """
+            <PICTURE><picture><img src="/photo"></picture><img src="/photo"></PICTURE>
+            <img src="/other" src="/photo"><img src="data:image/png;base64,abc"><img><picture/>
+            """;
+        Assert.Equal(protectedHtml + """<img src="nnw:x" src="/photo"/>""",
+            HtmlImageAttributeInserter.InsertAttributes(" src=\"nnw:x\"",
+                "https://example.com/photo", protectedHtml + """<img src="/photo"/>""", new Uri("https://example.com/")));
+        const string relative = """<img src="/photo">""";
+        Assert.Equal(relative, HtmlImageAttributeInserter.InsertAttributes(" hidden", "https://example.com/photo", relative));
+    }
+
     private static string? First(string html)
         => HtmlImageParser.SignificantImageUrlStrings(html, new Uri("https://example.com/posts/1"), 1).FirstOrDefault();
 }
