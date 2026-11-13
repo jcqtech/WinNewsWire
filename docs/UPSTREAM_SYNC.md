@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`15110763e952922cd8ad105cc464b81e1b445ba8`**. This synchronization is in progress.
+`3aa2459de6997c49e9e3c8b065eea0994af7c4bb`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is large-thumbnail row-height scroll anchoring, `3d2b6cd8eaf603532b5adb7a89d2f3b59982e37d`;
+is thumbnail URL reuse, `69bebf67afbd0b13187782f81b4b95c56c767d2d`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -65,7 +65,11 @@ buttons, avatars, and decorative strips. The new finder selects provided images
 by thumbnail mode, discovers HTML images off the caller thread, and persists up
 to three ordered candidates plus negative results. Queries are bounded, writes
 transactional, and results expire after 33 days. Failed URLs fall through to the
-next candidate after warm or cold reads. Standard timeline rows now display
+next candidate after warm or cold reads. Combined positive/negative in-memory
+results reset after exceeding 20,000 articles and reload from persistent records.
+Contentless articles are excluded before database discovery, avoiding stale
+HTML thumbnails while permitting discovery if content arrives later.
+Standard timeline rows now display
 small thumbnails with local HTML discovery, persisted-failure notifications,
 automatic candidate fallback, and a one-screen download lookahead. Recycled
 views reject stale/canceled results and release their image references; models
@@ -174,8 +178,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **106 Ported, 29 Covered, 71 Skipped, and 299 Pending**
-source commits, backed by **122 source-attributed Windows port commits**. Two
+The inventory currently has **108 Ported, 31 Covered, 71 Skipped, and 295 Pending**
+source commits, backed by **125 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -188,7 +192,13 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are thumbnail scroll anchoring and later image-cache rewrites,
+WinUI's native scroll anchoring preserves the top visible article and pixel
+offset while preceding large-thumbnail rows shrink and grow; the actual timeline
+probe verifies both directions. Search results reuse the same timeline and read
+current shared display settings, avoiding the separate AppKit search controller's
+stale pre-view-load snapshot.
+
+Still pending are thumbnail URL reuse and later image-cache rewrites,
 finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
