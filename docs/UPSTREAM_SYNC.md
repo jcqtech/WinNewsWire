@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`f7daad126bc883f052eff3a8ca050d3a7dc7021c`**. This synchronization is in progress.
+`fd191c154fb195c8a61fcc3a03e9ec1d234d4add`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is downloaded-image metadata, `fd191c154fb195c8a61fcc3a03e9ec1d234d4add`;
+is the downloaded-image disk budget, `ebfa6ed0e445cac7ce1cf3e6a0fd10e9597d8477`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -107,8 +107,11 @@ those bytes directly at 512/1200 pixels, respect EXIF orientation, and retain no
 per-size encoded memory or disk copies. A shared four-slot cancellation-safe LIFO
 scheduler limits thumbnail network requests. Cached images remain available
 offline; new downloads honor connectivity and Windows connection cost.
-Actual image dimensions are checked during native decoding, with unsuitable thumbnails recorded
-separately so usable feed icons are not suppressed.
+Stored source byte counts, pixel dimensions, last access, ETag and Last-Modified
+are persisted. Known unsuitable thumbnails are skipped using those dimensions,
+independently of transient download failures or their expiry. Native decoding
+still checks dimensions; unreadable thumbnails are excluded for that finder's
+lifetime without suppressing otherwise usable feed icons.
 Windows retains its existing favicon representation and SHA1 migration API,
 while sharing source fetches with the new cache. It retains native decoder
 failure reporting instead of the Apple-specific unreadable-data fallback.
@@ -147,8 +150,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **100 Ported, 29 Covered, 70 Skipped, and 306 Pending**
-source commits, backed by **116 source-attributed Windows port commits**. Two
+The inventory currently has **101 Ported, 29 Covered, 70 Skipped, and 305 Pending**
+source commits, backed by **117 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -161,7 +164,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are downloaded-image metadata and later image-cache rewrites,
+Still pending are the downloaded-image disk budget and later image-cache rewrites,
 finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
@@ -289,6 +292,14 @@ usability, offline source reads and decoded-cache eviction. Restoring the origin
 untransformed decoder, ignoring EXIF, and omitting native dimension rejection each
 fail their corresponding new assertion. All controls were restored; regular and
 probe builds pass with zero warnings/errors.
+
+Source metadata coverage brings the image suite to 69 passing tests. It checks
+stored (not original) dimensions/byte counts, HTTP validators, suitability after
+restart and beyond failure expiry, corrected metadata, atomic write failures and
+finder-local decode exclusions. Restoring the original source-save, startup-load
+and finder paths fails six assertions. Removing native codec-error recovery
+fails a deterministic injected WIC error; restored native thumbnails and the
+69-image/33-group reader gate pass, with warning-free regular/probe builds.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
