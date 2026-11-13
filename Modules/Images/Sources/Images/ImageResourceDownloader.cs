@@ -124,6 +124,11 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private byte[] ProcessImage(byte[] data)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Images require the Windows image decoder.");
+        if (_configuration.StoresSourceData)
+        {
+            _ = WindowsImage.LargestFramePixelSize(data);
+            return data;
+        }
         return WindowsImage.ScaledImageData(data, _configuration.MaxPixelSize, _configuration.Format);
     }
 

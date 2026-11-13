@@ -22,6 +22,8 @@ namespace WinNewsWire.Services;
 
 internal sealed class ArticleThumbnailService : IAsyncDisposable
 {
+    private const int SmallThumbnailMaxPixelSize = 512;
+    private const int LargeThumbnailMaxPixelSize = 1200;
     private sealed record CachedThumbnail(string Url, ThumbnailMode Mode, SoftwareBitmapSource Source, long ByteCount);
     private sealed class InsignificantThumbnailDimensionsException(uint width, uint height)
         : Exception($"Thumbnail dimensions are too small or too narrow ({width}x{height}).");
@@ -268,7 +270,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(ct).ConfigureAwait(false);
         if (!SignificantImageFilter.HasSignificantDimensions(decoder.PixelWidth, decoder.PixelHeight))
             throw new InsignificantThumbnailDimensionsException(decoder.PixelWidth, decoder.PixelHeight);
-        int maxPixelSize = mode == ThumbnailMode.Small ? 512 : DownloadedImageCache.MaxPixelSize;
+        int maxPixelSize = mode == ThumbnailMode.Small ? SmallThumbnailMaxPixelSize : LargeThumbnailMaxPixelSize;
         double scale = Math.Min(1, (double)maxPixelSize / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
         var transform = new BitmapTransform
         {

@@ -367,7 +367,7 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task ThumbnailSourceKeepsTheLargestDiskRepresentationForNativeDecoding()
+    public async Task ThumbnailSourceKeepsOriginalFullSizeBytesForTheReaderAndNativeDecoding()
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native thumbnail decoding requires Windows.");
         var original = Bitmap(1600, 800);
@@ -376,8 +376,8 @@ public sealed class FeedImageDownloaderTests
         var source = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.SourceAsync(url,
             activityDetail: "Article title"));
         Assert.Equal(Path.Combine(fixture.CacheDirectory, "DownloadedImages", url.Md5Hex()), source.Path);
-        Assert.Equal(new byte[] { 0xff, 0xd8 }, source.Data[..2]);
-        Assert.Equal((1200u, 600u), WindowsImage.LargestFramePixelSize(source.Data));
+        Assert.Equal(original, source.Data);
+        Assert.Equal((1600u, 800u), WindowsImage.LargestFramePixelSize(source.Data));
         Assert.Equal(source.Data, await File.ReadAllBytesAsync(source.Path));
         Assert.Single(fixture.Requests);
         Assert.False(Directory.Exists(Path.Combine(fixture.CacheDirectory, "Thumbnails")));
@@ -387,6 +387,43 @@ public sealed class FeedImageDownloaderTests
         fixture.NetworkAllowed = false;
         Assert.Equal(source.Data, (await fixture.Thumbnails.SourceAsync(url))?.Data);
         Assert.Single(fixture.Activity.CompletedActivities);
+    }
+
+    [Fact]
+    public async Task AnimatedSourceRetainsEveryFrameWithoutTranscoding()
+    {
+        byte[] original = Convert.FromHexString("47494638396102000200800000FF00000000FF"
+            + "21F904000A0000002C00000000020002000002040441100500"
+            + "21F904000A0000002C00000000020002000002040CC33005003B");
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)));
+        var source = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.SourceAsync(Home + "animated.gif"));
+        Assert.Equal(original, source.Data);
+        Assert.Equal(original, await File.ReadAllBytesAsync(source.Path));
+    }
+
+    [Fact]
+    public async Task ChangedIconSourcesKeepTheOriginalFullSizeReplacement()
+    {
+        int requests = 0;
+        byte[] original = Bitmap(1600, 800);
+        await using var fixture = new Fixture((_, _) =>
+        {
+            var response = Response(HttpStatusCode.OK, Interlocked.Increment(ref requests) == 1 ? Bitmap(128, 128) : original);
+            response.Headers.TryAddWithoutValidation("ETag", "\"icon\"");
+            return Task.FromResult(response);
+        });
+        const string url = Home + "revalidated-source.bmp";
+        var feed = new FeedImageSource(Feed, Home, IconUrl: url);
+        Assert.NotNull(await fixture.Images.IconAsync(feed));
+        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Images.EmptyCache();
+        Assert.NotNull(await fixture.Images.IconAsync(feed));
+        await fixture.Images.DownloadedImages.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        var source = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.SourceAsync(url));
+        Assert.Equal(original, source.Data);
+        Assert.Equal(original, await File.ReadAllBytesAsync(source.Path));
+        Assert.Equal(original.LongLength, Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).ByteCount);
+        Assert.Equal(2, requests);
     }
 
     [Fact]
@@ -428,8 +465,8 @@ public sealed class FeedImageDownloaderTests
         Assert.True(rows.Read());
         Assert.Equal(url, rows.GetString(0));
         Assert.Equal(source.Data.LongLength, rows.GetInt64(1));
-        Assert.Equal(1200L, rows.GetInt64(2));
-        Assert.Equal(600L, rows.GetInt64(3));
+        Assert.Equal(1600L, rows.GetInt64(2));
+        Assert.Equal(800L, rows.GetInt64(3));
         Assert.Equal((fixture.Clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds, rows.GetDouble(4));
         Assert.Equal(etag, rows.GetString(5));
         Assert.Equal(modified, rows.GetString(6));
@@ -509,7 +546,8 @@ public sealed class FeedImageDownloaderTests
         var largeImage = Assert.IsType<DownloadedImage>(await large);
         var iconImage = Assert.IsType<DownloadedImage>(await icon);
         Assert.Equal(largeImage.Path, iconImage.Path);
-        Assert.Equal((1200u, 600u), WindowsImage.LargestFramePixelSize(largeImage.Data));
+        Assert.Equal((1600u, 800u), WindowsImage.LargestFramePixelSize(largeImage.Data));
+        Assert.Equal(original, largeImage.Data);
         Assert.Equal((64u, 32u), WindowsImage.LargestFramePixelSize(iconImage.Data));
         Assert.Equal(largeImage.Data, await File.ReadAllBytesAsync(largeImage.Path));
         Assert.Single(Directory.GetFiles(Path.Combine(fixture.CacheDirectory, "DownloadedImages")));

@@ -7,10 +7,9 @@ using ActivityKind = WinNewsWire.ActivityLog.ActivityKind;
 
 namespace WinNewsWire.Images;
 
-/// <summary>One disk source per URL; display-size representations stay in their owners' memory caches.</summary>
+/// <summary>One original, full-size disk source per URL; display-size representations stay in their owners' memory caches.</summary>
 public sealed class DownloadedImageCache : IAsyncDisposable
 {
-    public const int MaxPixelSize = 1200;
     private readonly ImageResourceDownloader _downloads;
     private readonly ImageDatabase _database;
     private readonly BinaryDiskCache _diskCache;
@@ -65,7 +64,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         _removalByteCount = maximumByteCount;
         _diskCache = new(Path.Combine(cacheFolder, "DownloadedImages"));
         _downloads = new(database, _diskCache.Folder,
-            new(MaxPixelSize, ScaledImageFormat.Jpeg, DownloadLimiter: _downloadLimiter, StoresSourceData: true),
+            new(int.MaxValue, DownloadLimiter: _downloadLimiter, StoresSourceData: true),
             ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, _downloader, clock, activityLog,
             sourceDiskGate: _diskGate, sourceWasRead: SaveAccessDateIfNeededAsync, sourceWasSaved: ImageWasSavedAsync);
         _initialCleanup = Task.Run(RemoveImagesOverSizeLimitAsync);
