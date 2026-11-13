@@ -107,6 +107,44 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
+    public async Task IconRevalidationDoesNotWaitBehindTheFourActiveThumbnailDownloads()
+    {
+        int running = 0;
+        var thumbnailsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var revalidationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath.StartsWith("/busy", StringComparison.Ordinal))
+            {
+                if (Interlocked.Increment(ref running) == 4) thumbnailsStarted.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            }
+            else if (request.Headers.IfNoneMatch.Count != 0)
+                revalidationStarted.TrySetResult();
+            return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
+        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        var downloads = Enumerable.Range(0, 4)
+            .Select(index => fixture.FetchAsync(cache, "busy" + index, limited: true)).ToArray();
+        try
+        {
+            await thumbnailsStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.NotNull(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
+            await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.All(downloads, task => Assert.False(task.IsCompleted));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(downloads).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task ShutdownCancelsAndDrainsBackgroundRevalidationWithoutPoisoningTheCopy()
     {
         int requests = 0;
@@ -272,9 +310,10 @@ public sealed class DownloadedImageCacheTests
         internal DownloadedImageCache CreateCache(int limitImages, int hardLimitImages)
             => new(Database, _directory, Image.LongLength * limitImages, Image.LongLength * hardLimitImages,
                 _downloader, Clock, networkAllowsUpdates: () => UpdatesAllowed);
-        internal async Task<DownloadedImage?> FetchAsync(DownloadedImageCache cache, string name, bool checksForUpdates = false)
+        internal async Task<DownloadedImage?> FetchAsync(DownloadedImageCache cache, string name, bool checksForUpdates = false,
+            bool limited = false)
             => (await cache.FetchAsync(Url(name), new(ActivityOwner.FeedImageDownloader,
-                ActivityKind.DownloadFeedImage(Url(name)), null, null, checksForUpdates), default)).Image;
+                ActivityKind.DownloadFeedImage(Url(name)), null, limited ? () => true : null, checksForUpdates), default)).Image;
         public ValueTask DisposeAsync()
         {
             Database.Dispose();

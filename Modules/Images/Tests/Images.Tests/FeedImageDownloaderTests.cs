@@ -634,6 +634,26 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
+    public async Task DroppedDownloadsAreTransientAndCanRetryWithoutNetworkBackoff()
+    {
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));
+        var limiter = new DownloadLimiter(1, 0);
+        using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
+        await using var resource = new ImageResourceDownloader(fixture.ImageDatabase,
+            Path.Combine(fixture.CacheDirectory, "QueueTest"), new(512, DownloadLimiter: limiter),
+            ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, fixture.Downloader);
+        const string url = Home + "dropped.png";
+        var dropped = await resource.FetchAsync(url, default);
+        Assert.Null(dropped.Image);
+        Assert.True(dropped.IsTransient);
+        Assert.Empty(fixture.Requests);
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+        active.Dispose();
+        Assert.NotNull((await resource.FetchAsync(url, default)).Image);
+        Assert.Single(fixture.Requests);
+    }
+
+    [Fact]
     public async Task ResourceMemoryBudgetEvictsTheLeastRecentlyUsedEncodedImage()
     {
         var original = Bitmap(128, 128);

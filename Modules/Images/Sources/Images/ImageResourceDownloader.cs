@@ -144,9 +144,10 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         finally { _sourceDiskGate?.Release(); }
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
-        using var lease = _configuration.DownloadLimiter is { } limiter
-            && (!_configuration.StoresSourceData || request.NetworkAllowsDownloads is not null)
-            ? await limiter.AcquireAsync(ct).ConfigureAwait(false) : null;
+        var limiter = !_configuration.StoresSourceData || request.NetworkAllowsDownloads is not null
+            ? _configuration.DownloadLimiter : null;
+        using var lease = limiter is not null ? await limiter.AcquireAsync(ct).ConfigureAwait(false) : null;
+        if (limiter is not null && lease is null) return new(null, IsTransient: true);
         ct.ThrowIfCancellationRequested();
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
         int activity = _log.CreateActivity(request.Owner, request.Kind, request.Detail);

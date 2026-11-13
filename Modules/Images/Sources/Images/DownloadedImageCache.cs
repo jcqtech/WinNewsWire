@@ -18,7 +18,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private readonly ByteLimit _limit;
     private readonly ByteLimit _hardLimit;
     private readonly Downloader _downloader;
-    private readonly DownloadLimiter _downloadLimiter = new(4);
+    private readonly DownloadLimiter _downloadLimiter = new(4, 60);
     private readonly Func<bool> _networkAllowsUpdates;
     private readonly object _backgroundGate = new();
     private readonly HashSet<Task> _backgroundTasks = [];
@@ -112,9 +112,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         {
             var validation = await _database.FetchDownloadedImageValidationAsync(url).ConfigureAwait(false);
             if (validation is null || validation.NextCheck > _clock.GetUtcNow() || !_networkAllowsUpdates()) return;
-            using var lease = await _downloadLimiter.AcquireAsync(ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
-            if (!_networkAllowsUpdates()) return;
             var response = await _downloader.DownloadAsync(url, validation.ConditionalGet, ct,
                 UserAgentStyle.Browser, cachesResponse: false).ConfigureAwait(false);
             if (response.Success && response.Data is { Length: > 0 } data)

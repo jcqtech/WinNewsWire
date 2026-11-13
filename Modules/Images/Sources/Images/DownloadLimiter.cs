@@ -4,16 +4,19 @@ internal sealed class DownloadLimiter
 {
     private readonly object _gate = new();
     private readonly int _maximumConcurrentDownloads;
+    private readonly int _maximumWaitingDownloads;
     private readonly LinkedList<Waiter> _waiting = [];
     private int _running;
 
-    internal DownloadLimiter(int maximumConcurrentDownloads)
+    internal DownloadLimiter(int maximumConcurrentDownloads, int maximumWaitingDownloads = 60)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumConcurrentDownloads);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumWaitingDownloads);
         _maximumConcurrentDownloads = maximumConcurrentDownloads;
+        _maximumWaitingDownloads = maximumWaitingDownloads;
     }
 
-    internal ValueTask<IDisposable> AcquireAsync(CancellationToken ct = default)
+    internal ValueTask<IDisposable?> AcquireAsync(CancellationToken ct = default)
     {
         lock (_gate)
         {
@@ -21,15 +24,21 @@ internal sealed class DownloadLimiter
             if (_running < _maximumConcurrentDownloads)
             {
                 _running++;
-                return ValueTask.FromResult<IDisposable>(new Lease(this));
+                return ValueTask.FromResult<IDisposable?>(new Lease(this));
             }
             var waiter = new Waiter(this);
             _waiting.AddLast(waiter.Node);
+            if (_waiting.Count > _maximumWaitingDownloads)
+            {
+                var oldest = _waiting.First!;
+                _waiting.RemoveFirst();
+                oldest.Value.Ready.SetResult(null);
+            }
             return new(WaitAsync(waiter, ct));
         }
     }
 
-    private static async Task<IDisposable> WaitAsync(Waiter waiter, CancellationToken ct)
+    private static async Task<IDisposable?> WaitAsync(Waiter waiter, CancellationToken ct)
     {
         using var registration = ct.UnsafeRegister(static (state, token) =>
         {
@@ -61,7 +70,7 @@ internal sealed class DownloadLimiter
     private sealed class Waiter
     {
         internal DownloadLimiter Owner { get; }
-        internal TaskCompletionSource<IDisposable> Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource<IDisposable?> Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal LinkedListNode<Waiter> Node { get; }
         internal Waiter(DownloadLimiter owner)
         {
