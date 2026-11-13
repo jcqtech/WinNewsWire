@@ -1088,7 +1088,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (generation != Volatile.Read(ref _articleLoadGeneration) || _disposed) return;
         if (!UseColumnLayout && !IsUnifiedLayout && TimelineThumbnailsDisplay != TimelineThumbnailsDisplay.None)
         {
-            await AppService.Shared.ThumbnailImages.LoadSavedAsync(results);
+            await AppService.Shared.ThumbnailImages.FindAsync(results);
             if (generation != Volatile.Read(ref _articleLoadGeneration) || _disposed) return;
         }
         if (restoringSelection is null)

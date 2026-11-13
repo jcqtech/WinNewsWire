@@ -488,12 +488,15 @@ internal static partial class ParityProbe
             savedOnUI |= window.DispatcherQueue.HasThreadAccess;
             Interlocked.Increment(ref savedLoads);
         };
+        var discovered = new HashSet<string>();
+        service.ThumbnailUrlsAvailable += (_, ids) => discovered.UnionWith(ids);
         var rows = new ObservableCollection<Models.FeedItem>(Enumerable.Range(0, 120).Select(index =>
         {
             string id = "prefetch-direction-" + index;
             var article = new Article("account", id, "feed", id, "Directional prefetch fixture " + index,
-                null, null, null, "https://thumbnail.test/article/" + index, null, "A short preview.",
-                $"https://thumbnail.test/prefetch-direction-{index}.bmp", null, null, null, null,
+                index == 119 ? "<img src='/offscreen-discovery.bmp'>" : null,
+                null, null, "https://thumbnail.test/article/" + index, null, "A short preview.",
+                index == 119 ? null : $"https://thumbnail.test/prefetch-direction-{index}.bmp", null, null, null, null,
                 new ArticleStatus(id, true, false, DateTime.UnixEpoch));
             return new Models.FeedItem { Id = id, AccountID = article.AccountID, SourceArticle = article,
                 FeedTitle = "Directional prefetch", IsRead = true };
@@ -543,6 +546,8 @@ internal static partial class ParityProbe
                 await pulse.Task;
                 Require(scheduled.Count == before, "An unchanged viewport repeated thumbnail prefetch.");
             }
+            await WaitFor(() => Task.FromResult(discovered.Contains("prefetch-direction-119")),
+                "Combined discovery parses a never-realized row after saved URLs are ready");
         }
         finally
         {

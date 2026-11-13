@@ -182,31 +182,33 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         }, ct);
     }
 
-    internal Task DiscoverAsync(IEnumerable<Article> articles, CancellationToken ct = default)
+    internal Task FindAsync(IEnumerable<Article> articles, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var snapshot = articles.ToArray();
         var baseUrls = snapshot.DistinctBy(article => article.ArticleID)
             .ToDictionary(article => article.ArticleID, ArticleBaseUrl, StringComparer.Ordinal);
-        return RunOperationAsync(async token =>
-        {
-            var backend = await _backend.Value.ConfigureAwait(false);
-            await backend.Finder.DiscoverThumbnailUrlsAsync(snapshot, token, article => baseUrls[article.ArticleID]).ConfigureAwait(false);
-            return true;
-        }, ct);
-    }
-
-    internal Task LoadSavedAsync(IEnumerable<Article> articles, CancellationToken ct = default)
-    {
-        var snapshot = articles.ToArray();
-        return RunOperationAsync(async token =>
+        var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = RunOperationAsync(async token =>
         {
             var backend = await _backend.Value.ConfigureAwait(false);
 #if PARITY_PROBE
             ProbeLoadingSavedUrls?.Invoke();
 #endif
-            await backend.Finder.LoadSavedThumbnailUrlsAsync(snapshot, token).ConfigureAwait(false);
+            await backend.Finder.FindThumbnailUrlsAsync(snapshot, token, article => baseUrls[article.ArticleID],
+                () => saved.TrySetResult()).ConfigureAwait(false);
             return true;
-        }, ct);
+        }, CancellationToken.None);
+        _ = completion.ContinueWith(completed =>
+        {
+            if (completed.Exception is { } error)
+            {
+                Trace.TraceError($"Thumbnail discovery failed: {error}");
+                saved.TrySetException(error.InnerExceptions);
+            }
+            else if (completed.IsCanceled) saved.TrySetCanceled();
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return saved.Task.WaitAsync(ct);
     }
 
     private Uri? ArticleBaseUrl(Article article)
@@ -245,7 +247,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         if (backend.Finder.ThumbnailUrl(article, mode) is null)
         {
             var discovery = _discovering.GetOrAdd(article.ArticleID,
-                _ => new(() => backend.Finder.DiscoverThumbnailUrlsAsync([article], ct, _ => baseUrl)));
+                _ => new(() => backend.Finder.FindThumbnailUrlsAsync([article], ct, _ => baseUrl)));
             try { await discovery.Value.ConfigureAwait(false); }
             finally { _discovering.TryRemove(new KeyValuePair<string, Lazy<Task>>(article.ArticleID, discovery)); }
         }

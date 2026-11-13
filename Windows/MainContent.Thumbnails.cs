@@ -134,12 +134,11 @@ public sealed partial class MainContent
             TrackThumbnailTask(async () =>
             {
                 if (ShowsTimelineThumbnails && articles.Length > 0)
-                    await _thumbnailService.LoadSavedAsync(articles, _thumbnailLifetime.Token);
+                    await _thumbnailService.FindAsync(articles, _thumbnailLifetime.Token);
                 if (_shuttingDown || version != _thumbnailRefreshVersion) return;
                 _thumbnailFirstVisibleRow = null;
                 foreach (var view in _timelineThumbnails.Keys.ToArray()) RefreshTimelineThumbnail(view);
                 if (!ShowsTimelineThumbnails) return;
-                if (articles.Length > 0) TrackThumbnailTask(() => _thumbnailService.DiscoverAsync(articles, _thumbnailLifetime.Token));
                 QueueVisibleThumbnailRefresh();
             });
         }))
