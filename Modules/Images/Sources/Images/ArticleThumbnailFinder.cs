@@ -40,7 +40,8 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             if (chosen.TryGetValue(article.ArticleID, out var cached) && cached.HasSameImages(article))
                 return cached.Url;
             var url = ProvidedThumbnailUrl(article, mode)
-                ?? CachedOrParsedHtmlUrls(article, baseUrl).FirstOrDefault(url => !HasFailed(url));
+                ?? CachedOrParsedHtmlUrls(article, baseUrl).FirstOrDefault(url => !HasFailed(url))
+                ?? UsableProvidedUrl(NormalizedUrl(article.RawThumbnailLink));
             if (chosen.Count >= MaximumChosenUrlCount) chosen.Clear();
             chosen[article.ArticleID] = new(article, url);
             return url;
@@ -57,7 +58,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         {
             foreach (var article in articles.DistinctBy(article => article.ArticleID))
             {
-                if (_htmlUrls.ContainsKey(article.ArticleID) || ProvidedThumbnailUrl(article, ThumbnailMode.Small) is not null) continue;
+                if (_htmlUrls.ContainsKey(article.ArticleID) || ProvidedThumbnailUrl(article, ThumbnailMode.Large) is not null) continue;
                 var html = article.ContentHtml ?? article.Summary;
                 if (string.IsNullOrEmpty(html)) _htmlUrls[article.ArticleID] = [];
                 else pending.Add(new(article.ArticleID, html, baseUrlResolver is null ? article.BaseUrl() : baseUrlResolver(article)));
@@ -98,8 +99,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
                 ?? UsableProvidedUrl(NormalizedUrl(article.RawImageLink))
                 ?? UsableProvidedUrl(FirstSignificantImageAttachmentUrl(article))
             : UsableProvidedUrl(NormalizedUrl(article.RawImageLink))
-                ?? UsableProvidedUrl(FirstSignificantImageAttachmentUrl(article))
-                ?? UsableProvidedUrl(NormalizedUrl(article.RawThumbnailLink));
+                ?? UsableProvidedUrl(FirstSignificantImageAttachmentUrl(article));
 
     private string? UsableProvidedUrl(string? url)
         => url is not null && !HasFailed(url) && SignificantImageFilter.IsSignificant(url, null, null) ? url : null;

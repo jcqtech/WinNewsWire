@@ -183,6 +183,26 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LargeModePrefersHtmlOverSquareThumbnailsAndRetainsThemAsTheFinalFallback(bool prepare)
+    {
+        using var database = new ImageDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        const string thumbnail = "https://blogger.googleusercontent.com/img/b/photo/s72-w424-h353-c/photo.jpg";
+        const string image = "https://blogger.googleusercontent.com/img/b/photo/w424-h353/photo.jpg";
+        var article = Article(thumbnail: thumbnail, html: $"<img src='{image}'>");
+        var noHtmlImage = Article("no-html-image", thumbnail: thumbnail, html: "<p>No image</p>");
+        if (prepare) await finder.FindThumbnailUrlsAsync([article, noHtmlImage]);
+        Assert.Equal(image, finder.ThumbnailUrl(article, ThumbnailMode.Large));
+        Assert.Equal(thumbnail, finder.ThumbnailUrl(article, ThumbnailMode.Small));
+        Assert.Equal(thumbnail, finder.ThumbnailUrl(noHtmlImage, ThumbnailMode.Large));
+        await database.RecordFailureAsync(image, 404);
+        finder.ThumbnailUrlDidFail(image);
+        Assert.Equal(thumbnail, finder.ThumbnailUrl(article, ThumbnailMode.Large));
+    }
+
+    [Theory]
     [InlineData(ThumbnailMode.Small)]
     [InlineData(ThumbnailMode.Large)]
     public void UsableEarlierProvidedImagesAvoidAttachmentClassificationAllocations(ThumbnailMode mode)
@@ -269,7 +289,7 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
-    public async Task FailedProvidedImageStartsHtmlDiscoveryOnlyAfterTheProvidedSourceFails()
+    public async Task FailedProvidedThumbnailUsesPreparedHtmlFallback()
     {
         using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
