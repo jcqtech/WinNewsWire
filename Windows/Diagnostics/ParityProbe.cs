@@ -1026,16 +1026,18 @@ internal static partial class ParityProbe
             var expected = (14 + size * 2).ToString(CultureInfo.InvariantCulture) + "px";
             await WaitFor(async () => await ScriptString(content, "document.getElementById('bodyContainer') && getComputedStyle(document.getElementById('bodyContainer')).fontSize") == expected, "Article text size");
             sizes.Add(expected);
+            Require(await ScriptBool(content, """
+                (() => {
+                    const style = getComputedStyle(document.body);
+                    const articleSize = parseFloat(getComputedStyle(document.getElementById('bodyContainer')).fontSize);
+                    return Math.abs(parseFloat(style.maxWidth) / articleSize - 36) < 0.01
+                        && parseFloat(style.paddingLeft) === 40 && parseFloat(style.paddingRight) === 40
+                        && document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1;
+                })()
+                """), "The reader column width did not follow the article text size or preserve responsive side padding.");
         }
-        Require(await ScriptBool(content, """
-            (() => {
-                const style = getComputedStyle(document.body);
-                return Math.abs(parseFloat(style.maxWidth) / parseFloat(style.fontSize) - 48) < 0.01
-                    && parseFloat(style.paddingLeft) === 40 && parseFloat(style.paddingRight) === 40
-                    && document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1;
-            })()
-            """), "The wider reader column or responsive side padding was not applied.");
-        return new { Sizes = sizes, MaximumReadingWidthEm = 48, SidePaddingPx = 40, NoHorizontalOverflow = true };
+        return new { Sizes = sizes, MaximumReadingWidthEm = 36, ReadingWidthTracksArticleText = true,
+            SidePaddingPx = 40, NoHorizontalOverflow = true };
     }
 
     private static async Task<object?> CheckThemeAsync(MainWindow window)
