@@ -246,7 +246,7 @@ public sealed class DownloadedImageCacheTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task CoalescedVisibleRequestsPromoteQueuedSourcesAheadOfNewerPrefetches(bool throughThumbnailFacade)
+    public async Task CoalescedVisibleRequestsMoveQueuedSourcesAheadOfNewerRequests(bool throughThumbnailFacade)
     {
         using var release = new SemaphoreSlim(0);
         var started = Channel.CreateUnbounded<string>();
@@ -258,10 +258,9 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(20, 40);
         await using var thumbnails = fixture.CreateThumbnails(cache);
-        Task<DownloadedImage?> FetchAsync(string name, ThumbnailPriority priority = ThumbnailPriority.Visible,
-            string host = "images.test")
-            => throughThumbnailFacade ? thumbnails.SourceAsync(Url(name, host), priority: priority)
-                : fixture.FetchAsync(cache, name, limited: true, priority: priority, host: host);
+        Task<DownloadedImage?> FetchAsync(string name, string host = "images.test")
+            => throughThumbnailFacade ? thumbnails.SourceAsync(Url(name, host))
+                : fixture.FetchAsync(cache, name, limited: true, host: host);
         var active = Enumerable.Range(0, 4)
             .Select(index => FetchAsync("active" + index, host: "active" + index / 2 + ".test")).ToArray();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -272,19 +271,19 @@ public sealed class DownloadedImageCacheTests
         try
         {
             for (int index = 0; index < 4; index++) await started.Reader.ReadAsync(timeout.Token);
-            var older = FetchAsync("older", ThumbnailPriority.Prefetch);
+            var older = FetchAsync("older");
             await WaitForQueuedAsync(1);
             var visible = FetchAsync("visible", host: "visible.test");
             await WaitForQueuedAsync(2);
-            var newer = FetchAsync("newer", ThumbnailPriority.Prefetch, host: "newer.test");
+            var newer = FetchAsync("newer", host: "newer.test");
             await WaitForQueuedAsync(3);
             var promoted = fixture.FetchAsync(cache, "older", limited: true);
             release.Release();
             Assert.Equal("/older.png", await started.Reader.ReadAsync(timeout.Token));
             release.Release();
-            Assert.Equal("/visible.png", await started.Reader.ReadAsync(timeout.Token));
-            release.Release();
             Assert.Equal("/newer.png", await started.Reader.ReadAsync(timeout.Token));
+            release.Release();
+            Assert.Equal("/visible.png", await started.Reader.ReadAsync(timeout.Token));
             release.Release(4);
             await Task.WhenAll(active.Concat([older, visible, newer, promoted])).WaitAsync(timeout.Token);
             Assert.False(started.Reader.TryRead(out _));
@@ -324,7 +323,7 @@ public sealed class DownloadedImageCacheTests
             await thumbnailsStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             if (alreadyQueued)
             {
-                queued = thumbnails.SourceAsync(Url("reader"), priority: ThumbnailPriority.Prefetch);
+                queued = thumbnails.SourceAsync(Url("reader"));
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 while (cache.WaitingDownloadCount != 1) await Task.Delay(5, timeout.Token);
             }
@@ -973,13 +972,12 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public async Task QueuedPrefetchRechecksCurrentPriorityPolicyUnlessAReaderStartsItNow(bool promote, bool reader)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task QueuedSourcesRecheckNetworkPolicyUnlessAReaderStartsThemNow(bool reader)
     {
         int requests = 0;
-        bool allowsPrefetch = true;
+        bool allowsDownloads = true;
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var fixture = new Fixture(async (request, ct) =>
@@ -999,12 +997,11 @@ public sealed class DownloadedImageCacheTests
         try
         {
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var queued = thumbnails.SourceAsync(Url("queued"), priority: ThumbnailPriority.Prefetch,
-                priorityAllowsDownloads: priority => priority == ThumbnailPriority.Visible || Volatile.Read(ref allowsPrefetch));
+            var queued = thumbnails.SourceAsync(Url("queued"),
+                networkAllowsDownloads: () => Volatile.Read(ref allowsDownloads));
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             while (cache.WaitingDownloadCount != 1) await Task.Delay(5, timeout.Token);
-            Volatile.Write(ref allowsPrefetch, false);
-            if (promote) cache.PrioritizeDownload(Url("queued"));
+            Volatile.Write(ref allowsDownloads, false);
             if (reader)
             {
                 Assert.NotNull(await thumbnails.FullSizeImageAsync(Url("queued")).WaitAsync(TimeSpan.FromSeconds(5)));
@@ -1012,12 +1009,12 @@ public sealed class DownloadedImageCacheTests
             }
             release.TrySetResult();
             await Task.WhenAll(active);
-            Assert.Equal(promote || reader, await queued is not null);
-            Assert.Equal(promote || reader ? 5 : 4, requests);
+            Assert.Equal(reader, await queued is not null);
+            Assert.Equal(reader ? 5 : 4, requests);
             Assert.False(fixture.Database.RecentlyFailed(Url("queued")));
-            if (!promote && !reader)
+            if (!reader)
             {
-                Volatile.Write(ref allowsPrefetch, true);
+                Volatile.Write(ref allowsDownloads, true);
                 Assert.NotNull(await thumbnails.SourceAsync(Url("queued")));
                 Assert.Equal(5, requests);
             }
@@ -1146,10 +1143,10 @@ public sealed class DownloadedImageCacheTests
         internal ThumbnailDownloader CreateThumbnails(DownloadedImageCache cache)
             => new(Database, _directory, () => true, downloadedImages: cache);
         internal async Task<DownloadedImage?> FetchAsync(DownloadedImageCache cache, string name, bool checksForUpdates = false,
-            bool limited = false, ThumbnailPriority priority = ThumbnailPriority.Visible, string host = "images.test")
+            bool limited = false, string host = "images.test")
             => (await cache.FetchAsync(Url(name, host), new(ActivityOwner.FeedImageDownloader,
                 ActivityKind.DownloadFeedImage(Url(name, host)), null, limited ? () => true : null, checksForUpdates,
-                limited ? priority : null), default)).Image;
+                limited), default)).Image;
         public ValueTask DisposeAsync()
         {
             Database.Dispose();

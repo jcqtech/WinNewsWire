@@ -14,8 +14,7 @@ internal sealed record ImageResourceConfiguration(int MaxPixelSize,
     Func<bool>? NetworkAllowsDownloads = null,
     bool StoresSourceData = false);
 internal sealed record ImageResourceRequest(ActivityOwner Owner, ActivityKind Kind, string? Detail,
-    Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false, ThumbnailPriority? DownloadPriority = null,
-    Func<ThumbnailPriority, bool>? PriorityAllowsDownloads = null);
+    Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false, bool UsesDownloadQueue = false);
 
 internal sealed class ImageResourceDownloader : IAsyncDisposable
 {
@@ -125,7 +124,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             ct.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_stopping, this);
-            if (_configuration.StoresSourceData && request.DownloadPriority is null) _unlimitedPending.Add(url);
+            if (_configuration.StoresSourceData && !request.UsesDownloadQueue) _unlimitedPending.Add(url);
             if (!_pending.TryGetValue(url, out pending!))
             {
                 pending = Task.Run(async () =>
@@ -175,20 +174,17 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         finally { _sourceDiskGate?.Release(); }
         lock (_gate)
             if (_nonImageUrls.Contains(url)) return new(null, IsTransient: true, DecodingFailed: true);
-        bool NetworkAllowsDownload(ThumbnailPriority priority)
-            => request.NetworkAllowsDownloads?.Invoke() != false && request.PriorityAllowsDownloads?.Invoke(priority) != false;
         if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
-        if (!NetworkAllowsDownload(request.DownloadPriority ?? ThumbnailPriority.Visible)) return new(null, IsTransient: true);
-        var limiter = !_configuration.StoresSourceData || request.DownloadPriority is not null
+        if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
+        var limiter = !_configuration.StoresSourceData || request.UsesDownloadQueue
             ? _configuration.DownloadQueue : null;
         using var lease = limiter is not null
-            ? await limiter.AcquireAsync(ct, url, request.DownloadPriority ?? ThumbnailPriority.Visible,
-                group: new Uri(url).IdnHost).ConfigureAwait(false) : null;
+            ? await limiter.AcquireAsync(ct, url, group: new Uri(url).IdnHost).ConfigureAwait(false) : null;
         if (limiter is not null && lease is null) return new(null, IsTransient: true);
         ct.ThrowIfCancellationRequested();
         if (lease?.StartedNow != true)
         {
-            if (!NetworkAllowsDownload(lease?.Priority ?? request.DownloadPriority ?? ThumbnailPriority.Visible))
+            if (request.NetworkAllowsDownloads?.Invoke() == false)
                 return new(null, IsTransient: true);
             if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
         }
@@ -226,7 +222,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         bool oversized;
         lock (_gate)
-            oversized = _configuration.StoresSourceData && request.DownloadPriority is not null
+            oversized = _configuration.StoresSourceData && request.UsesDownloadQueue
                 && bytes.LongLength > 25L * 1024 * 1024 && !_unlimitedPending.Contains(url);
         if (oversized)
         {

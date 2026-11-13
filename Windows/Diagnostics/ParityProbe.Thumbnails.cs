@@ -358,8 +358,7 @@ internal static partial class ParityProbe
         await using var service = new ArticleThumbnailService(window.DispatcherQueue,
             () => (new ArticleThumbnailFinder(database),
                 new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "decode-queue-cache"),
-                    () => true, new Downloader(http))), networkAllowsDownloads: () => true,
-            networkAllowsPrefetch: () => true);
+                    () => true, new Downloader(http))), networkAllowsDownloads: () => true);
         service.ThumbnailDownloadFailed += (_, _) => failures++;
         service.ProbeDecoding = async (url, mode, ct) =>
         {
@@ -472,7 +471,7 @@ internal static partial class ParityProbe
         await using var service = new ArticleThumbnailService(window.DispatcherQueue,
             () => (new ArticleThumbnailFinder(database),
                 new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "visible-only-cache"), () => true, new Downloader(http))),
-            networkAllowsDownloads: () => true, networkAllowsPrefetch: () => true);
+            networkAllowsDownloads: () => true);
         int savedLoads = 0;
         bool savedOnUI = false;
         service.ProbeLoadingSavedUrls = () =>

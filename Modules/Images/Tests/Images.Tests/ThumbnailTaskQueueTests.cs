@@ -14,7 +14,7 @@ public sealed class ThumbnailTaskQueueTests
         Assert.False(olderSlow.IsCompleted);
         using var fast = await queue.AcquireAsync(group: "fast");
         Assert.NotNull(fast);
-        var nextFast = queue.AcquireAsync(group: "fast", priority: ThumbnailPriority.Prefetch).AsTask();
+        var nextFast = queue.AcquireAsync(group: "fast").AsTask();
         var newerSlow = queue.AcquireAsync(group: "slow").AsTask();
         fast.Dispose();
         using var fastAgain = await nextFast.WaitAsync(TimeSpan.FromSeconds(5));
@@ -35,7 +35,7 @@ public sealed class ThumbnailTaskQueueTests
         var queue = new ThumbnailTaskQueue(4, 10, maximumRunningCountPerGroup: 1);
         using var active = await queue.AcquireAsync(group: "host");
         Assert.NotNull(active);
-        var reader = queue.AcquireAsync(key: "reader", group: "host", priority: ThumbnailPriority.Prefetch).AsTask();
+        var reader = queue.AcquireAsync(key: "reader", group: "host").AsTask();
         var other = queue.AcquireAsync(group: "host").AsTask();
         Assert.False(reader.IsCompleted);
         queue.StartNow("reader");
@@ -53,7 +53,7 @@ public sealed class ThumbnailTaskQueueTests
     {
         var limiter = new ThumbnailTaskQueue(1);
         using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
-        var article = limiter.AcquireAsync(key: "article", priority: ThumbnailPriority.Prefetch).AsTask();
+        var article = limiter.AcquireAsync(key: "article").AsTask();
         var other = limiter.AcquireAsync(key: "other").AsTask();
         limiter.StartNow("article");
         using var articleLease = Assert.IsAssignableFrom<IDisposable>(await article.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -129,46 +129,19 @@ public sealed class ThumbnailTaskQueueTests
         }
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task VisibleDownloadsPrecedeNewerPrefetchesAndPromotedRowsMoveToTheFront(bool promote)
+    [Fact]
+    public async Task RepeatedVisibleRowsMoveAheadOfNewerWaitingRequests()
     {
         var limiter = new ThumbnailTaskQueue(1, 10);
         using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
-        var olderPrefetch = limiter.AcquireAsync(key: "older", priority: ThumbnailPriority.Prefetch).AsTask();
-        var visible = limiter.AcquireAsync(key: "visible").AsTask();
-        var newerPrefetch = limiter.AcquireAsync(key: "newer", priority: ThumbnailPriority.Prefetch).AsTask();
-        if (promote) limiter.Prioritize("older");
+        var older = limiter.AcquireAsync(key: "older").AsTask();
+        var newer = limiter.AcquireAsync(key: "newer").AsTask();
+        limiter.Prioritize("older");
         active.Dispose();
-        var first = promote ? olderPrefetch : visible;
-        using var firstLease = Assert.IsAssignableFrom<IDisposable>(await first.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.False(newerPrefetch.IsCompleted);
+        using var firstLease = Assert.IsAssignableFrom<IDisposable>(await older.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(newer.IsCompleted);
         firstLease.Dispose();
-        var second = promote ? visible : newerPrefetch;
-        using var secondLease = Assert.IsAssignableFrom<IDisposable>(await second.WaitAsync(TimeSpan.FromSeconds(5)));
-        var last = promote ? newerPrefetch : olderPrefetch;
-        Assert.False(last.IsCompleted);
-        secondLease.Dispose();
-        using var lastLease = Assert.IsAssignableFrom<IDisposable>(await last.WaitAsync(TimeSpan.FromSeconds(5)));
-    }
-
-    [Fact]
-    public async Task OverflowDropsPrefetchesBeforeEvenTheOldestVisibleDownload()
-    {
-        var limiter = new ThumbnailTaskQueue(1, 2);
-        using var active = Assert.IsAssignableFrom<IDisposable>(await limiter.AcquireAsync());
-        var olderVisible = limiter.AcquireAsync(key: "older-visible").AsTask();
-        var olderPrefetch = limiter.AcquireAsync(key: "older-prefetch", priority: ThumbnailPriority.Prefetch).AsTask();
-        var newerPrefetch = limiter.AcquireAsync(key: "newer-prefetch", priority: ThumbnailPriority.Prefetch).AsTask();
-        Assert.Null(await olderPrefetch.WaitAsync(TimeSpan.FromSeconds(5)));
-        var newerVisible = limiter.AcquireAsync(key: "newer-visible").AsTask();
-        Assert.Null(await newerPrefetch.WaitAsync(TimeSpan.FromSeconds(5)));
-        active.Dispose();
-        using var newestLease = Assert.IsAssignableFrom<IDisposable>(await newerVisible.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.False(olderVisible.IsCompleted);
-        newestLease.Dispose();
-        using var oldestLease = Assert.IsAssignableFrom<IDisposable>(await olderVisible.WaitAsync(TimeSpan.FromSeconds(5)));
+        using var secondLease = Assert.IsAssignableFrom<IDisposable>(await newer.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Theory]

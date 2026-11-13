@@ -1,7 +1,5 @@
 namespace WinNewsWire.Images;
 
-public enum ThumbnailPriority { Visible, Prefetch }
-
 public sealed class ThumbnailTaskQueue
 {
     private readonly object _gate = new();
@@ -24,29 +22,18 @@ public sealed class ThumbnailTaskQueue
         _maximumRunningCountPerGroup = maximumRunningCountPerGroup;
     }
 
-    public ValueTask<Lease?> AcquireAsync(CancellationToken ct = default, string? key = null,
-        ThumbnailPriority priority = ThumbnailPriority.Visible, string? group = null)
+    public ValueTask<Lease?> AcquireAsync(CancellationToken ct = default, string? key = null, string? group = null)
     {
-        if (priority is not (ThumbnailPriority.Visible or ThumbnailPriority.Prefetch))
-            throw new ArgumentOutOfRangeException(nameof(priority));
         lock (_gate)
         {
             ct.ThrowIfCancellationRequested();
             if (_running < _maximumRunningCount && HasRoom(group))
             {
                 NoteStarted(group);
-                return ValueTask.FromResult<Lease?>(new Lease(this, priority, group));
+                return ValueTask.FromResult<Lease?>(new Lease(this, group));
             }
-            var waiter = new Waiter(this, key, priority, group);
-            if (priority == ThumbnailPriority.Visible) _waiting.AddLast(waiter.Node);
-            else
-            {
-                var firstVisible = _waiting.First;
-                while (firstVisible is not null && firstVisible.Value.Priority == ThumbnailPriority.Prefetch)
-                    firstVisible = firstVisible.Next;
-                if (firstVisible is null) _waiting.AddLast(waiter.Node);
-                else _waiting.AddBefore(firstVisible, waiter.Node);
-            }
+            var waiter = new Waiter(this, key, group);
+            _waiting.AddLast(waiter.Node);
             if (_waiting.Count > _maximumWaitingCount)
             {
                 var oldest = _waiting.First!;
@@ -65,7 +52,6 @@ public sealed class ThumbnailTaskQueue
             while (node is not null && !string.Equals(node.Value.Key, key, StringComparison.Ordinal)) node = node.Previous;
             if (node is null) return;
             _waiting.Remove(node);
-            node.Value.Priority = ThumbnailPriority.Visible;
             _waiting.AddLast(node);
         }
     }
@@ -79,7 +65,7 @@ public sealed class ThumbnailTaskQueue
             if (node is null) return;
             _waiting.Remove(node);
             NoteStarted(node.Value.Group);
-            node.Value.Ready.SetResult(new Lease(this, node.Value.Priority, node.Value.Group, startedNow: true));
+            node.Value.Ready.SetResult(new Lease(this, node.Value.Group, startedNow: true));
         }
     }
 
@@ -125,7 +111,7 @@ public sealed class ThumbnailTaskQueue
                 if (next is null) return;
                 _waiting.Remove(next);
                 NoteStarted(next.Value.Group);
-                next.Value.Ready.SetResult(new Lease(this, next.Value.Priority, next.Value.Group));
+                next.Value.Ready.SetResult(new Lease(this, next.Value.Group));
             }
         }
     }
@@ -135,15 +121,13 @@ public sealed class ThumbnailTaskQueue
         internal ThumbnailTaskQueue Owner { get; }
         internal string? Key { get; }
         internal string? Group { get; }
-        internal ThumbnailPriority Priority { get; set; }
         internal TaskCompletionSource<Lease?> Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal LinkedListNode<Waiter> Node { get; }
-        internal Waiter(ThumbnailTaskQueue owner, string? key, ThumbnailPriority priority, string? group)
+        internal Waiter(ThumbnailTaskQueue owner, string? key, string? group)
         {
             Owner = owner;
             Key = key;
             Group = group;
-            Priority = priority;
             Node = new(this);
         }
     }
@@ -152,13 +136,11 @@ public sealed class ThumbnailTaskQueue
     {
         private ThumbnailTaskQueue? _owner;
         private readonly string? _group;
-        public ThumbnailPriority Priority { get; }
         internal bool StartedNow { get; }
-        internal Lease(ThumbnailTaskQueue owner, ThumbnailPriority priority, string? group, bool startedNow = false)
+        internal Lease(ThumbnailTaskQueue owner, string? group, bool startedNow = false)
         {
             _owner = owner;
             _group = group;
-            Priority = priority;
             StartedNow = startedNow;
         }
         public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release(_group);
