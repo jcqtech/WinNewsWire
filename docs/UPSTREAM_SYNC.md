@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`5ca0ad5b5d7d14b8bcf226552f173fb965adbe85`**. This synchronization is in progress.
+`16e54269d7c19e7f10c79a0a5eb92556e34d2dac`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is separating icons from the image-size budget, `55f592b7eb3f8fd26a22b4cdd543c449fcb81d36`;
+is checking for changed homepage icon URLs, `7f63c3703338604e8d7ca2fec70577d2fb165ef4`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -203,7 +203,10 @@ independent pre-existing 64-MiB transport safety limit remains.
 The obsolete Energy Saver prefetch restriction has been removed. Windows retains its existing stricter
 connection-cost policy for visible downloads rather than silently permitting
 metered traffic to match Apple's visible-image policy.
-Source pixel dimensions, last access, ETag and Last-Modified are persisted.
+Source pixel dimensions, last access, ETag, Last-Modified and icon classification
+are persisted. First use as an icon promotes a thumbnail source before the daily
+access throttle, including shared in-flight downloads; later source replacements
+cannot demote it. Older Windows schemas and imports default missing flags safely.
 Unused failure status codes, feed-icon timestamps and stored byte counts are
 removed, including from existing Windows NOT NULL schemas and legacy imports.
 Failure records are pruned after their five-day retry lifetime, not 33 days.
@@ -235,6 +238,11 @@ transiently. Unavailable homepage metadata does not record an empty search.
 A saved favicon that returns non-image data starts a fresh homepage search.
 The old mapping survives an unsuccessful search, including captive portals,
 and is replaced only after another candidate loads.
+Homepage metadata already parses on its owned worker; non-YouTube pages now
+stop scanning at the body rather than allocating discarded body tags.
+Redirects to other hosts are logged and cannot replace real-site metadata.
+Apex/www aliases and same-host scheme/path changes remain valid; stale metadata
+retains its original success date after a rejected redirect.
 Retired favicon
 folders, including the former SHA1 cache, are removed once on upgrade; they are
 no longer imported or periodically purged. Windows retains native decoder
@@ -244,13 +252,16 @@ retaining atomic preference markers. The independent resizing purge and periodic
 legacy mapping flush are removed; completed retirement never repeats deletion
 because of an obsolete date/marker. Shared sources now use the upstream desktop disk
 budget instead of periodic folder purges: startup pruning removes least-recently
-used sources until their actual original-file lengths total at most 300 MiB.
+used non-icon sources until their actual original-file lengths total at most 300 MiB.
 Replaced or truncated files use their current disk sizes; missing recent files
 count zero, and derived sidecars remain outside the original-source budget.
 Downloads may exceed that budget
 until the next launch. Soft/hard thresholds, the 80-percent target, the three-day
 use exemption and recurring passes are removed. One-minute save and active-work
 protection remain. Startup also reconciles orphan files/records.
+Icons stay outside the byte budget and expire only when unused for more than
+180 days, with the same in-use and recent-file protection. Their sidecars expire
+with their originals; thumbnails cannot push icons out of the cache.
 Failed folder listing, including a missing
 folder, is reported and aborts cleanup without deleting metadata. Database usage
 query failures already propagate before any deletion. Disk hits update access
@@ -261,6 +272,8 @@ accounting, without decoding or downloading again. Warm icons also schedule due
 validation; decoded thumbnails do not. Tracked, canceled/drained metadata touches
 share the disk gate without recursively acquiring it. The session throttle is
 bounded to 10,000 URLs; clearing it never removes persisted usage or image data.
+HTTP-200 icon revalidation with identical bytes advances only the next-check
+deadline, preserving file dates, derived copies, validators and displayed images.
 Retired-folder deletion runs on a worker through tracked startup, retains its
 completion markers/error reporting, and drains before shutdown completes.
 Eviction also protects actual pending reads/downloads and active
@@ -367,8 +380,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **206 Ported, 74 Covered, 85 Skipped, and 140 Pending**
-source commits, backed by **221 source-attributed Windows port commits**.
+The inventory currently has **210 Ported, 78 Covered, 87 Skipped, and 130 Pending**
+source commits, backed by **225 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -408,7 +421,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **233 tests** after memory-only/fetch-time HTML
+The current image suite passes **241 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
 visible-only loading, priority-free queues, fixed retry dates, actual-file-size
 launch pruning, schema upgrades, icon recovery and saved-favicon rediscovery.
@@ -420,6 +433,14 @@ Automatic own-icon recovery fails on the pristine backend, and the focused
 The held-fallback race separately fails before its race guard. Restored native
 recovery passes actual pixel replacement, UI dispatch and unrelated-row preservation;
 both x64 configurations build warning-free. All five focused preference tests pass.
+Eight icon-classification/budget controls fail pristine production, including
+old-schema upgrades, same-day promotion and coalesced consumers; restored image
+tests pass and the Windows build is warning-free. Both unchanged-HTTP-200 controls
+fail without byte comparison, while the 304 control remains unchanged.
+The metadata body-scanning allocation control fails pristine parsing with over
+2 MiB of discarded body allocations; all **538 parser tests** pass after stopping
+at body. Both cross-host redirect controls fail pristine metadata handling with
+three unchanged same-host controls; all **33 metadata tests** pass.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
