@@ -11,6 +11,24 @@ public class JsonFeedParserTests
     private static ParserData Load(string f, string url) => TestResources.Load($"{f}.json", url);
 
     [Fact]
+    public void AttachmentsWithoutMimeTypeArePreserved()
+    {
+        var json = """
+            {"version":"https://jsonfeed.org/version/1.1","title":"Media","items":[
+              {"id":"1","content_text":"Episode","attachments":[
+                {"url":"https://example.com/episode","title":"Listen","size_in_bytes":123},
+                {"url":"","mime_type":"audio/mpeg"},
+                {"mime_type":"audio/mpeg"}]}]}
+            """;
+        var feed = JsonFeedParser.Parse(new ParserData("https://example.com/feed", Encoding.UTF8.GetBytes(json)))!;
+        var attachment = Assert.Single(Assert.Single(feed.Items).Attachments!);
+        Assert.Equal("https://example.com/episode", attachment.Url);
+        Assert.Null(attachment.MimeType);
+        Assert.Equal("Listen", attachment.Title);
+        Assert.Equal(123, attachment.SizeInBytes);
+    }
+
+    [Fact]
     public void DaringFireballIconUrls()
     {
         var f = FeedParser.Parse(Load("DaringFireball", "http://daringfireball.net/"))!;

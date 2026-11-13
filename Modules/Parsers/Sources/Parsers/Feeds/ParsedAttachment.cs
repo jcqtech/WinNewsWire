@@ -9,12 +9,25 @@ public sealed record ParsedAttachment(
     string? MimeType,
     string? Title,
     long? SizeInBytes,
-    long? DurationInSeconds)
+    long? DurationInSeconds,
+    long? Width = null,
+    long? Height = null,
+    ParsedAttachment.AttachmentMedium? Medium = null)
 {
-    public static ParsedAttachment? Create(string? url, string? mimeType, string? title, long? sizeInBytes, long? durationInSeconds)
+    public static ParsedAttachment? Create(string? url, string? mimeType, string? title, long? sizeInBytes, long? durationInSeconds,
+        long? width = null, long? height = null, AttachmentMedium? medium = null)
     {
         if (string.IsNullOrEmpty(url)) return null;
-        return new ParsedAttachment(url, mimeType, title, sizeInBytes, durationInSeconds);
+        return new ParsedAttachment(url, mimeType, title, sizeInBytes, durationInSeconds, width, height, medium);
+    }
+
+    public enum AttachmentMedium
+    {
+        Image,
+        Audio,
+        Video,
+        Document,
+        Executable
     }
 
     public override int GetHashCode() => Url.GetHashCode(StringComparison.Ordinal);

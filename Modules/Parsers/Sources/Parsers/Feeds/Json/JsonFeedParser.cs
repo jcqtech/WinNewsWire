@@ -187,7 +187,7 @@ public static class JsonFeedParser
         {
             var url = GetString(a, "url");
             var mime = GetString(a, "mime_type");
-            if (url is null || mime is null) continue;
+            if (url is null) continue;
             var title = GetString(a, "title");
             var size = JsonUtilities.GetInt64(a, "size_in_bytes");
             var duration = JsonUtilities.GetInt64(a, "duration_in_seconds");
