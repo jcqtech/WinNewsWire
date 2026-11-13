@@ -49,6 +49,17 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
         }, ct);
     }
 
+    public Task<DownloadedImage?> FullSizeImageAsync(string url, CancellationToken ct = default, string? activityDetail = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        return RunOperationAsync(async token =>
+        {
+            var request = new ImageResourceRequest(ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail(url),
+                activityDetail, _networkAllowsDownloads);
+            return (await _downloadedImages.FetchAsync(url, request, token).ConfigureAwait(false)).Image;
+        }, ct);
+    }
+
     public void PrioritizeDownload(string url)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);

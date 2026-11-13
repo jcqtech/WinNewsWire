@@ -160,6 +160,39 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
+    public async Task FullSizeReaderDownloadsBypassTheFourOccupiedThumbnailSlots()
+    {
+        int running = 0;
+        var thumbnailsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath.StartsWith("/busy", StringComparison.Ordinal))
+            {
+                if (Interlocked.Increment(ref running) == 4) thumbnailsStarted.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            }
+            return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        await using var thumbnails = fixture.CreateThumbnails(cache);
+        var downloads = Enumerable.Range(0, 4)
+            .Select(index => fixture.FetchAsync(cache, "busy" + index, limited: true)).ToArray();
+        try
+        {
+            await thumbnailsStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(Fixture.Image, Assert.IsType<DownloadedImage>(
+                await thumbnails.FullSizeImageAsync(Url("reader")).WaitAsync(TimeSpan.FromSeconds(5))).Data);
+            Assert.All(downloads, task => Assert.False(task.IsCompleted));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(downloads).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
     public async Task IconRevalidationDoesNotWaitBehindTheFourActiveThumbnailDownloads()
     {
         int running = 0;

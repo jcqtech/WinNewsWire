@@ -539,6 +539,7 @@ public sealed class FeedImageDownloaderTests
         var canceled = fixture.Thumbnails.SourceAsync(url, cancellation.Token);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var large = fixture.Thumbnails.SourceAsync(url);
+        var fullSize = fixture.Thumbnails.FullSizeImageAsync(url);
         var icon = fixture.Images.IconAsync(new(Feed, Home, IconUrl: url));
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled);
@@ -548,11 +549,30 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal(largeImage.Path, iconImage.Path);
         Assert.Equal((1600u, 800u), WindowsImage.LargestFramePixelSize(largeImage.Data));
         Assert.Equal(original, largeImage.Data);
+        Assert.Equal(original, Assert.IsType<DownloadedImage>(await fullSize).Data);
         Assert.Equal((64u, 32u), WindowsImage.LargestFramePixelSize(iconImage.Data));
         Assert.Equal(largeImage.Data, await File.ReadAllBytesAsync(largeImage.Path));
         Assert.Single(Directory.GetFiles(Path.Combine(fixture.CacheDirectory, "DownloadedImages")));
         Assert.Single(fixture.Requests);
         Assert.Single(fixture.Activity.CompletedActivities);
+    }
+
+    [Fact]
+    public async Task FullSizeReaderImagesHonorNetworkPolicyButNotThumbnailDimensionExclusions()
+    {
+        byte[] original = Bitmap(32, 32);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)));
+        const string url = Home + "reader-small.bmp";
+        fixture.NetworkAllowed = false;
+        Assert.Null(await fixture.Thumbnails.FullSizeImageAsync(url));
+        Assert.Empty(fixture.Requests);
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+        fixture.NetworkAllowed = true;
+        Assert.Equal(original, Assert.IsType<DownloadedImage>(await fixture.Thumbnails.FullSizeImageAsync(url)).Data);
+        Assert.Null(await fixture.Thumbnails.SourceAsync(url));
+        fixture.NetworkAllowed = false;
+        Assert.Equal(original, Assert.IsType<DownloadedImage>(await fixture.Thumbnails.FullSizeImageAsync(url)).Data);
+        Assert.Single(fixture.Requests);
     }
 
     [Fact]
