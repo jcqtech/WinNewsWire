@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`fd191c154fb195c8a61fcc3a03e9ec1d234d4add`**. This synchronization is in progress.
+`ebfa6ed0e445cac7ce1cf3e6a0fd10e9597d8477`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is the downloaded-image disk budget, `ebfa6ed0e445cac7ce1cf3e6a0fd10e9597d8477`;
+is periodic icon/avatar revalidation, `b4de29a32d4132b1eee05a471255e2496f62afbc`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -115,8 +115,13 @@ lifetime without suppressing otherwise usable feed icons.
 Windows retains its existing favicon representation and SHA1 migration API,
 while sharing source fetches with the new cache. It retains native decoder
 failure reporting instead of the Apple-specific unreadable-data fallback.
-Retired Images/Thumbnails/LargeThumbnails folders are removed once; periodic
-cleanup now includes shared sources and retains atomic preference markers.
+Retired Images/Thumbnails/LargeThumbnails folders are removed once, retaining
+atomic preference markers. Shared sources now use the upstream desktop disk
+budget instead of periodic folder purges: 300 MiB soft, 1 GiB hard, and
+80-percent eviction targets. Three-day recent-use and one-minute save protection
+preserve active images. Startup/download-triggered passes reconcile orphan
+files/records, and disk hits update access dates at most daily. Source disk
+reads/saves and pruning are serialized without serializing network downloads.
 
 The WinUI thumbnail service initializes and decodes on workers, creates native
 presentation sources and availability notifications on the UI dispatcher, and
@@ -150,8 +155,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **101 Ported, 29 Covered, 70 Skipped, and 305 Pending**
-source commits, backed by **117 source-attributed Windows port commits**. Two
+The inventory currently has **102 Ported, 29 Covered, 70 Skipped, and 304 Pending**
+source commits, backed by **118 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -164,7 +169,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are the downloaded-image disk budget and later image-cache rewrites,
+Still pending are icon/avatar revalidation and later image-cache rewrites,
 finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
@@ -300,6 +305,16 @@ finder-local decode exclusions. Restoring the original source-save, startup-load
 and finder paths fails six assertions. Removing native codec-error recovery
 fails a deterministic injected WIC error; restored native thumbnails and the
 69-image/33-group reader gate pass, with warning-free regular/probe builds.
+
+The disk-budget port passes 77 image tests and five cache-cleaner tests, covering
+LRU targets, hard-cap recent-use eviction, save-grace boundaries, actual startup
+and post-download deletion, daily access updates, batched deletion rollback and
+preservation of shared sources. Six original-path assertions fail without
+budget callbacks, transactional deletion and the updated cleaner; a seventh
+control detects deletion of a freshly replaced file with an old metadata row.
+Restored native thumbnails and regular/probe builds pass. The first broad reader
+run timed out in unchanged peer-window sidebar ordering; the repeat passes all
+77 image tests and 33 reader/header/sidebar/navigation groups.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
