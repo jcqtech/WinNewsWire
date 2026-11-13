@@ -48,6 +48,7 @@ public sealed record ActivityKind
     public static ActivityKind DownloadFavicon(string url) => new("downloadFavicon", null, url);
     public static ActivityKind DownloadAvatar(string url) => new("downloadAvatar", null, url);
     public static ActivityKind DownloadHtmlMetadata(string url) => new("downloadHTMLMetadata", null, url);
+    public static ActivityKind DownloadThumbnail(string url) => new("downloadThumbnail", null, url);
 
     public string DisplayName(string? detail = null) => SimpleDisplayName ?? _kind switch
     {
@@ -58,6 +59,7 @@ public sealed record ActivityKind
         "downloadFavicon" => $"Downloading favicon {_url}",
         "downloadAvatar" => $"Downloading avatar {_url}",
         "downloadHTMLMetadata" => $"Downloading metadata {_url}",
+        "downloadThumbnail" => $"Downloading thumbnail {_url}",
         _ => throw new InvalidOperationException("Unknown activity kind."),
     };
 }

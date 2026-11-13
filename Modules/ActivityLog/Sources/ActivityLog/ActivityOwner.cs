@@ -17,6 +17,7 @@ public sealed class ActivityOwner : IEquatable<ActivityOwner>
     public static ActivityOwner FaviconDownloader { get; } = new("faviconDownloader", "Favicons");
     public static ActivityOwner AvatarDownloader { get; } = new("avatarDownloader", "Avatars");
     public static ActivityOwner HtmlMetadataDownloader { get; } = new("htmlMetadataDownloader", "HTML Metadata");
+    public static ActivityOwner ThumbnailDownloader { get; } = new("thumbnailDownloader", "Thumbnails");
     public static ActivityOwner Account(string accountID, string displayName) => new("account", displayName, accountID);
     public bool Equals(ActivityOwner? other) => other is not null && _kind == other._kind && AccountID == other.AccountID;
     public override bool Equals(object? obj) => obj is ActivityOwner other && Equals(other);
