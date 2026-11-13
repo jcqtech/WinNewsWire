@@ -72,6 +72,40 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
+    public async Task NonImageFaviconsAreTransientAndCannotRecordAnEmptyHomepage()
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath == "/"
+            ? HtmlResponse("") : HtmlResponse("<p>Captive portal login</p>")));
+        Assert.Null(await fixture.Images.FaviconAsync(new(Feed, Home)));
+        Assert.False(fixture.ImageDatabase.HomePageHasNoFavicon(Home));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(Home + "favicon.ico"));
+        Assert.True(fixture.Images.DownloadedImages.IsWaitingToRetry(Home + "favicon.ico"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SavedFaviconNonImagesRediscoverWithoutLosingTheSavedUrlUnlessAReplacementLoads(bool findsReplacement)
+    {
+        const string saved = Home + "stale.png";
+        const string replacement = Home + "new.png";
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
+        {
+            "/stale.png" => HtmlResponse("<p>Not an image</p>"),
+            "/" => HtmlResponse(findsReplacement ? "<link rel='icon' href='/new.png'>" : ""),
+            "/new.png" => Response(HttpStatusCode.OK, Image),
+            _ => Response(HttpStatusCode.NotFound)
+        }));
+        await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, saved);
+        var image = await fixture.Images.FaviconAsync(new(Feed, Home));
+        Assert.Equal(findsReplacement ? replacement : null, image?.Url);
+        Assert.Equal(findsReplacement ? replacement : saved, fixture.ImageDatabase.FaviconUrl(Home));
+        Assert.False(fixture.ImageDatabase.HomePageHasNoFavicon(Home));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(saved));
+        Assert.Equal([saved, Home, findsReplacement ? replacement : Home + "favicon.ico"], fixture.Requests);
+    }
+
+    [Fact]
     public async Task CachedHomepageFailureDoesNotPreventRootFaviconFallback()
     {
         await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath == "/"

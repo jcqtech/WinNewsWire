@@ -161,17 +161,18 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             return image;
         }
         if (homePage is null || _database.HomePageHasNoFavicon(homePage)) return null;
+        bool transient = false;
         if (_database.FaviconUrl(homePage) is { } known)
         {
             var previous = await FetchImageAsync(known, favicon: true, ct, homePage).ConfigureAwait(false);
             if (previous.Image is not null) return previous.Image;
-            if (previous.IsTransient) return null;
+            if (previous.IsTransient && !previous.DecodingFailed) return null;
+            transient = previous.IsTransient;
         }
 
         var metadata = await _metadata.GetMetadataAsync(homePage, ct).ConfigureAwait(false);
         var candidates = metadata?.UsableFaviconUrls() ?? [];
         var root = new Uri(new Uri(homePage), "/favicon.ico").AbsoluteUri;
-        bool transient = false;
         foreach (var candidate in candidates.Append(root))
         {
             var result = await FetchImageAsync(candidate, favicon: true, ct, homePage).ConfigureAwait(false);
