@@ -142,6 +142,19 @@ public sealed class ArticleRendererTests
         Assert.DoesNotContain("nnw-primary-image", html);
     }
 
+    [Theory]
+    [InlineData("https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg")]
+    [InlineData("https://substackcdn.com/image/youtube/w_728,c_limit/abcdefghijk")]
+    public void EmbeddedYouTubeVideoDoesNotRepeatItsStillImage(string imageUrl)
+    {
+        var image = Attachment.Create(null, imageUrl, "image/jpeg", null, null, null)!;
+        var html = ArticleRenderer.Render(Article(image: imageUrl, attachments: [image],
+            body: "<iframe src=\"https://www.youtube-nocookie.com/embed/abcdefghijk\"></iframe>"),
+            theme: Theme("[[primary_media]]|[[body]]|[[enclosures]]")).Html;
+        Assert.Contains("<iframe ", html);
+        Assert.DoesNotContain("<img ", html);
+    }
+
     [Fact]
     public void EnclosuresPreserveFeedOrderInsteadOfSortingUrls()
     {

@@ -52,6 +52,18 @@ public static class ArticleRenderingSpecialCases
             ? "https://www.youtube-nocookie.com/embed/" + id : null;
     }
 
+    public static bool BodyEmbedsYouTubeVideo(string? stillImageUrl, string body)
+    {
+        if (!Uri.TryCreate(stillImageUrl, UriKind.Absolute, out var url)) return false;
+        foreach (var component in Uri.UnescapeDataString(url.AbsolutePath).Split('/'))
+        {
+            if (component.Length != 11 || !component.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_')) continue;
+            if (body.Contains("youtube.com/embed/" + component, StringComparison.Ordinal)
+                || body.Contains("youtube-nocookie.com/embed/" + component, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
+
     public static string RemoveStrayLineBreaksIfNeeded(string html, string? feedUrl, string? homePageUrl)
         => new[] { feedUrl, homePageUrl }.Any(url => url is not null
             && SpecialCases.UrlStringMatchesDomain(url, ["macrumors.com"]))

@@ -75,6 +75,7 @@ public static partial class ArticleRenderer
     {
         var resolved = MediaUrl(url, baseUrl);
         return BodyContainsUrl(body, url) || BodyContainsUrl(body, resolved)
+            || ArticleRenderingSpecialCases.BodyEmbedsYouTubeVideo(resolved ?? url, body)
             || (ImageIdentity(resolved) is { } identity && imageIdentities.Contains(identity));
     }
 
