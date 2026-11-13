@@ -27,7 +27,7 @@ public sealed record WindowsWebBrowser(string Name, string ExecutablePath, strin
         IEnumerable<WindowsWebBrowser> browsers, bool inBackground)
     {
         var prepared = url.PreparedForOpeningInBrowser()
-            ?? throw new ArgumentException("Only web, email, and magnet links can be opened.", nameof(url));
+            ?? throw new ArgumentException("Only web, email, magnet, feed, and reader application links can be opened.", nameof(url));
         if (prepared.Scheme is not ("http" or "https") || string.IsNullOrEmpty(selectedBrowser))
             return new(prepared, null, inBackground);
         var browser = browsers.FirstOrDefault(candidate =>
@@ -93,7 +93,7 @@ public sealed record WindowsWebBrowser(string Name, string ExecutablePath, strin
     public static void Open(BrowserLaunchRequest request, IntPtr owner = default)
     {
         var prepared = request.Url.PreparedForOpeningInBrowser()
-            ?? throw new ArgumentException("Only web, email, and magnet links can be opened.", nameof(request));
+            ?? throw new ArgumentException("Only web, email, magnet, feed, and reader application links can be opened.", nameof(request));
         bool useBrowser = prepared.Scheme is "http" or "https" && request.BrowserPath is not null;
         var info = new ShellExecuteInfo
         {

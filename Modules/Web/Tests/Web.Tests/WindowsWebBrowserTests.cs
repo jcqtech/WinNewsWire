@@ -73,6 +73,21 @@ public sealed class WindowsWebBrowserTests : IDisposable
         Assert.False(request.SelectedBrowserUnavailable);
     }
 
+    [Theory]
+    [InlineData("netnewswire://theme?url=https%3A%2F%2Fexample.test%2Ftheme.zip")]
+    [InlineData("feed:https://example.test/rss")]
+    [InlineData("feeds://example.test/rss")]
+    [InlineData("x-netnewswire-feed:https://example.test/rss")]
+    public void ReaderLinksUseTheSystemAssociationEvenWithASelectedBrowser(string value)
+    {
+        var browser = Browser("Selected", "app", "selected");
+        var url = new Uri(value);
+        var request = WindowsWebBrowser.CreateLaunchRequest(url, browser.Identifier, [browser], false);
+        Assert.Same(url, request.Url);
+        Assert.Null(request.BrowserPath);
+        Assert.False(request.SelectedBrowserUnavailable);
+    }
+
     [Fact]
     public void MagnetUsesTheSystemAssociationEvenWithASelectedBrowser()
     {

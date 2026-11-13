@@ -43,4 +43,16 @@ public class UrlPreparedForOpeningTests
         var url = new Uri(value);
         Assert.Same(url, url.PreparedForOpeningInBrowser());
     }
+
+    [Theory]
+    [InlineData("netnewswire://theme?url=https%3A%2F%2Fexample.test%2Ftheme.zip")]
+    [InlineData("feed:https://example.test/rss")]
+    [InlineData("feeds://example.test/rss")]
+    [InlineData("x-netnewswire-feed:https://example.test/rss")]
+    [InlineData("FEED://example.test/rss")]
+    public void AllowsReaderAndSubscriptionLinks(string value)
+    {
+        var url = new Uri(value);
+        Assert.Same(url, url.PreparedForOpeningInBrowser());
+    }
 }

@@ -27,7 +27,7 @@ internal static class Browser
     internal static async Task<bool> OpenAsync(Uri url, IntPtr owner = default, bool invertPreference = false)
     {
         var prepared = url.PreparedForOpeningInBrowser()
-            ?? throw new ArgumentException("Only web, email, and magnet links are supported.", nameof(url));
+            ?? throw new ArgumentException("Only web, email, magnet, feed, and reader application links are supported.", nameof(url));
         bool background = AppDefaults.Shared.OpenInBrowserInBackground ^ invertPreference;
         var request = WindowsWebBrowser.CreateLaunchRequest(prepared, AppDefaults.Shared.DefaultBrowserID, SortedBrowsers(), background);
 #if PARITY_PROBE

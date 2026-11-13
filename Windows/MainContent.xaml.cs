@@ -2756,7 +2756,7 @@ public sealed partial class MainContent : UserControl
     {
         if (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || uri.PreparedForOpeningInBrowser() is null)
         {
-            ViewModel.StatusMessage = "This link cannot be opened. Only web, email, and magnet links are supported.";
+            ViewModel.StatusMessage = "This link cannot be opened. Only web, email, magnet, feed, and reader application links are supported.";
             return;
         }
         try
