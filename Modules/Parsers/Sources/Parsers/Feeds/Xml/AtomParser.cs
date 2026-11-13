@@ -51,7 +51,7 @@ public static class AtomParser
             if (_namespaceElementDepth > 0) { _namespaceElementDepth++; return; }
             if (_parsingArticle && ns.IsMediaRss && CurrentArticle is { } mediaItem)
             {
-                if (_media.Start(localName.Span, attributes, mediaItem, ResolvedUrlString)) _namespaceElementDepth = 1;
+                if (_media.Start(localName.Span, attributes, mediaItem, parser, ResolvedUrlString)) _namespaceElementDepth = 1;
                 return;
             }
             if (_media.ContainerDepth > 0) { _namespaceElementDepth = 1; return; }
@@ -97,7 +97,7 @@ public static class AtomParser
                 if (_namespaceElementDepth > 0) { _namespaceElementDepth--; return; }
                 if (_parsingArticle && ns.IsMediaRss && CurrentArticle is { } mediaItem)
                 {
-                    _media.End(localName.Span, mediaItem);
+                    _media.End(localName.Span, mediaItem, parser);
                     return;
                 }
                 if (_parsingAuthor) { HandleAuthorElementEnd(parser, name); return; }

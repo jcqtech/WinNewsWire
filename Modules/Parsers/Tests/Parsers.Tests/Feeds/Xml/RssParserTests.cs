@@ -9,6 +9,26 @@ public class RssParserTests
 {
     private static ParserData Load(string f, string ext, string url) => TestResources.Load($"{f}.{ext}", url);
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void MediaDescriptionIsOnlyUsedAsFallback(bool atom, bool html, bool existingBody)
+    {
+        var description = $"<m:description type='{(html ? "html" : "plain")}'>&lt;b&gt;Media description&lt;/b&gt;</m:description>";
+        var body = existingBody ? atom ? "<content>Existing body</content>" : "<description>Existing body</description>" : "";
+        var xml = atom
+            ? $"<feed xmlns='http://www.w3.org/2005/Atom' xmlns:m='http://search.yahoo.com/mrss/'><entry><id>1</id><m:group>{description}</m:group>{body}</entry></feed>"
+            : $"<rss xmlns:m='http://search.yahoo.com/mrss/'><channel><item><guid>1</guid><m:group>{description}</m:group>{body}</item></channel></rss>";
+        var data = new ParserData("https://example.com/feed", System.Text.Encoding.UTF8.GetBytes(xml));
+        var item = Assert.Single((atom ? AtomParser.Parse(data) : RssParser.Parse(data)).Items);
+        Assert.Equal(existingBody ? "Existing body" : html ? "<b>Media description</b>" : null, item.ContentHtml);
+        Assert.Equal(!existingBody && !html ? "<b>Media description</b>" : null, item.ContentText);
+    }
+
     [Fact]
     public void MediaContentMergesMetadataWithEnclosure()
     {

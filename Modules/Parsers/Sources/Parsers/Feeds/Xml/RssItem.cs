@@ -19,6 +19,8 @@ internal sealed class RssItem
     public List<ParsedAttachment> Attachments { get; } = [];
     public string? ImageUrl { get; set; }
     public long? ITunesDurationInSeconds { get; set; }
+    public string? MediaDescription { get; set; }
+    public bool MediaDescriptionIsHtml { get; set; }
 
     public string UniqueId
     {
@@ -44,10 +46,16 @@ internal sealed class RssItem
             contentHtml = summary;
             summary = null;
         }
+        string? contentText = null;
+        if (string.IsNullOrEmpty(contentHtml) && MediaDescription is { } description)
+        {
+            if (MediaDescriptionIsHtml) contentHtml = description;
+            else contentText = description;
+        }
         return new ParsedItem(
             syncServiceId: null, uniqueId: UniqueId, feedUrl: feedUrl,
             url: Permalink, externalUrl: Link, title: Title, language: Language,
-            contentHtml: contentHtml, contentText: null, markdown: Markdown, summary: summary,
+            contentHtml: contentHtml, contentText: contentText, markdown: Markdown, summary: summary,
             imageUrl: ImageUrl, bannerImageUrl: null, datePublished: DatePublished, dateModified: DateModified,
             authors: Authors.Count == 0 ? null : Authors, tags: null,
             attachments: MergedAttachments())

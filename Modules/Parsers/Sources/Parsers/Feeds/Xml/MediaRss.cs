@@ -59,7 +59,7 @@ internal sealed class MediaElementTracker
         _first = _default = null;
     }
 
-    public bool Start(ReadOnlySpan<byte> name, XmlAttributes attributes, RssItem item, Func<string, string?> resolveUrl)
+    public bool Start(ReadOnlySpan<byte> name, XmlAttributes attributes, RssItem item, XmlSaxParser parser, Func<string, string?> resolveUrl)
     {
         if (name.SequenceEqual("group"u8))
         {
@@ -84,13 +84,23 @@ internal sealed class MediaElementTracker
             ContainerDepth++;
             return false;
         }
+        if (name.SequenceEqual("description"u8))
+        {
+            if (item.MediaDescription is null)
+            {
+                item.MediaDescriptionIsHtml = string.Equals(attributes.ValueForNameCaseInsensitive("type"), "html", StringComparison.OrdinalIgnoreCase);
+                parser.BeginStoringCharacters();
+            }
+            ContainerDepth++;
+            return false;
+        }
         if (name.SequenceEqual("thumbnail"u8) && item.ImageUrl is null
             && attributes.ValueForNameCaseInsensitive("url") is { Length: > 0 } thumbnail)
             item.ImageUrl = resolveUrl(thumbnail);
         return true;
     }
 
-    public void End(ReadOnlySpan<byte> name, RssItem item)
+    public void End(ReadOnlySpan<byte> name, RssItem item, XmlSaxParser parser)
     {
         if (name.SequenceEqual("group"u8))
         {
@@ -100,5 +110,10 @@ internal sealed class MediaElementTracker
             ContainerDepth--;
         }
         else if (name.SequenceEqual("content"u8)) ContainerDepth--;
+        else if (name.SequenceEqual("description"u8))
+        {
+            item.MediaDescription ??= parser.CurrentStringWithTrimmedWhitespace;
+            ContainerDepth--;
+        }
     }
 }

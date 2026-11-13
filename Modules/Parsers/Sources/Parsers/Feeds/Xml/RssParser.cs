@@ -37,7 +37,7 @@ public static class RssParser
             if (_namespaceElementDepth > 0) { _namespaceElementDepth++; return; }
             if (_parsingArticle && ns.IsMediaRss && CurrentItem is { } mediaItem)
             {
-                if (_media.Start(name, attributes, mediaItem, ResolveUrl)) _namespaceElementDepth = 1;
+                if (_media.Start(name, attributes, mediaItem, parser, ResolveUrl)) _namespaceElementDepth = 1;
                 return;
             }
             if (_parsingArticle && ns.IsITunes && name.SequenceEqual("duration"u8))
@@ -85,7 +85,7 @@ public static class RssParser
             if (_namespaceElementDepth > 0) { _namespaceElementDepth--; return; }
             if (_parsingArticle && ns.IsMediaRss && CurrentItem is { } mediaItem)
             {
-                _media.End(name, mediaItem);
+                _media.End(name, mediaItem, parser);
                 return;
             }
             if ((_isRdf && name.SequenceEqual("RDF"u8)) || unprefixed && name.SequenceEqual("rss"u8)) { _endRssFound = true; return; }
