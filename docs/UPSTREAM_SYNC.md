@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`a7a1c43e7ba32145c2a1c58923d7e0f9920f5f00`**. This synchronization is in progress.
+`f41d3d2ac7dd376ad35c6da83dcbb7493f3d42a8`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is revalidation network/retry gating, `1b6b3b072f4540515ab7d4ee1dd31019f4730379`;
+is incremental lookahead, `8721ecabf9f6a4b62570f8db632d267d01369c7b`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -94,6 +94,9 @@ readiness. Generation checks reject superseded loads, and
 selection reconciliation happens after the await to preserve intervening user
 changes. The superseded public preload/discovery APIs are removed; the final
 finder uses one database pass and the existing asynchronous Windows queue.
+Missing HTML is parsed, saved and published in ordered batches of 100, allowing
+early rows to appear before the whole list finishes. Cancellation retains each
+completed batch, including negative records, while remaining articles can retry.
 Standard timeline rows now display
 small thumbnails with local HTML discovery, persisted-failure notifications,
 automatic candidate fallback, and a one-screen download lookahead. Recycled
@@ -155,7 +158,10 @@ The source path still identifies the full-size original for reader/native caller
 Derived copies follow source eviction/orphan cleanup and do not count toward
 the upstream original-source byte budget.
 A shared four-slot cancellation-safe LIFO
-scheduler limits thumbnail network requests. Cached images remain available
+scheduler limits thumbnail network requests, with at most two per IDN host.
+Release skips saturated hosts while preserving newest eligible visible work
+ahead of prefetch. Immediate readers bypass but count toward both limits.
+Cached images remain available
 offline; new downloads honor connectivity and Windows connection cost.
 Native decoding has its own independent four-active/60-waiting queue, with
 URL/mode coalescing, visible promotion and transient overflow. Downloading precedes
@@ -234,6 +240,8 @@ thumbnail scheduler. Thumbnail reads do not initiate checks. Validator-backed ch
 an eight-day default and clamp server max-age to 3-30 days; sources without
 validators wait 30 days. The final selected interval receives plus-or-minus
 20-percent jitter to spread server checks. Windows reuses its connectivity/connection-cost policy.
+Checks also respect existing URL/host cooldowns without advancing skipped
+next-check dates, and transient responses publish shared retry delays.
 304 responses retain the source and validators; invalid/failed replacements do
 not poison a valid cached copy. Background checks cancel and drain on shutdown.
 Existing metadata databases gain the validation-date column through a migration.
@@ -263,8 +271,10 @@ HTTP 408 and 429 are transient, not five-day
 failures. A longer valid server `Retry-After` in seconds takes precedence, even
 beyond one hour; unrepresentable intervals are reported and ignored.
 Disk hits and unrelated hosts remain usable. Only a real non-transient network
-response clears a host pause, and connectivity changes reset both kinds of
-delay. Admission rechecks cooldowns after waiting for a thumbnail slot.
+response clears a host pause. Connectivity changes reset automatic URL/host
+backoff but retain valid server-directed Retry-After deadlines, including short
+hints and extensions of an active wait. Admission rechecks cooldowns after
+waiting for a thumbnail slot.
 Nonempty unreadable HTTP-200 sources are transient, allowing captive-portal
 recovery instead of a five-day failure or premature declared-icon fallback.
 Unreadable revalidations preserve the good original and validators but reschedule
@@ -323,8 +333,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **176 Ported, 61 Covered, 79 Skipped, and 189 Pending**
-source commits, backed by **191 source-attributed Windows port commits**.
+The inventory currently has **180 Ported, 62 Covered, 79 Skipped, and 184 Pending**
+source commits, backed by **195 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
