@@ -11,6 +11,26 @@ public class AtomParserTests
     private static ParserData Load(string f, string url) => TestResources.Load($"{f}.atom", url);
 
     [Fact]
+    public void XhtmlTitleWithCData()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>t</title><id>urn:t</id>
+              <entry>
+                <id>urn:t:1</id>
+                <title type="xhtml"><![CDATA[Wheels within (mouse) wheels]]></title>
+                <updated>2020-05-01T00:00:00Z</updated>
+                <content>Body.</content>
+              </entry>
+            </feed>
+            """;
+        var feed = FeedParser.Parse(new ParserData("http://example.com/", Encoding.UTF8.GetBytes(xml)));
+        Assert.NotNull(feed);
+        Assert.Equal("Wheels within (mouse) wheels", Assert.Single(feed.Items).Title);
+    }
+
+    [Fact]
     public void HomePageLinks()
     {
         Assert.Equal("http://leancrew.com/all-this",
