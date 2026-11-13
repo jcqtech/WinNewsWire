@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`48cc714ce1a6c1363254042689433bee21558117`**. This synchronization is in progress.
+`9964dab069b67ef9e8f37444d08e5ba850b1866e`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is immediate reader promotion of queued downloads, `14f570bbf1fd233564d09ae035b8ebc4c72ee47a`;
+is changed-image cache notification, `fc2e1eb53d1f1baaa4240cbe5dd6213a5f327785`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -66,7 +66,11 @@ by thumbnail mode, discovers HTML images off the caller thread, and persists up
 to three ordered candidates plus negative results. Queries are bounded, writes
 transactional, and results expire after 33 days. Failed URLs fall through to the
 next candidate after warm or cold reads. Combined positive/negative in-memory
-results reset after exceeding 20,000 articles and reload from persistent records.
+results reset after exceeding 50,000 articles and reload from persistent records.
+Relative images share the reader's article-link, feed-homepage, then feed-URL
+base rules, stripping fragments and ignoring unrelated external links. Windows
+captures feed metadata on the UI thread before worker discovery; extracted
+content and rendering-only URL rewrites retain their separate behavior.
 Contentless articles are excluded before database discovery, avoiding stale
 HTML thumbnails while permitting discovery if content arrives later.
 Standard timeline rows now display
@@ -128,6 +132,12 @@ coalesced downloads. Overflow drops prefetches before visible work; both tiers
 remain newest-first. Native timeline lookahead uses the low-priority path.
 Visible rows reuse their already resolved URL during loading; failed candidates
 still trigger fresh lookup and fallback rather than freezing a bad choice.
+Full-size readers also start an already queued source immediately without
+duplicating it. Normal thumbnail work waits until temporary oversubscription
+falls below the usual limit. Connectivity and Windows connection-cost recovery
+notifications dispatch to UI and retry only settled empty visible placeholders;
+active requests and displayed pixels are retained. Native observers detach at
+shutdown.
 Stored source byte counts, pixel dimensions, last access, ETag and Last-Modified
 are persisted. Known unsuitable thumbnails are skipped using those dimensions,
 independently of transient download failures or their expiry. Native decoding
@@ -147,6 +157,9 @@ budget instead of periodic folder purges: 300 MiB soft, 1 GiB hard, and
 preserve active images. Startup/download-triggered passes reconcile orphan
 files/records, and disk hits update access dates at most daily. Source disk
 reads/saves and pruning are serialized without serializing network downloads.
+Soft and hard eviction also protect actual pending reads/downloads and active
+conditional revalidations, including work that outlives individual canceled
+waiters. Protection ends on completion so old sources can be removed later.
 Due icon reads now return cached bytes immediately and revalidate their source
 in tracked background work, using ETag/Last-Modified independently of the limited
 thumbnail scheduler. Thumbnail reads do not initiate checks. Validator-backed checks use
@@ -155,6 +168,10 @@ validators wait 30 days. Windows reuses its connectivity/connection-cost policy.
 304 responses retain the source and validators; invalid/failed replacements do
 not poison a valid cached copy. Background checks cancel and drain on shutdown.
 Existing metadata databases gain the validation-date column through a migration.
+ETag and Last-Modified requests now bypass both the response cache and URL-only
+request coalescing. Their responses never replace the ordinary cached body,
+preventing bodyless 304 responses from reaching unrelated image consumers.
+The existing Windows binary cache already performs atomic replacement.
 
 Image metadata now lives in `Images.db` using opt-in SQLite WAL mode; other
 database queues retain their existing DELETE default. Checked TRUNCATE checkpoints
@@ -172,6 +189,10 @@ bounds decoded images by URL/mode to 128 MiB, accounting actual bitmap stride.
 Memory pressure clears the caches, and shutdown drains work before closing the
 metadata database. The native thumbnail control supports whole-image fitting,
 rounded clipping, themed placeholders, and recycling to an empty image.
+Native decoding now selects the first largest-dimension frame before both
+significance checks and decoding, rather than validating a large frame but
+decoding a tiny first frame. Unreadable frame headers are reported and skipped;
+EXIF orientation remains applied to the selected frame.
 
 Native WIC scaling now supports JPEG quality options for opaque images while
 retaining PNG for source formats with an alpha channel. Small single-frame
@@ -198,8 +219,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **123 Ported, 34 Covered, 73 Skipped, and 275 Pending**
-source commits, backed by **138 source-attributed Windows port commits**.
+The inventory currently has **130 Ported, 39 Covered, 74 Skipped, and 262 Pending**
+source commits, backed by **145 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -231,15 +252,27 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The latest reader/header/sidebar/navigation gate passes **114 image tests and
-33 UI groups** after shared-original routing. The focused native thumbnail probe
+The latest reader/header/sidebar/navigation gate passes **121 image tests and
+33 UI groups** after URL-base and connectivity recovery integration. Subsequent
+active-cache protection brings the image suite to **124 passing tests**;
+conditional-request isolation passes **141 web tests**. Existing equivalent
+behavior passes 28 binary-cache and 46 image-parser tests.
+The focused native thumbnail probe
 also verifies 1600x800 offline reader images, automatic document routing,
 one-shot remote fallback with publisher scripts disabled, hidden-mode behavior,
-and portable selection copying without changing the displayed image. Ordinary
+portable selection copying without changing the displayed image, UI-captured
+feed-relative image bases, settled-placeholder connectivity recovery, and a
+real multi-frame TIFF whose first frame is too small. Ordinary
 main-world fallback callbacks fail with disabled publisher scripts; the isolated
 reader-world implementation passes. The original HTML copier fails the new
 native selection assertion. One copy-probe run produced an incomplete result
 file; its repeat passed all native groups.
+An initial URL-base native run timed out; its diagnostic repeat passed. Later
+connectivity and largest-frame probes passed, with warning-free regular/probe
+builds. Negative controls also fail for queued-reader admission, excess slot
+handoff, old URL bases, the former cache threshold, missing network recovery,
+first-frame decoding, active-image eviction, and all seven conditional-request
+isolation cases.
 
 The x64 Windows application builds with zero warnings/errors. The complete parser
 suite passes 535 tests, and the shared application suite passes 508. Earlier
