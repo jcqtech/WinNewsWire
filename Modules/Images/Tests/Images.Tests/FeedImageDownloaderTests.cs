@@ -779,6 +779,33 @@ public sealed class FeedImageDownloaderTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task CachedFeedIconsRemainAvailableDuringRevalidationRetryCooldown(bool clearMemory)
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            var response = Response(++requests == 1 ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable,
+                requests == 1 ? Bitmap(128, 128) : []);
+            response.Headers.TryAddWithoutValidation("ETag", "\"icon-v1\"");
+            return Task.FromResult(response);
+        });
+        const string url = Home + "icon.bmp";
+        var feed = new FeedImageSource(Feed, Home, IconUrl: url);
+        var original = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(feed));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        Assert.NotNull(await fixture.Images.IconAsync(feed));
+        await fixture.Images.DownloadedImages.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(fixture.Images.DownloadedImages.IsWaitingToRetry(url));
+        if (clearMemory) fixture.Images.EmptyCache();
+        var cached = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(feed));
+        Assert.Equal(original.Data, cached.Data);
+        Assert.Equal(2, requests);
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task WarmIconsSaveAccessDatesAtMostOnceADay(bool favicon)
     {
         await using var fixture = new Fixture((_, _) =>

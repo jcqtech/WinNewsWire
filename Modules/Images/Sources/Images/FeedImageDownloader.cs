@@ -199,12 +199,12 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             ? new Uri(url, "/").AbsoluteUri : null;
     }
 
-    private Task<ImageResourceResult> FetchImageAsync(string url, bool favicon, CancellationToken ct, string? activityDetail = null)
+    private async Task<ImageResourceResult> FetchImageAsync(string url, bool favicon, CancellationToken ct, string? activityDetail = null)
     {
         ct.ThrowIfCancellationRequested();
-        return !favicon && DownloadedImages.IsWaitingToRetry(url)
-            ? Task.FromResult(new ImageResourceResult(null))
-            : (favicon ? _favicons : _images).FetchAsync(url, ct, activityDetail);
+        bool wasWaiting = !favicon && DownloadedImages.IsWaitingToRetry(url);
+        var result = await (favicon ? _favicons : _images).FetchAsync(url, ct, activityDetail).ConfigureAwait(false);
+        return wasWaiting && result.Image is null ? new(null) : result;
     }
 
     public void EmptyCache()
