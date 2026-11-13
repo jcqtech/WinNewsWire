@@ -90,7 +90,7 @@ public sealed class ArticleRendererTests
         Assert.Contains("articleBody mediumText", rendering.Html);
         Assert.Contains("https://example.com/icon", rendering.Html);
         Assert.Contains("Segoe UI", rendering.Style);
-        Assert.Contains("max-width: 48em;", rendering.Style);
+        Assert.Contains("max-width: calc(var(--line-length) * var(--article-text-size));", rendering.Style);
         Assert.Contains("padding-left: 40px;", rendering.Style);
         Assert.Contains("padding-right: 40px;", rendering.Style);
     }
