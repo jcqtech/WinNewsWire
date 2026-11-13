@@ -5,6 +5,17 @@ namespace WinNewsWire.Articles.Tests;
 
 public class AttachmentTests
 {
+    [Theory]
+    [InlineData("https://example.com/episode.mp3?download=1", "application/octet-stream", null, Attachment.AttachmentMedium.Audio)]
+    [InlineData("https://example.com/media", null, Attachment.AttachmentMedium.Audio, Attachment.AttachmentMedium.Audio)]
+    [InlineData("https://example.com/image.PNG", null, null, Attachment.AttachmentMedium.Image)]
+    [InlineData("https://example.com/episode.mp3", "VIDEO/mp4", Attachment.AttachmentMedium.Image, Attachment.AttachmentMedium.Video)]
+    [InlineData("https://www.youtube.com/v/abcdefghijk?version=3", "application/x-shockwave-flash", null, null)]
+    [InlineData("https://example.com/download.exe", null, Attachment.AttachmentMedium.Executable, null)]
+    public void DisplayMediumUsesMimeThenMediumThenFileExtension(string url, string? mime,
+        Attachment.AttachmentMedium? medium, Attachment.AttachmentMedium? expected)
+        => Assert.Equal(expected, Attachment.Create(null, url, mime, null, null, null, medium: medium)!.DisplayMedium);
+
     [Fact]
     public void MetadataRoundTripsAndParticipatesInEquality()
     {

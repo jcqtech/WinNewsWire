@@ -15,6 +15,24 @@ public sealed class Attachment : IEquatable<Attachment>
     public long? Width { get; }
     public long? Height { get; }
     public AttachmentMedium? Medium { get; }
+    public AttachmentMedium? DisplayMedium
+    {
+        get
+        {
+            if (MimeType?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true) return AttachmentMedium.Audio;
+            if (MimeType?.StartsWith("video/", StringComparison.OrdinalIgnoreCase) == true) return AttachmentMedium.Video;
+            if (MimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true) return AttachmentMedium.Image;
+            if (Medium is AttachmentMedium.Audio or AttachmentMedium.Video or AttachmentMedium.Image) return Medium;
+            if (!Uri.TryCreate(URL, UriKind.Absolute, out var url)) return null;
+            return Path.GetExtension(url.AbsolutePath).ToLowerInvariant() switch
+            {
+                ".mp3" or ".m4a" or ".aac" or ".wav" or ".ogg" or ".oga" or ".opus" or ".flac" => AttachmentMedium.Audio,
+                ".mp4" or ".m4v" or ".mov" or ".webm" => AttachmentMedium.Video,
+                ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".heic" or ".avif" => AttachmentMedium.Image,
+                _ => null
+            };
+        }
+    }
 
     private Attachment(string id, string? url, string? mimeType, string? title, long? sizeInBytes, long? durationInSeconds,
         long? width, long? height, AttachmentMedium? medium)
