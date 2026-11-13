@@ -236,6 +236,23 @@ public class ArticleUpdateTests : IDisposable
         Assert.Equal(4294967296L, Assert.Single(stored.Attachments!).DurationInSeconds);
     }
 
+    [Fact]
+    public async Task ClearedAttachmentsPersistAndStopReportingAsUpdated()
+    {
+        var item = new ParsedItem(null, "clear-media", "feed1", null, null, "Title", null,
+            "<p>Body</p>", null, null, null, null, null, null, null, null, null,
+            [new("https://example.test/episode.mp3", "audio/mpeg", null, 12345678, 3600)]);
+        await _database.UpdateAsync([item], "feed1");
+        _database.EmptyCaches();
+        Assert.Equal(3600L, Assert.Single(Assert.Single(await _database.FetchArticlesAsync("feed1")).Attachments!).DurationInSeconds);
+        var cleared = new ParsedItem(null, "clear-media", "feed1", null, null, "Title", null,
+            "<p>Body</p>", null, null, null, null, null, null, null, null, null, null);
+        Assert.Null(Assert.Single((await _database.UpdateAsync([cleared], "feed1")).Updated!).Attachments);
+        _database.EmptyCaches();
+        Assert.Null(Assert.Single(await _database.FetchArticlesAsync("feed1")).Attachments);
+        Assert.Null((await _database.UpdateAsync([cleared], "feed1")).Updated);
+    }
+
     private static Article ArticleWithMarkdown(string markdown)
         => new("test", "article1", "feed1", "1", "Title", "<p>Test</p>", null, markdown,
             null, null, null, null, null, null, null, null,
