@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`1c550ec17d887bcc53490702f25c5f3aad63dc5d`**. This synchronization is in progress.
+`9655f1660c2268070229db3f3694d7018df0a150`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is the shared thumbnail display enum/settings, `9655f1660c2268070229db3f3694d7018df0a150`;
+is the shared feed-icon display enum/settings, `0611366ad2a80fd068dc8dffbdeada07d59b4cbe`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -79,7 +79,13 @@ Both timeline modes fit the whole image on a theme-aware fill. The reusable view
 also supports top-preserving portrait fill and centered wide crops, updates
 automatically on resize, and clips rounded corners. Permanent failures refresh
 only matching rows; download lookahead waits for native layout to settle.
-The later hidden/display-enum settings and shared local-image routes remain pending.
+Shared **Small / Large / None** settings now replace the initial large-mode
+boolean. The localized View submenu and native Preferences picker stay in sync
+across windows. Hidden mode stops new discovery/download admission and retains
+compact rows; switching modes restores the selected row to view. Windows retains
+an existing large preference until the user explicitly picks a new mode.
+Preference-save failures restore the picker and display the error. Shared
+local-image routes remain pending.
 
 Thumbnail downloading now shares the existing icon resource pipeline without
 duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
@@ -121,8 +127,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **95 Ported, 25 Covered, 67 Skipped, and 318 Pending**
-source commits, backed by **111 source-attributed Windows port commits**. Two
+The inventory currently has **96 Ported, 25 Covered, 67 Skipped, and 317 Pending**
+source commits, backed by **112 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -135,7 +141,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are the shared thumbnail display enum/hidden mode and later image-cache
+Still pending are the shared feed-icon display settings and later image-cache
 rewrites, finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
@@ -149,7 +155,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 ## Verification at this checkpoint
 
 The x64 Windows application builds with zero warnings/errors. The complete parser
-suite passes 532 tests, and the shared application suite passes 480. Earlier
+suite passes 532 tests, and the shared application suite passes 485. Earlier
 related checks covered remote-account synchronization, OPML autosave, attachment
 and thumbnail storage/migration, and NewsBlur model decoding.
 
@@ -223,6 +229,13 @@ rounded clipping; actual rows verify fixed height and icon/text alignment.
 The original visual tree and previous size method fail the new checks. All
 temporary controls were removed; restored native probes and regular builds pass
 without warnings or errors.
+
+The three-mode port adds five migration/invalid-value regressions. Removing the
+legacy adapter fails the previous-large case, and the exact original visibility
+predicate fails native hidden-mode propagation. Restored native checks verify
+menu/Preferences round trips, None persistence, no request for a newly realized
+hidden row, locked-file UI recovery and selected-row visibility. The subsequent
+60-image/33-group reader gate and regular build pass.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
