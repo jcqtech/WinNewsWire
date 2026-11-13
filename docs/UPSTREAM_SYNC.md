@@ -17,10 +17,12 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 
 ## Incorporation checkpoint
 
-The **fully incorporated watermark remains
-`fb086eb7684e9fdb90855c4e033a6beba4325c5e`**. This synchronization is in progress.
-The inventory records the individually completed ports; unresolved earlier
-desktop, media, image-cache, and appearance changes prevent advancing that watermark.
+The **fully incorporated watermark is now
+`cf281b2eaf98bc83cf5704431a031e886d539973`**. This synchronization is in progress.
+Every inventoried ancestor between the original baseline and this watermark is
+ported, covered, or explicitly skipped. The next unresolved first-parent change
+is the desktop status-bar merge, `840137d2bcf0ac6f54a579605a136c6956d97362`;
+media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
 `35c27e3b5fe1044f49fa6c653c01980d9d5b5801` (open the double-clicked timeline row,
@@ -58,8 +60,15 @@ bandwidth-aware responsive-image selection. It rejects tracking pixels, sharing
 buttons, avatars, and decorative strips. Its integration with the thumbnail
 finder, metadata tables, and shared local-image routes is still pending.
 
-The inventory currently has **68 Ported, 13 Covered, 42 Skipped, and 382 Pending**
-source commits, backed by **81 source-attributed Windows port commits**. Six
+Timeline navigation now measures the viewport below pinned toolbar and column
+headings. Rows above it scroll minimally; rows below it are centered. Adjacent-row
+context is revealed only when the selected row did not already need scrolling.
+Virtualized rows and template changes are handled after layout, and obsolete
+requests are canceled during selection changes and shutdown. Sidebar unread
+badges already use native constrained WinUI layout rather than cached row widths.
+
+The inventory currently has **71 Ported, 14 Covered, 42 Skipped, and 378 Pending**
+source commits, backed by **84 source-attributed Windows port commits**. Six
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -80,7 +89,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 ## Verification at this checkpoint
 
 The x64 Windows application builds with zero warnings/errors. The complete parser
-suite passes 532 tests, and the shared application suite passes 444. Earlier
+suite passes 532 tests, and the shared application suite passes 456. Earlier
 related checks covered remote-account synchronization, OPML autosave, attachment
 and thumbnail storage/migration, and NewsBlur model decoding.
 
@@ -90,6 +99,12 @@ primary media, short untitled posts, versioned templates, and publisher duplicat
 images. Exact restorations of the original shared remote adapter and enclosure
 URL resolver proved the new metadata and protocol-relative-image assertions fail
 without their corresponding Windows adaptations.
+
+The isolated `--timeline-visibility` WinUI probe passes in standard and column
+layouts, including virtualized rows, pinned headers, minimum upward movement,
+centered downward movement, following-row context, and no-op movement. Restoring
+the exact original selection-scroll path makes this probe fail. Three geometry
+regressions also failed against the earlier minimum-scroll implementation.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
