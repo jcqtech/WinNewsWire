@@ -210,7 +210,7 @@ public sealed partial class AppService
         await ActivityLogger.Shared.LogActivityAsync(ActivityOwner.App, ActivityKind.VacuumDatabase,
             () => HTMLMetadata.HtmlMetadataDatabase.Shared.VacuumAsync(ct), detail: "HTMLMetadata.db");
         await ActivityLogger.Shared.LogActivityAsync(ActivityOwner.App, ActivityKind.VacuumDatabase,
-            () => Images.ImageDatabase.Shared.VacuumAsync(ct), detail: "ImageMetadata.db");
+            () => Images.ImageDatabase.Shared.VacuumAsync(ct), detail: "Images.db");
     }
 
     private void OnDefaultsChanged(object? sender, string key)

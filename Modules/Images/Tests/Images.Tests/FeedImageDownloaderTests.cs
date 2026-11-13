@@ -740,7 +740,7 @@ public sealed class FeedImageDownloaderTests
         public Fixture(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond,
             int? maxPixelSize = null, bool persistentMetadata = false)
         {
-            ImageDatabase = new(persistentMetadata ? Path.Combine(_directory, "ImageMetadata.db") : ":memory:", Clock);
+            ImageDatabase = new(persistentMetadata ? Path.Combine(_directory, "Images.db") : ":memory:", Clock);
             HtmlDatabase = new(":memory:", Clock);
             var handler = new Handler(async (request, ct) =>
             {

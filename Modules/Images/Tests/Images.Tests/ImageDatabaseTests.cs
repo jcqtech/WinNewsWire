@@ -8,8 +8,111 @@ public sealed class ImageDatabaseTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "image-metadata-" + Guid.NewGuid().ToString("N"));
     private readonly TestClock _clock = new();
-    private string DatabasePath => Path.Combine(_directory, "ImageMetadata.db");
+    private string DatabasePath => Path.Combine(_directory, "Images.db");
     public ImageDatabaseTests() => Directory.CreateDirectory(_directory);
+
+    [Fact]
+    public void OriginalThreeTableDatabaseIsImportedAndDeletedOnlyAfterItsDataIsAvailable()
+    {
+        string legacyPath = Path.Combine(_directory, "ImageMetadata.db");
+        WriteLegacyDatabase(legacyPath);
+        using var database = new ImageDatabase(DatabasePath, _clock, legacyDatabasePath: legacyPath);
+        Assert.Equal("https://site.test/favicon.png", database.FaviconUrl("https://site.test/"));
+        Assert.Equal("https://site.test/icon.png", database.IconUrl("https://site.test/feed"));
+        Assert.True(database.RecentlyFailed("https://site.test/missing"));
+        Assert.False(File.Exists(legacyPath));
+        using var saved = Open();
+        Assert.Equal("wal", saved.Scalar<string>("PRAGMA journal_mode;"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MigrationPreservesWindowsThumbnailAndSourceRecordsIncludingRecoveredWalAndOlderSchemas(bool oldValidationSchema)
+    {
+        string sourcePath = Path.Combine(_directory, "source.db");
+        string legacyPath = Path.Combine(_directory, "ImageMetadata.db");
+        const string image = "https://site.test/source.png";
+        using (var source = new ImageDatabase(sourcePath, _clock))
+        {
+            await source.SaveHomePageFaviconAsync("https://site.test/", null);
+            await source.SaveFeedIconUrlAsync("https://site.test/feed", "legacy");
+            await source.RecordFailureAsync("https://site.test/missing", 404);
+            await source.SaveArticleThumbnailsAsync([new("article", ["https://site.test/photo.png"])]);
+            await source.SaveDownloadedImageAsync(new(image, 1024, (48, 48),
+                new(null, "\"legacy\""), _clock.GetUtcNow().AddDays(3)));
+            if (oldValidationSchema)
+            {
+                using var legacy = Open(sourcePath);
+                legacy.Execute("ALTER TABLE downloadedImage DROP COLUMN nextCheck;");
+            }
+            File.Copy(sourcePath, legacyPath);
+            File.Copy(sourcePath + "-wal", legacyPath + "-wal");
+        }
+        using (var destination = new ImageDatabase(DatabasePath, _clock))
+            await destination.SaveFeedIconUrlAsync("https://site.test/feed", "current");
+        using (var database = new ImageDatabase(DatabasePath, _clock, legacyDatabasePath: legacyPath))
+        {
+            Assert.True(database.HomePageHasNoFavicon("https://site.test/"));
+            Assert.Equal("current", database.IconUrl("https://site.test/feed"));
+            Assert.True(database.RecentlyFailed("https://site.test/missing"));
+            Assert.True(database.IsUnsuitableForThumbnail(image));
+            Assert.Equal(["https://site.test/photo.png"],
+                Assert.Single(await database.FetchArticleThumbnailsAsync(["article"])).ThumbnailUrls);
+            var validation = Assert.IsType<DownloadedImageValidation>(await database.FetchDownloadedImageValidationAsync(image));
+            Assert.Equal("\"legacy\"", validation.ConditionalGet?.ETag);
+            Assert.Equal(oldValidationSchema ? DateTimeOffset.UnixEpoch : _clock.GetUtcNow().AddDays(3), validation.NextCheck);
+            var usage = Assert.Single(await database.FetchDownloadedImageUsageByLeastRecentAccessAsync());
+            Assert.Equal(1024, usage.ByteCount);
+            Assert.Equal(image, usage.Url);
+        }
+        Assert.False(File.Exists(legacyPath));
+        Assert.False(File.Exists(legacyPath + "-wal"));
+        Assert.False(File.Exists(legacyPath + "-shm"));
+        using var reopened = new ImageDatabase(DatabasePath, _clock, legacyDatabasePath: legacyPath);
+        Assert.Equal("current", reopened.IconUrl("https://site.test/feed"));
+        Assert.True(reopened.IsUnsuitableForThumbnail(image));
+    }
+
+    [Fact]
+    public void FailedMigrationRollsBackEveryTableAndKeepsTheLegacyDatabaseForRetry()
+    {
+        string legacyPath = Path.Combine(_directory, "ImageMetadata.db");
+        WriteLegacyDatabase(legacyPath);
+        using (var destination = new ImageDatabase(DatabasePath, _clock)) { }
+        using (var connection = Open())
+            connection.Execute("""
+                CREATE TRIGGER reject_legacy_favicon BEFORE INSERT ON homePageFavicon
+                BEGIN SELECT RAISE(ABORT, 'fixture import failure'); END;
+                """);
+        Assert.Throws<SqliteException>(() =>
+        {
+            using var unexpected = new ImageDatabase(DatabasePath, _clock, legacyDatabasePath: legacyPath);
+        });
+        Assert.True(File.Exists(legacyPath));
+        using (var connection = Open())
+        {
+            Assert.Equal(0L, connection.Scalar<long>("SELECT count(*) FROM downloadFailure;"));
+            Assert.Equal(0L, connection.Scalar<long>("SELECT count(*) FROM homePageFavicon;"));
+            connection.Execute("DROP TRIGGER reject_legacy_favicon;");
+        }
+        using var retried = new ImageDatabase(DatabasePath, _clock, legacyDatabasePath: legacyPath);
+        Assert.True(retried.RecentlyFailed("https://site.test/missing"));
+        Assert.False(File.Exists(legacyPath));
+    }
+
+    private void WriteLegacyDatabase(string path)
+    {
+        using var connection = Open(path);
+        connection.Execute("""
+            CREATE TABLE downloadFailure (url TEXT PRIMARY KEY NOT NULL, statusCode INTEGER, lastChecked REAL NOT NULL);
+            CREATE TABLE homePageFavicon (homePageURL TEXT PRIMARY KEY NOT NULL, faviconURL TEXT, lastChecked REAL NOT NULL);
+            CREATE TABLE feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL, lastChecked REAL NOT NULL);
+            INSERT INTO downloadFailure VALUES ('https://site.test/missing', 404, $now);
+            INSERT INTO homePageFavicon VALUES ('https://site.test/', 'https://site.test/favicon.png', $now);
+            INSERT INTO feedIconURL VALUES ('https://site.test/feed', 'https://site.test/icon.png', $now);
+            """, ("$now", (_clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds));
+    }
 
     [Fact]
     public async Task NativeTablesAndPositiveMappingsSurviveRestart()
@@ -213,19 +316,23 @@ public sealed class ImageDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task StartupVacuumSharesNativeBookkeepingAndPreservesImageMappings()
+    public async Task StartupAndMaintenanceCheckpointInsteadOfAdvancingVacuumBookkeeping()
     {
         var first = _clock.GetUtcNow();
         using (var database = new ImageDatabase(DatabasePath, _clock))
             await database.SaveFeedIconUrlAsync("feed", "icon");
-        using (var connection = Open()) Assert.Equal(first, RSDatabaseInfoTable.LastVacuumDate(connection));
-        _clock.Advance(TimeSpan.FromDays(13) - TimeSpan.FromSeconds(1));
-        using (var database = new ImageDatabase(DatabasePath, _clock))
-        using (var connection = Open()) Assert.Equal(first, RSDatabaseInfoTable.LastVacuumDate(connection));
-        _clock.Advance(TimeSpan.FromSeconds(1));
+        using (var connection = Open())
+        {
+            RSDatabaseInfoTable.CreateTableIfNeeded(connection);
+            RSDatabaseInfoTable.SetLastVacuumDate(connection, first);
+        }
+        _clock.Advance(TimeSpan.FromDays(14));
         using var reopened = new ImageDatabase(DatabasePath, _clock);
+        await reopened.VacuumAsync();
         using var saved = Open();
-        Assert.Equal(_clock.GetUtcNow(), RSDatabaseInfoTable.LastVacuumDate(saved));
+        Assert.Equal("wal", saved.Scalar<string>("PRAGMA journal_mode;"));
+        Assert.Equal(first, RSDatabaseInfoTable.LastVacuumDate(saved));
+        Assert.Equal(0L, new FileInfo(DatabasePath + "-wal").Length);
         Assert.Equal("icon", reopened.IconUrl("feed"));
     }
 
@@ -284,9 +391,9 @@ public sealed class ImageDatabaseTests : IDisposable
         command.CommandText = "SELECT COUNT(*) FROM downloadFailure;";
         return (long)command.ExecuteScalar()!;
     }
-    private SqliteConnection Open()
+    private SqliteConnection Open(string? path = null)
     {
-        var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = DatabasePath, Pooling = false }.ToString());
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path ?? DatabasePath, Pooling = false }.ToString());
         connection.Open();
         return connection;
     }

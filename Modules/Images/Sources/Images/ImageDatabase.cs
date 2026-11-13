@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using WinNewsWire.Core;
 using WinNewsWire.Database;
@@ -8,7 +9,8 @@ namespace WinNewsWire.Images;
 
 public sealed class ImageDatabase : IDisposable
 {
-    private static readonly Lazy<ImageDatabase> SharedDatabase = new(() => new(Path.Combine(AppConfig.DataDirectory, "ImageMetadata.db")));
+    private static readonly Lazy<ImageDatabase> SharedDatabase = new(() => new(Path.Combine(AppConfig.DataDirectory, "Images.db"),
+        legacyDatabasePath: Path.Combine(AppConfig.DataDirectory, "ImageMetadata.db")));
     public static ImageDatabase Shared => SharedDatabase.Value;
     public static bool IsSharedCreated => SharedDatabase.IsValueCreated;
     public static readonly TimeSpan FailureRetry = TimeSpan.FromDays(5);
@@ -22,12 +24,15 @@ public sealed class ImageDatabase : IDisposable
     private readonly ConcurrentDictionary<string, byte> _unsuitableThumbnails = new(StringComparer.Ordinal);
     public string DatabasePath { get; }
 
-    public ImageDatabase(string databasePath, TimeProvider? clock = null)
+    public ImageDatabase(string databasePath, TimeProvider? clock = null, string? legacyDatabasePath = null)
     {
+        if (legacyDatabasePath is not null && databasePath != ":memory:"
+            && string.Equals(Path.GetFullPath(databasePath), Path.GetFullPath(legacyDatabasePath), StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("The legacy image database must differ from the destination.", nameof(legacyDatabasePath));
         DatabasePath = databasePath;
         _clock = clock ?? TimeProvider.System;
         if (databasePath != ":memory:" && Path.GetDirectoryName(databasePath) is { Length: > 0 } directory) Directory.CreateDirectory(directory);
-        _queue = new(databasePath);
+        _queue = new(databasePath, JournalMode.Wal);
         try
         {
             _queue.Run(connection =>
@@ -42,6 +47,7 @@ public sealed class ImageDatabase : IDisposable
                     """;
                 command.ExecuteNonQuery();
                 DownloadedImageTable.EnsureValidationColumn(connection);
+                bool imported = legacyDatabasePath is not null && ImportLegacyDatabase(connection, legacyDatabasePath);
                 DownloadFailureTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
                 ArticleThumbnailTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
                 foreach (var row in HomePageFaviconTable.FetchAll(connection)) _favicons[row.HomePageUrl] = row;
@@ -49,10 +55,60 @@ public sealed class ImageDatabase : IDisposable
                 foreach (var pair in DownloadFailureTable.FetchAll(connection)) _failures[pair.Key] = pair.Value;
                 foreach (var row in DownloadedImageTable.FetchPixelSizes(connection))
                     UpdateThumbnailSuitability(row.Url, row.PixelSize);
-                connection.VacuumIfNeeded(_clock);
+                connection.Checkpoint();
+                if (imported && legacyDatabasePath is not null) DeleteLegacyDatabase(legacyDatabasePath);
             });
         }
         catch { _queue.Dispose(); throw; }
+    }
+
+    private static bool ImportLegacyDatabase(SqliteConnection connection, string path)
+    {
+        FileAttributes attributes;
+        try { attributes = File.GetAttributes(path); }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
+        if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+            throw new IOException("Image database migration requires a regular legacy database file: " + path);
+        connection.Execute("ATTACH DATABASE $path AS legacy;", ("$path", path));
+        try
+        {
+            using var transaction = connection.BeginTransaction();
+            (string Table, string Columns, bool Optional)[] tables = [
+                ("downloadFailure", "url,statusCode,lastChecked", false),
+                ("homePageFavicon", "homePageURL,faviconURL,lastChecked", false),
+                ("feedIconURL", "feedURL,iconURL,lastChecked", false),
+                ("articleThumbnailURLs", "articleID,thumbnailURLs,lastChecked", true),
+                ("downloadedImage", "url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck", true)
+            ];
+            foreach (var (table, columns, optional) in tables)
+            {
+                if (optional && connection.Scalar<long>("SELECT count(*) FROM legacy.sqlite_master WHERE type='table' AND name=$table;",
+                    ("$table", table)) == 0) continue;
+                string selection = columns;
+                if (table == "downloadedImage" && !connection.Query("PRAGMA legacy.table_info(downloadedImage);",
+                    row => row.GetString(1)).Contains("nextCheck", StringComparer.OrdinalIgnoreCase))
+                    selection = columns[..^"nextCheck".Length] + "0";
+                int count = connection.Execute($"INSERT OR IGNORE INTO main.{table} ({columns}) SELECT {selection} FROM legacy.{table};");
+                Trace.TraceInformation($"Imported {count} image records from legacy {table}.");
+            }
+            transaction.Commit();
+        }
+        finally { connection.Execute("DETACH DATABASE legacy;"); }
+        return true;
+    }
+
+    private static void DeleteLegacyDatabase(string path)
+    {
+        foreach (var suffix in new[] { "", "-wal", "-shm" })
+        {
+            try { File.Delete(path + suffix); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                Trace.TraceError($"Could not remove migrated image database {path + suffix}: {error}");
+                throw;
+            }
+        }
     }
 
     public string? FaviconUrl(string homePageUrl)
@@ -218,7 +274,7 @@ public sealed class ImageDatabase : IDisposable
         });
     }
 
-    public Task VacuumAsync(CancellationToken ct = default) => _queue.VacuumAsync(ct);
+    public Task VacuumAsync(CancellationToken ct = default) => _queue.CheckpointAsync(ct);
     public void Dispose()
     {
         _queue.Dispose();
