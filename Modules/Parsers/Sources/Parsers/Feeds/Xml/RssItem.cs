@@ -59,6 +59,8 @@ internal sealed class RssItem
         {
             var avatar = author.AvatarUrl is null && author.Name is { } name
                 ? GravatarTitlesByUrl.FirstOrDefault(pair => pair.Value.Equals(name, StringComparison.OrdinalIgnoreCase)).Key : null;
+            if (avatar is null && author.AvatarUrl is null && Authors.Count == 1 && GravatarTitlesByUrl.Count == 1)
+                avatar = GravatarTitlesByUrl.First().Key;
             if (avatar is null) return author;
             avatarUrls.Add(avatar);
             return author with { AvatarUrl = avatar };

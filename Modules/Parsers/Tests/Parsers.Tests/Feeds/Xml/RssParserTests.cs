@@ -10,6 +10,24 @@ public class RssParserTests
     private static ParserData Load(string f, string ext, string url) => TestResources.Load($"{f}.{ext}", url);
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SingleGravatarCanUseAnAuthorsDifferentUsernameWithoutGuessingForMultipleAuthors(bool multipleAuthors)
+    {
+        var xml = """
+            <rss xmlns:m="http://search.yahoo.com/mrss/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <channel><item><guid>1</guid><dc:creator>Hal Mueller</dc:creator>
+            <m:content url="https://2.gravatar.com/avatar/hal" medium="image"><m:title>halmueller</m:title></m:content>
+            """ + (multipleAuthors ? "<dc:creator>Alice</dc:creator>" : "") + "</item></channel></rss>";
+        var item = Assert.Single(RssParser.Parse(new ParserData("https://example.com/feed",
+            System.Text.Encoding.UTF8.GetBytes(xml))).Items);
+        Assert.Equal(multipleAuthors ? null : "https://2.gravatar.com/avatar/hal",
+            item.Authors!.Single(a => a.Name == "Hal Mueller").AvatarUrl);
+        if (multipleAuthors) Assert.Single(item.Attachments!);
+        else Assert.Null(item.Attachments);
+    }
+
+    [Theory]
     [InlineData("gravatar.com", true)]
     [InlineData("2.gravatar.com", true)]
     [InlineData("gravatar.com.example.net", false)]
