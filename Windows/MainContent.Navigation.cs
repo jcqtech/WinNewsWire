@@ -13,6 +13,17 @@ public sealed partial class MainContent
     private readonly CancellationTokenSource _navigationCancellation = new();
     private Task _nextUnreadTask = Task.CompletedTask;
 
+    private bool IsTimelineRowFullyVisible(FeedItem article)
+        => TimelineRowBounds(article) is { } bounds
+            && TimelineViewport.IsRowFullyVisible(bounds.Top, bounds.Bottom,
+                ArticleListView.Padding.Top, ArticleListView.ActualHeight - ArticleListView.Padding.Bottom);
+
+    private Windows.Foundation.Rect? TimelineRowBounds(FeedItem article)
+        => ArticleListView.ContainerFromItem(article) is FrameworkElement { ActualHeight: > 0 } row
+            ? row.TransformToVisual(ArticleListView).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, row.ActualWidth, row.ActualHeight))
+            : null;
+
     public bool CanSelectNextUnread => !_shuttingDown
         && (NextUnreadArticleRow(wrapping: true) is not null || NextUnreadSidebarRow() is not null);
 
@@ -98,7 +109,7 @@ public sealed partial class MainContent
         if (_shuttingDown) return;
         var article = ViewModel.ArticleItems[row];
         ViewModel.SelectedArticle = article;
-        ArticleListView.ScrollIntoView(article);
+        if (!IsTimelineRowFullyVisible(article)) ArticleListView.ScrollIntoView(article);
         ArticleListView.Focus(FocusState.Programmatic);
     }
 }

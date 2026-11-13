@@ -6,6 +6,16 @@ namespace WinNewsWire.AppShared.Tests;
 
 public class TimelineSelectionTests
 {
+    [Theory]
+    [InlineData(0, 40, 52, 200, false)]
+    [InlineData(40, 80, 52, 200, false)]
+    [InlineData(52, 92, 52, 200, true)]
+    [InlineData(160, 200, 52, 200, true)]
+    [InlineData(170, 210, 52, 200, false)]
+    public void FullRowVisibilityExcludesTheObscuringHeader(
+        double top, double bottom, double visibleTop, double visibleBottom, bool visible)
+        => Assert.Equal(visible, TimelineViewport.IsRowFullyVisible(top, bottom, visibleTop, visibleBottom));
+
     private sealed record Item(string Account, string ID, string Title);
     private static ArticleIdentityKey Identity(Item item) => new(item.Account, item.ID);
 

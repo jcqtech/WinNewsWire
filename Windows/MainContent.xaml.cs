@@ -212,7 +212,10 @@ public sealed partial class MainContent : UserControl
             foreach (var item in ViewModel.SelectedArticles)
                 if (!ArticleListView.SelectedItems.Contains(item)) ArticleListView.SelectedItems.Add(item);
             if (identityChanged && ViewModel.SelectedArticles.Count == 1)
-                ArticleListView.ScrollIntoView(ViewModel.SelectedArticles[0]);
+            {
+                var article = ViewModel.SelectedArticles[0];
+                if (!IsTimelineRowFullyVisible(article)) ArticleListView.ScrollIntoView(article);
+            }
             _displayedSelection = identities;
         }
         finally { _syncingArticleSelection = false; }
