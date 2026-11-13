@@ -214,7 +214,7 @@ public sealed partial class MainContent : UserControl
             if (identityChanged && ViewModel.SelectedArticles.Count == 1)
             {
                 var article = ViewModel.SelectedArticles[0];
-                if (!IsTimelineRowFullyVisible(article)) ArticleListView.ScrollIntoView(article);
+                ScrollTimelineArticleIntoView(article);
             }
             _displayedSelection = identities;
         }
@@ -455,6 +455,7 @@ public sealed partial class MainContent : UserControl
         try
         {
             _shuttingDown = true;
+            CancelTimelineReveal();
             ArticleListView.PointerEntered -= ArticleListView_PointerEntered;
             if (_articleWheelHandler is { } wheel)
             {

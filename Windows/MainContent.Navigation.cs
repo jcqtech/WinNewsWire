@@ -12,6 +12,46 @@ public sealed partial class MainContent
 {
     private readonly CancellationTokenSource _navigationCancellation = new();
     private Task _nextUnreadTask = Task.CompletedTask;
+    private FeedItem? _pendingTimelineReveal;
+    private FeedItem? _timelineRevealSelection;
+
+    private bool ScrollTimelineArticleIntoView(FeedItem article)
+    {
+        CancelTimelineReveal();
+        if (IsTimelineRowFullyVisible(article)) return false;
+        if (TryRevealTimelineRow(article)) return true;
+        _pendingTimelineReveal = article;
+        _timelineRevealSelection = ViewModel.SelectedArticle;
+        ArticleListView.LayoutUpdated += TimelineReveal_LayoutUpdated;
+        ArticleListView.ScrollIntoView(article);
+        return true;
+    }
+
+    private bool TryRevealTimelineRow(FeedItem article)
+    {
+        if (_articleScrollViewer is not { } scroll || TimelineRowBounds(article) is not { } bounds
+            || ArticleListView.ActualHeight <= ArticleListView.Padding.Top + ArticleListView.Padding.Bottom)
+            return false;
+        double delta = TimelineViewport.ScrollDelta(bounds.Top, bounds.Bottom,
+            ArticleListView.Padding.Top, ArticleListView.ActualHeight - ArticleListView.Padding.Bottom);
+        if (delta != 0)
+            scroll.ChangeView(null, Math.Clamp(scroll.VerticalOffset + delta, 0, scroll.ScrollableHeight), null);
+        return true;
+    }
+
+    private void TimelineReveal_LayoutUpdated(object? sender, object args)
+    {
+        if (_shuttingDown || !ReferenceEquals(_timelineRevealSelection, ViewModel.SelectedArticle)
+            || _pendingTimelineReveal is not { } article || TryRevealTimelineRow(article))
+            CancelTimelineReveal();
+    }
+
+    private void CancelTimelineReveal()
+    {
+        ArticleListView.LayoutUpdated -= TimelineReveal_LayoutUpdated;
+        _pendingTimelineReveal = null;
+        _timelineRevealSelection = null;
+    }
 
     private bool IsTimelineRowFullyVisible(FeedItem article)
         => TimelineRowBounds(article) is { } bounds
@@ -109,7 +149,7 @@ public sealed partial class MainContent
         if (_shuttingDown) return;
         var article = ViewModel.ArticleItems[row];
         ViewModel.SelectedArticle = article;
-        if (!IsTimelineRowFullyVisible(article)) ArticleListView.ScrollIntoView(article);
+        ScrollTimelineArticleIntoView(article);
         ArticleListView.Focus(FocusState.Programmatic);
     }
 }

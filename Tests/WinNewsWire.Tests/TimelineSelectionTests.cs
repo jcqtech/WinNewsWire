@@ -16,6 +16,16 @@ public class TimelineSelectionTests
         double top, double bottom, double visibleTop, double visibleBottom, bool visible)
         => Assert.Equal(visible, TimelineViewport.IsRowFullyVisible(top, bottom, visibleTop, visibleBottom));
 
+    [Theory]
+    [InlineData(0, 40, 52, 200, -52)]
+    [InlineData(40, 80, 52, 200, -12)]
+    [InlineData(52, 92, 52, 200, 0)]
+    [InlineData(160, 200, 52, 200, 0)]
+    [InlineData(170, 210, 52, 200, 10)]
+    public void RevealingARowScrollsOnlyAsFarAsNecessary(
+        double top, double bottom, double visibleTop, double visibleBottom, double delta)
+        => Assert.Equal(delta, TimelineViewport.ScrollDelta(top, bottom, visibleTop, visibleBottom));
+
     private sealed record Item(string Account, string ID, string Title);
     private static ArticleIdentityKey Identity(Item item) => new(item.Account, item.ID);
 
