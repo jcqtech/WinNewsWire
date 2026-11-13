@@ -17,7 +17,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private readonly ByteLimit _limit;
     private readonly ByteLimit _hardLimit;
     private readonly Downloader _downloader;
-    private readonly ThumbnailTaskQueue _downloadQueue = new(4, 60);
+    private readonly ThumbnailTaskQueue _downloadQueue = new(4, 60, maximumRunningCountPerGroup: 2);
     private readonly Func<bool> _networkAllowsUpdates;
     private readonly object _backgroundGate = new();
     private readonly HashSet<Task> _backgroundTasks = [];

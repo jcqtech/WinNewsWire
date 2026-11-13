@@ -182,7 +182,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         var limiter = !_configuration.StoresSourceData || request.DownloadPriority is not null
             ? _configuration.DownloadQueue : null;
         using var lease = limiter is not null
-            ? await limiter.AcquireAsync(ct, url, request.DownloadPriority ?? ThumbnailPriority.Visible).ConfigureAwait(false) : null;
+            ? await limiter.AcquireAsync(ct, url, request.DownloadPriority ?? ThumbnailPriority.Visible,
+                group: new Uri(url).IdnHost).ConfigureAwait(false) : null;
         if (limiter is not null && lease is null) return new(null, IsTransient: true);
         ct.ThrowIfCancellationRequested();
         if (lease?.StartedNow != true)

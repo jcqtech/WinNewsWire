@@ -5,6 +5,50 @@ namespace WinNewsWire.Images.Tests;
 public sealed class ThumbnailTaskQueueTests
 {
     [Fact]
+    public async Task BusyGroupsLeaveCapacityForEligibleGroupsAndPreserveNewestFirst()
+    {
+        var queue = new ThumbnailTaskQueue(2, 10, maximumRunningCountPerGroup: 1);
+        using var slow = await queue.AcquireAsync(group: "slow");
+        Assert.NotNull(slow);
+        var olderSlow = queue.AcquireAsync(group: "slow").AsTask();
+        Assert.False(olderSlow.IsCompleted);
+        using var fast = await queue.AcquireAsync(group: "fast");
+        Assert.NotNull(fast);
+        var nextFast = queue.AcquireAsync(group: "fast", priority: ThumbnailPriority.Prefetch).AsTask();
+        var newerSlow = queue.AcquireAsync(group: "slow").AsTask();
+        fast.Dispose();
+        using var fastAgain = await nextFast.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(fastAgain);
+        Assert.False(newerSlow.IsCompleted);
+        slow.Dispose();
+        using var newer = await newerSlow.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(newer);
+        Assert.False(olderSlow.IsCompleted);
+        newer.Dispose();
+        using var older = await olderSlow.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(older);
+    }
+
+    [Fact]
+    public async Task ReaderBypassesGroupLimitButNormalWorkWaitsForTheGroupToHaveRoomAgain()
+    {
+        var queue = new ThumbnailTaskQueue(4, 10, maximumRunningCountPerGroup: 1);
+        using var active = await queue.AcquireAsync(group: "host");
+        Assert.NotNull(active);
+        var reader = queue.AcquireAsync(key: "reader", group: "host", priority: ThumbnailPriority.Prefetch).AsTask();
+        var other = queue.AcquireAsync(group: "host").AsTask();
+        Assert.False(reader.IsCompleted);
+        queue.StartNow("reader");
+        using var readerLease = await reader.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(readerLease);
+        readerLease.Dispose();
+        Assert.False(other.IsCompleted);
+        active.Dispose();
+        using var otherLease = await other.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(otherLease);
+    }
+
+    [Fact]
     public async Task ReaderPromotionStartsImmediatelyButNormalWorkWaitsUntilBelowTheLimitAgain()
     {
         var limiter = new ThumbnailTaskQueue(1);

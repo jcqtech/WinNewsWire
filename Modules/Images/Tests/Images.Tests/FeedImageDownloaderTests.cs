@@ -889,7 +889,7 @@ public sealed class FeedImageDownloaderTests
             throw new InvalidOperationException("Unreachable");
         });
         var requests = Enumerable.Range(0, 4)
-            .Select(index => fixture.Thumbnails.SourceAsync(Home + index + ".png")).ToList();
+            .Select(index => fixture.Thumbnails.SourceAsync("https://host" + index / 2 + ".test/" + index + ".png")).ToList();
         await firstFour.Task.WaitAsync(TimeSpan.FromSeconds(10));
         fixture.NetworkPolicy = () =>
         {

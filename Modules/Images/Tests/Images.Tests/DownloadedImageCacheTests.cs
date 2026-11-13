@@ -10,7 +10,7 @@ namespace WinNewsWire.Images.Tests;
 public sealed class DownloadedImageCacheTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 27, 0, 0, 0, TimeSpan.Zero);
-    private static string Url(string name) => "https://images.test/" + name + ".png";
+    private static string Url(string name, string host = "images.test") => "https://" + host + "/" + name + ".png";
 
     [Fact]
     public void DerivedCopiesFollowTheirOriginalsDuringEvictionAndOrphanCleanup()
@@ -252,11 +252,12 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(20, 40);
         await using var thumbnails = fixture.CreateThumbnails(cache);
-        Task<DownloadedImage?> FetchAsync(string name, ThumbnailPriority priority = ThumbnailPriority.Visible)
-            => throughThumbnailFacade ? thumbnails.SourceAsync(Url(name), priority: priority)
-                : fixture.FetchAsync(cache, name, limited: true, priority: priority);
+        Task<DownloadedImage?> FetchAsync(string name, ThumbnailPriority priority = ThumbnailPriority.Visible,
+            string host = "images.test")
+            => throughThumbnailFacade ? thumbnails.SourceAsync(Url(name, host), priority: priority)
+                : fixture.FetchAsync(cache, name, limited: true, priority: priority, host: host);
         var active = Enumerable.Range(0, 4)
-            .Select(index => FetchAsync("active" + index)).ToArray();
+            .Select(index => FetchAsync("active" + index, host: "active" + index / 2 + ".test")).ToArray();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         async Task WaitForQueuedAsync(int count)
         {
@@ -267,9 +268,9 @@ public sealed class DownloadedImageCacheTests
             for (int index = 0; index < 4; index++) await started.Reader.ReadAsync(timeout.Token);
             var older = FetchAsync("older", ThumbnailPriority.Prefetch);
             await WaitForQueuedAsync(1);
-            var visible = FetchAsync("visible");
+            var visible = FetchAsync("visible", host: "visible.test");
             await WaitForQueuedAsync(2);
-            var newer = FetchAsync("newer", ThumbnailPriority.Prefetch);
+            var newer = FetchAsync("newer", ThumbnailPriority.Prefetch, host: "newer.test");
             await WaitForQueuedAsync(3);
             var promoted = fixture.FetchAsync(cache, "older", limited: true);
             release.Release();
@@ -310,7 +311,7 @@ public sealed class DownloadedImageCacheTests
         await using var cache = fixture.CreateCache(10, 20);
         await using var thumbnails = fixture.CreateThumbnails(cache);
         var downloads = Enumerable.Range(0, 4)
-            .Select(index => fixture.FetchAsync(cache, "busy" + index, limited: true)).ToArray();
+            .Select(index => fixture.FetchAsync(cache, "busy" + index, limited: true, host: "busy" + index / 2 + ".test")).ToArray();
         Task<DownloadedImage?>? queued = null;
         try
         {
@@ -336,6 +337,52 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
+    public async Task LimitedDownloadsUseTwoSlotsPerHostAndLeaveRoomForOtherHosts()
+    {
+        using var slowRelease = new SemaphoreSlim(0);
+        using var fastRelease = new SemaphoreSlim(0);
+        var started = Channel.CreateUnbounded<string>();
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            started.Writer.TryWrite(request.RequestUri!.AbsolutePath);
+            await (request.RequestUri.IdnHost == "slow.test" ? slowRelease : fastRelease).WaitAsync(ct);
+            return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var tasks = new List<Task<DownloadedImage?>>
+        {
+            fixture.FetchAsync(cache, "slow1", limited: true, host: "slow.test"),
+            fixture.FetchAsync(cache, "slow2", limited: true, host: "SLOW.test:8443")
+        };
+        try
+        {
+            var first = new[] { await started.Reader.ReadAsync(timeout.Token), await started.Reader.ReadAsync(timeout.Token) };
+            Assert.True(first.ToHashSet().SetEquals(["/slow1.png", "/slow2.png"]));
+            tasks.Add(fixture.FetchAsync(cache, "slow3", limited: true, host: "slow.test"));
+            while (cache.WaitingDownloadCount != 1) await Task.Delay(5, timeout.Token);
+            tasks.Add(fixture.FetchAsync(cache, "fast1", limited: true, host: "fast.test"));
+            tasks.Add(fixture.FetchAsync(cache, "fast2", limited: true, host: "fast.test"));
+            var fast = new[] { await started.Reader.ReadAsync(timeout.Token), await started.Reader.ReadAsync(timeout.Token) };
+            Assert.True(fast.ToHashSet().SetEquals(["/fast1.png", "/fast2.png"]));
+            tasks.Add(fixture.FetchAsync(cache, "fast3", limited: true, host: "fast.test"));
+            while (cache.WaitingDownloadCount != 2) await Task.Delay(5, timeout.Token);
+            slowRelease.Release();
+            Assert.Equal("/slow3.png", await started.Reader.ReadAsync(timeout.Token));
+            fastRelease.Release();
+            Assert.Equal("/fast3.png", await started.Reader.ReadAsync(timeout.Token));
+        }
+        finally
+        {
+            slowRelease.Release(10);
+            fastRelease.Release(10);
+            await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        Assert.All(await Task.WhenAll(tasks), image => Assert.NotNull(image));
+        Assert.False(started.Reader.TryRead(out _));
+    }
+
+    [Fact]
     public async Task IconRevalidationDoesNotWaitBehindTheFourActiveThumbnailDownloads()
     {
         int running = 0;
@@ -357,7 +404,7 @@ public sealed class DownloadedImageCacheTests
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
         fixture.Clock.Advance(TimeSpan.FromDays(10));
         var downloads = Enumerable.Range(0, 4)
-            .Select(index => fixture.FetchAsync(cache, "busy" + index, limited: true)).ToArray();
+            .Select(index => fixture.FetchAsync(cache, "busy" + index, limited: true, host: "busy" + index / 2 + ".test")).ToArray();
         try
         {
             await thumbnailsStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -834,7 +881,8 @@ public sealed class DownloadedImageCacheTests
         });
         await using var cache = fixture.CreateCache(10, 20);
         await using var thumbnails = fixture.CreateThumbnails(cache);
-        var active = Enumerable.Range(0, 4).Select(index => thumbnails.SourceAsync(Url("active-" + index))).ToArray();
+        var active = Enumerable.Range(0, 4).Select(index =>
+            thumbnails.SourceAsync(Url("active-" + index, "active" + index / 2 + ".test"))).ToArray();
         try
         {
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -985,9 +1033,9 @@ public sealed class DownloadedImageCacheTests
         internal ThumbnailDownloader CreateThumbnails(DownloadedImageCache cache)
             => new(Database, _directory, () => true, downloadedImages: cache);
         internal async Task<DownloadedImage?> FetchAsync(DownloadedImageCache cache, string name, bool checksForUpdates = false,
-            bool limited = false, ThumbnailPriority priority = ThumbnailPriority.Visible)
-            => (await cache.FetchAsync(Url(name), new(ActivityOwner.FeedImageDownloader,
-                ActivityKind.DownloadFeedImage(Url(name)), null, limited ? () => true : null, checksForUpdates,
+            bool limited = false, ThumbnailPriority priority = ThumbnailPriority.Visible, string host = "images.test")
+            => (await cache.FetchAsync(Url(name, host), new(ActivityOwner.FeedImageDownloader,
+                ActivityKind.DownloadFeedImage(Url(name, host)), null, limited ? () => true : null, checksForUpdates,
                 limited ? priority : null), default)).Image;
         public ValueTask DisposeAsync()
         {
