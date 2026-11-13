@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,6 +47,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal bool ProbeDecodedOnUIThread;
     internal long ProbeCacheBytes => _cacheBytes;
     internal (int Width, int Height) ProbeLastDecodedSize;
+    internal int ProbeDecodeError;
 #endif
 
     internal ArticleThumbnailService(DispatcherQueue dispatcher,
@@ -145,7 +148,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         {
             var backend = await _backend.Value.ConfigureAwait(false);
             var key = (url, mode);
-            var pending = _pending.GetOrAdd(key, _ => new(() => LoadImageAsync(url, mode, article.Title, backend.Downloads, ct)));
+            var pending = _pending.GetOrAdd(key, _ => new(() => LoadImageAsync(url, mode, article.Title,
+                backend.Finder, backend.Downloads, ct)));
             try
             {
                 if (await pending.Value.ConfigureAwait(false) is { } image) return image;
@@ -175,7 +179,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     }
 
     private async Task<SoftwareBitmapSource?> LoadImageAsync(string url, ThumbnailMode mode, string? title,
-        ThumbnailDownloader downloads, CancellationToken ct)
+        ArticleThumbnailFinder finder, ThumbnailDownloader downloads, CancellationToken ct)
     {
         var cached = await OnDispatcherAsync(() =>
         {
@@ -190,9 +194,13 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         if (downloaded is null) return null;
         SoftwareBitmap decoded;
         try { decoded = await DecodeAsync(downloaded.Data, mode, ct).ConfigureAwait(false); }
-        catch (InsignificantThumbnailDimensionsException)
+        catch (Exception error) when (error is InsignificantThumbnailDimensionsException
+            || (unchecked((uint)error.HResult) & 0xffff0000) == 0x88980000
+            || error.HResult == unchecked((int)0x80004005))
         {
-            await downloads.RejectInsignificantDimensionsAsync(url, ct).ConfigureAwait(false);
+            Trace.TraceWarning($"Could not decode thumbnail {url}: {error.Message}");
+            finder.RecordDecodingFailure(url);
+            DispatchNotification(() => ThumbnailDownloadFailed?.Invoke(this, url));
             return null;
         }
         using var bitmap = decoded;
@@ -230,6 +238,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 #if PARITY_PROBE
         Interlocked.Increment(ref ProbeDecodes);
         if (_dispatcher.HasThreadAccess) ProbeDecodedOnUIThread = true;
+        int errorCode = Interlocked.Exchange(ref ProbeDecodeError, 0);
+        if (errorCode != 0) throw new COMException("Injected native thumbnail decoder failure.", errorCode);
 #endif
         using var stream = new InMemoryRandomAccessStream();
         await stream.WriteAsync(data.AsBuffer()).AsTask(ct).ConfigureAwait(false);

@@ -196,6 +196,9 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             ct.ThrowIfCancellationRequested();
             await _diskCache.SetAsync(key, processed, ct).ConfigureAwait(false);
+            if (_configuration.StoresSourceData && OperatingSystem.IsWindows())
+                await _database.SaveDownloadedImageAsync(new(url, processed.LongLength,
+                    WindowsImage.LargestFramePixelSize(processed), response.ConditionalGet)).ConfigureAwait(false);
             await _database.ClearFailureAsync(url).ConfigureAwait(false);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or OperationCanceledException)

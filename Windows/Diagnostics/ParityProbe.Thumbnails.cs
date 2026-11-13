@@ -117,10 +117,21 @@ internal static partial class ParityProbe
         {
             string url = "https://thumbnail.test/" + filename;
             Require(await service.ThumbnailAsync(FixtureFor(filename), ThumbnailMode.Small) is null
-                && database.RecentlyLackedSignificantDimensions(url) && !database.RecentlyFailed(url),
+                && database.IsUnsuitableForThumbnail(url) && !database.RecentlyFailed(url),
                 "The native decoder did not persist a thumbnail-only dimension rejection.");
         }
         await WaitFor(() => Task.FromResult(failures == 2), "Native dimension rejection notifications");
+        var unreadable = FixtureFor("decoder-failure.bmp");
+        service.ProbeDecodeError = unchecked((int)0x88982f50);
+        Require(await service.ThumbnailAsync(unreadable, ThumbnailMode.Small) is null
+            && !database.IsUnsuitableForThumbnail("https://thumbnail.test/decoder-failure.bmp")
+            && !database.RecentlyFailed("https://thumbnail.test/decoder-failure.bmp"),
+            "A native decoder failure was not isolated from otherwise usable source images.");
+        int afterFailedDecode = service.ProbeDecodes;
+        Require(await service.ThumbnailAsync(unreadable, ThumbnailMode.Small) is null
+            && service.ProbeDecodes == afterFailedDecode,
+            "The same unreadable thumbnail was decoded again after its failure notification.");
+        await WaitFor(() => Task.FromResult(failures == 3), "Native decoding failure notification");
 
         var host = Descendants(window.ProbeContent).OfType<Grid>().First();
         var image = new ThumbnailView { Width = 80, Height = 80, CornerRadius = new CornerRadius(12) };
@@ -214,7 +225,7 @@ internal static partial class ParityProbe
         networkAllowed = true;
         await CheckTimelineThumbnailsAsync(window, service, requested, heldStarted, releaseHeld, releaseMissing,
             allowed => networkAllowed = allowed);
-        Require(failureOnUI && failures == 3, "Permanent thumbnail failures were not dispatched once to the UI.");
+        Require(failureOnUI && failures == 4, "Permanent thumbnail failures were not dispatched once to the UI.");
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
         bool stopped = false;
@@ -224,6 +235,7 @@ internal static partial class ParityProbe
         return new { InitializationOffUI = true, DecodingOffUI = true, NotificationsOnUI = true,
             CoalescedDiscoveryAndDecode = true, SeparateModes = true, DecodedLRUBudget = true,
             DisplaySizeDecode = true, ExifOrientation = true, NativeDimensionRejection = true,
+            DecoderFailureStopsRetriesWithoutSuppressingIcons = true,
             VisibleNativePixels = true, AspectFill = true, RoundedClipping = true, ThemedPlaceholder = true,
             RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
             TimelineRows = true, HTMLDiscovery = true, FailedCandidateFallback = true, FailureNotificationsOnUI = true, BoundedLookahead = true,

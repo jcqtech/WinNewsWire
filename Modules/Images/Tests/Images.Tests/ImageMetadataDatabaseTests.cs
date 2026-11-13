@@ -67,23 +67,51 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
         Assert.False(database.RecentlyFailed("https://site.test/icon"));
     }
 
-    [Fact]
-    public async Task InsignificantDimensionsPersistSeparatelyFromDownloadFailuresAndExpire()
+    [Theory]
+    [InlineData(48u, 48u, true)]
+    [InlineData(1000u, 64u, true)]
+    [InlineData(null, null, true)]
+    [InlineData(64u, 64u, false)]
+    public async Task StoredDimensionsPersistIndependentlyOfFailureExpiryAndCanBeReplaced(
+        uint? width, uint? height, bool unsuitable)
     {
         const string url = "https://site.test/tiny.png";
         using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
         {
-            await database.RecordInsignificantDimensionsAsync(url);
+            await database.SaveDownloadedImageAsync(new(url, 1024,
+                width is { } w && height is { } h ? (w, h) : null, null));
             Assert.False(database.RecentlyFailed(url));
         }
+        _clock.Advance(ImageMetadataDatabase.FailureRetention + TimeSpan.FromDays(1));
         using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
-        Assert.True(reopened.RecentlyLackedSignificantDimensions(url));
+        Assert.Equal(unsuitable, reopened.IsUnsuitableForThumbnail(url));
         Assert.False(reopened.RecentlyFailed(url));
         await reopened.RecordFailureAsync(url, 404);
         await reopened.ClearFailureAsync(url);
-        Assert.True(reopened.RecentlyLackedSignificantDimensions(url));
-        _clock.Advance(ImageMetadataDatabase.FailureRetry);
-        Assert.False(reopened.RecentlyLackedSignificantDimensions(url));
+        Assert.Equal(unsuitable, reopened.IsUnsuitableForThumbnail(url));
+        await reopened.SaveDownloadedImageAsync(new(url, 2048, (640, 480), null));
+        Assert.False(reopened.IsUnsuitableForThumbnail(url));
+        using var refreshed = new ImageMetadataDatabase(DatabasePath, _clock);
+        Assert.False(refreshed.IsUnsuitableForThumbnail(url));
+    }
+
+    [Fact]
+    public async Task FailedDownloadedImageWritesKeepPersistedAndInMemorySuitability()
+    {
+        const string url = "https://site.test/tiny.png";
+        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        await database.SaveDownloadedImageAsync(new(url, 1024, (48, 48), null));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TRIGGER reject_downloaded_image BEFORE INSERT ON downloadedImage
+            BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;
+            """;
+        command.ExecuteNonQuery();
+        await Assert.ThrowsAsync<SqliteException>(() => database.SaveDownloadedImageAsync(new(url, 2048, (640, 480), null)));
+        Assert.True(database.IsUnsuitableForThumbnail(url));
+        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        Assert.True(reopened.IsUnsuitableForThumbnail(url));
     }
 
     [Fact]

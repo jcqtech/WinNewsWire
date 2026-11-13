@@ -40,22 +40,10 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         return RunOperationAsync(async token =>
         {
-            if (_database.RecentlyFailed(url) || _database.RecentlyLackedSignificantDimensions(url)) return null;
+            if (_database.RecentlyFailed(url) || _database.IsUnsuitableForThumbnail(url)) return null;
             var request = new ImageResourceRequest(ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail(url),
                 activityDetail, _networkAllowsDownloads);
             return (await _downloadedImages.FetchAsync(url, request, token).ConfigureAwait(false)).Image;
-        }, ct);
-    }
-
-    public Task RejectInsignificantDimensionsAsync(string url, CancellationToken ct = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(url);
-        return RunOperationAsync(async token =>
-        {
-            token.ThrowIfCancellationRequested();
-            await _database.RecordInsignificantDimensionsAsync(url).ConfigureAwait(false);
-            DownloadFailed?.Invoke(this, url);
-            return true;
         }, ct);
     }
 

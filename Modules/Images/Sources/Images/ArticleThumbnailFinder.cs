@@ -11,6 +11,7 @@ public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
     private readonly object _gate = new();
     private readonly Dictionary<string, IReadOnlyList<string>> _htmlUrls = new(StringComparer.Ordinal);
     private readonly HashSet<string> _discovering = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _decodingFailures = new(StringComparer.Ordinal);
 
     /// <summary>Raised after discovery; UI subscribers must dispatch to their UI thread.</summary>
     public event EventHandler<IReadOnlySet<string>>? ThumbnailUrlsAvailable;
@@ -81,8 +82,18 @@ public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
         return candidates.FirstOrDefault(url => url is not null && IsUsable(url));
     }
 
-    private bool IsUsable(string url) => SignificantImageFilter.IsSignificant(url, null, null)
-        && !_database.RecentlyFailed(url) && !_database.RecentlyLackedSignificantDimensions(url);
+    public void RecordDecodingFailure(string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        lock (_gate) _decodingFailures.Add(url);
+    }
+
+    private bool IsUsable(string url)
+    {
+        if (!SignificantImageFilter.IsSignificant(url, null, null)
+            || _database.RecentlyFailed(url) || _database.IsUnsuitableForThumbnail(url)) return false;
+        lock (_gate) return !_decodingFailures.Contains(url);
+    }
 
     private static string? NormalizedUrl(string? value)
         => string.IsNullOrEmpty(value) ? null : Uri.TryCreate(value, UriKind.Absolute, out var url) ? url.AbsoluteUri : value;

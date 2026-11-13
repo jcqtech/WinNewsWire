@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Data.Sqlite;
 using WinNewsWire.ActivityLog;
 using WinNewsWire.Core;
 using WinNewsWire.HTMLMetadata;
@@ -399,17 +400,49 @@ public sealed class FeedImageDownloaderTests
         Assert.Single(fixture.Requests);
     }
 
+    [Fact]
+    public async Task DownloadedSourceRecordsStoredDimensionsBytesAndHttpValidators()
+    {
+        const string url = Home + "metadata.bmp";
+        const string etag = "W/\"source-v1\"";
+        const string modified = "Mon, 26 Oct 2026 12:00:00 GMT";
+        await using var fixture = new Fixture((_, _) =>
+        {
+            var response = Response(HttpStatusCode.OK, Bitmap(1600, 800));
+            response.Headers.TryAddWithoutValidation("ETag", etag);
+            response.Content.Headers.TryAddWithoutValidation("Last-Modified", modified);
+            return Task.FromResult(response);
+        }, persistentMetadata: true);
+        var source = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.SourceAsync(url));
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = fixture.ImageDatabase.DatabasePath, Pooling = false
+        }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified FROM downloadedImage;";
+        using var rows = command.ExecuteReader();
+        Assert.True(rows.Read());
+        Assert.Equal(url, rows.GetString(0));
+        Assert.Equal(source.Data.LongLength, rows.GetInt64(1));
+        Assert.Equal(1200L, rows.GetInt64(2));
+        Assert.Equal(600L, rows.GetInt64(3));
+        Assert.Equal((fixture.Clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds, rows.GetDouble(4));
+        Assert.Equal(etag, rows.GetString(5));
+        Assert.Equal(modified, rows.GetString(6));
+        Assert.False(rows.Read());
+    }
+
     [Theory]
     [InlineData(32, 32)]
     [InlineData(1000, 64)]
-    public async Task NativeDimensionRejectionIsPersistedWithoutSuppressingFeedIcons(int width, int height)
+    public async Task StoredSourceDimensionsPreventThumbnailRetriesWithoutSuppressingFeedIcons(int width, int height)
     {
         var original = Bitmap(width, height);
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)));
         const string url = Home + "small.bmp";
         Assert.NotNull(await fixture.Thumbnails.SourceAsync(url));
-        await fixture.Thumbnails.RejectInsignificantDimensionsAsync(url);
-        Assert.True(fixture.ImageDatabase.RecentlyLackedSignificantDimensions(url));
+        Assert.True(fixture.ImageDatabase.IsUnsuitableForThumbnail(url));
         Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
         Assert.Null(await fixture.Thumbnails.SourceAsync(url));
         Assert.Single(fixture.Requests);
@@ -485,8 +518,7 @@ public sealed class FeedImageDownloaderTests
         string? notified = null;
         fixture.Thumbnails.DownloadFailed += (_, failedUrl) =>
         {
-            Assert.True(fixture.ImageDatabase.RecentlyFailed(failedUrl)
-                || fixture.ImageDatabase.RecentlyLackedSignificantDimensions(failedUrl));
+            Assert.True(fixture.ImageDatabase.RecentlyFailed(failedUrl));
             notified = failedUrl;
         };
         Assert.Null(await fixture.Thumbnails.SourceAsync(url));
@@ -651,9 +683,10 @@ public sealed class FeedImageDownloaderTests
         public string NativePath(string url, bool favicon = true) => Path.Combine(CacheDirectory, favicon ? "Favicons" : "DownloadedImages", url.Md5Hex());
         public string LegacyPath(string url, string extension) => Path.Combine(LegacyDirectory, Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(url))) + extension);
         public ConcurrentQueue<string> Requests { get; } = new();
-        public Fixture(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond, int? maxPixelSize = null)
+        public Fixture(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond,
+            int? maxPixelSize = null, bool persistentMetadata = false)
         {
-            ImageDatabase = new(":memory:", Clock);
+            ImageDatabase = new(persistentMetadata ? Path.Combine(_directory, "ImageMetadata.db") : ":memory:", Clock);
             HtmlDatabase = new(":memory:", Clock);
             var handler = new Handler(async (request, ct) =>
             {

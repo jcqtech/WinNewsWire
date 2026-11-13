@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Data.Sqlite;
 using WinNewsWire.Core;
 using WinNewsWire.Database;
+using WinNewsWire.Parsers;
 
 namespace WinNewsWire.Images;
 
@@ -12,13 +13,13 @@ public sealed class ImageMetadataDatabase : IDisposable
     public static bool IsSharedCreated => SharedDatabase.IsValueCreated;
     public static readonly TimeSpan FailureRetry = TimeSpan.FromDays(5);
     public static readonly TimeSpan FailureRetention = TimeSpan.FromDays(33);
-    private const string InsignificantDimensionsKeyPrefix = "insignificantDimensions:";
     private readonly DatabaseQueue _queue;
     private readonly TimeProvider _clock;
     private volatile bool _disposed;
     private readonly ConcurrentDictionary<string, HomePageFaviconRecord> _favicons = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _feedIcons = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _failures = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _unsuitableThumbnails = new(StringComparer.Ordinal);
     public string DatabasePath { get; }
 
     public ImageMetadataDatabase(string databasePath, TimeProvider? clock = null)
@@ -37,6 +38,7 @@ public sealed class ImageMetadataDatabase : IDisposable
                     CREATE TABLE IF NOT EXISTS homePageFavicon (homePageURL TEXT PRIMARY KEY NOT NULL, faviconURL TEXT, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS articleThumbnailURLs (articleID TEXT PRIMARY KEY NOT NULL, thumbnailURLs TEXT, lastChecked REAL NOT NULL);
+                    CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, byteCount INTEGER NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT);
                     """;
                 command.ExecuteNonQuery();
                 DownloadFailureTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
@@ -44,6 +46,8 @@ public sealed class ImageMetadataDatabase : IDisposable
                 foreach (var row in HomePageFaviconTable.FetchAll(connection)) _favicons[row.HomePageUrl] = row;
                 foreach (var pair in FeedIconUrlTable.FetchAll(connection)) _feedIcons[pair.Key] = pair.Value;
                 foreach (var pair in DownloadFailureTable.FetchAll(connection)) _failures[pair.Key] = pair.Value;
+                foreach (var row in DownloadedImageTable.FetchPixelSizes(connection))
+                    UpdateThumbnailSuitability(row.Url, row.PixelSize);
                 connection.VacuumIfNeeded(_clock);
             });
         }
@@ -71,13 +75,30 @@ public sealed class ImageMetadataDatabase : IDisposable
         return _failures.TryGetValue(url, out var date) && _clock.GetUtcNow() - date < FailureRetry;
     }
 
-    public bool RecentlyLackedSignificantDimensions(string url)
-        => RecentlyFailed(InsignificantDimensionsKeyPrefix + url);
-
-    public Task RecordInsignificantDimensionsAsync(string url)
+    public bool IsUnsuitableForThumbnail(string url)
     {
-        ArgumentException.ThrowIfNullOrEmpty(url);
-        return RecordFailureAsync(InsignificantDimensionsKeyPrefix + url, null);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _unsuitableThumbnails.ContainsKey(url);
+    }
+
+    public Task SaveDownloadedImageAsync(DownloadedImageRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentException.ThrowIfNullOrWhiteSpace(record.Url);
+        ArgumentOutOfRangeException.ThrowIfNegative(record.ByteCount);
+        return _queue.RunAsync(connection =>
+        {
+            DownloadedImageTable.Save(connection, record, _clock.GetUtcNow());
+            UpdateThumbnailSuitability(record.Url, record.PixelSize);
+            return Task.CompletedTask;
+        });
+    }
+
+    private void UpdateThumbnailSuitability(string url, (uint Width, uint Height)? pixelSize)
+    {
+        if (pixelSize is { } size && SignificantImageFilter.HasSignificantDimensions(size.Width, size.Height))
+            _unsuitableThumbnails.TryRemove(url, out _);
+        else _unsuitableThumbnails[url] = 0;
     }
 
     public Task SaveHomePageFaviconAsync(string homePageUrl, string? faviconUrl)
@@ -155,5 +176,13 @@ public sealed class ImageMetadataDatabase : IDisposable
     }
 
     public Task VacuumAsync(CancellationToken ct = default) => _queue.VacuumAsync(ct);
-    public void Dispose() { _queue.Dispose(); _disposed = true; _favicons.Clear(); _feedIcons.Clear(); _failures.Clear(); }
+    public void Dispose()
+    {
+        _queue.Dispose();
+        _disposed = true;
+        _favicons.Clear();
+        _feedIcons.Clear();
+        _failures.Clear();
+        _unsuitableThumbnails.Clear();
+    }
 }

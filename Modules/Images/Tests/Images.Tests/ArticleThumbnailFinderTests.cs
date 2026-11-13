@@ -42,9 +42,22 @@ public sealed class ArticleThumbnailFinderTests
         using var database = new ImageMetadataDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var article = Article(thumbnail: "https://example.com/icon.png", image: "https://example.com/photo.jpg");
-        await database.RecordInsignificantDimensionsAsync(article.RawThumbnailLink!);
+        await database.SaveDownloadedImageAsync(new(article.RawThumbnailLink!, 1024, (48, 48), null));
         Assert.False(database.RecentlyFailed(article.RawThumbnailLink!));
         Assert.Equal(article.RawImageLink, finder.ThumbnailUrl(article, ThumbnailMode.Small));
+    }
+
+    [Fact]
+    public void DecodingFailuresFallThroughWithoutBecomingPersistentOrAffectingOtherFinders()
+    {
+        using var database = new ImageMetadataDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        var article = Article(thumbnail: "https://example.com/icon.ico", image: "https://example.com/photo.jpg");
+        finder.RecordDecodingFailure(article.RawThumbnailLink!);
+        Assert.Equal(article.RawImageLink, finder.ThumbnailUrl(article, ThumbnailMode.Small));
+        Assert.False(database.RecentlyFailed(article.RawThumbnailLink!));
+        Assert.False(database.IsUnsuitableForThumbnail(article.RawThumbnailLink!));
+        Assert.Equal(article.RawThumbnailLink, new ArticleThumbnailFinder(database).ThumbnailUrl(article, ThumbnailMode.Small));
     }
 
     [Fact]
