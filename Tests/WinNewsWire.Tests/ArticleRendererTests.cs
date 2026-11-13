@@ -114,6 +114,32 @@ public sealed class ArticleRendererTests
         Assert.Equal(body, ArticleRenderer.Render(Article(body: body), extracted, theme: Theme(), accountType: AccountType.FreshRSS).Html);
     }
 
+    [Fact]
+    public void BundledPlumThemeCanBeSelectedRenderedAndRestored()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "WinNewsWire.BundledTheme." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var defaults = new WinNewsWire.Core.AppDefaults(Path.Combine(root, "defaults.json"));
+            using (var manager = new ArticleThemesManager(Path.Combine(root, "Themes"), defaults))
+            {
+                var theme = Assert.Single(manager.Themes, theme => theme.Name == "Plum");
+                Assert.True(theme.IsAppTheme);
+                manager.SelectByName(theme.Name);
+                var rendering = ArticleRenderer.Render(Article(), feed: Feed(), theme: manager.CurrentTheme);
+                Assert.DoesNotContain("[[", rendering.Html);
+                Assert.Contains("<p>Body</p>", rendering.Html);
+                Assert.Null(rendering.ThemeFolder);
+            }
+            using var reopened = new ArticleThemesManager(Path.Combine(root, "Themes"), defaults);
+            Assert.Equal("Plum", reopened.CurrentTheme.Name);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(ArticleTextSize.Small, "smallText")]
     [InlineData(ArticleTextSize.Medium, "mediumText")]

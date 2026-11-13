@@ -69,6 +69,16 @@ public sealed class ArticleThemesManager : IDisposable
         {
             if (_disposed) return;
             var found = new List<ArticleTheme> { BuiltInDefault() };
+            var bundledThemes = Path.Combine(AppContext.BaseDirectory, "Themes");
+            if (Directory.Exists(bundledThemes))
+            {
+                foreach (var dir in Directory.EnumerateDirectories(bundledThemes, "*" + ArticleTheme.ThemeExtension)
+                    .OrderBy(path => path, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    var theme = ArticleTheme.LoadFromFolder(dir, isAppTheme: true);
+                    if (theme is not null) found.Add(theme);
+                }
+            }
             foreach (var dir in Directory.EnumerateDirectories(FolderPath, "*" + ArticleTheme.ThemeExtension))
             {
                 if ((File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0) continue;

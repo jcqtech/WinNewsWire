@@ -28,6 +28,8 @@
     <EmbeddedResource Include="Resources\main.js" />
     <EmbeddedResource Include="Resources\main_windows.js" />
     <EmbeddedResource Include="Resources\newsfoot.js" />
+    <Content Include="Resources\Themes\**\*" Link="Themes\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="SmartReader" Version="0.11.0" />

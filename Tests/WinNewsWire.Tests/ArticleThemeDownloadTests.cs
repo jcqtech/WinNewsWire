@@ -59,7 +59,7 @@ public sealed class ArticleThemeDownloadTests : IDisposable
         using var manager = Manager();
         using var http = new HttpClient(new Handler(_ => new(HttpStatusCode.NotFound) { Content = new StringContent("Not found") }));
         await Assert.ThrowsAsync<InvalidDataException>(() => ArticleThemeDownloader.InstallFromUrlAsync(Url(), manager, downloader: new Downloader(http)));
-        Assert.Single(manager.Themes);
+        Assert.All(manager.Themes, theme => Assert.True(theme.IsAppTheme));
         Assert.Empty(Directory.EnumerateFiles(manager.FolderPath));
     }
 
@@ -70,7 +70,7 @@ public sealed class ArticleThemeDownloadTests : IDisposable
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ArticleThemeDownloader.InstallFromUrlAsync(Url(), manager, cancellation.Token));
-        Assert.Single(manager.Themes);
+        Assert.All(manager.Themes, theme => Assert.True(theme.IsAppTheme));
     }
 
     private ArticleThemesManager Manager()
