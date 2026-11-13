@@ -8,6 +8,16 @@ namespace WinNewsWire.AppShared.Tests;
 
 public sealed class ArticleRendererTests
 {
+    [Fact]
+    public void YouTubeFlashAttachmentRendersAsPrivacyEnhancedIframe()
+    {
+        var attachment = Attachment.Create(null, "https://www.youtube.com/v/abcdefghijk?version=3",
+            "application/x-shockwave-flash", null, null, null, 640, 390)!;
+        var html = ArticleRenderer.Render(Article(attachments: new HashSet<Attachment> { attachment }), theme: Theme()).Html;
+        Assert.Contains("<iframe src=\"https://www.youtube-nocookie.com/embed/abcdefghijk\" width=\"640\" height=\"390\" allowfullscreen>", html);
+        Assert.DoesNotContain("shockwave", html);
+    }
+
     [Theory]
     [InlineData("[[body]]")]
     [InlineData("[[body]]|[[enclosures]]")]

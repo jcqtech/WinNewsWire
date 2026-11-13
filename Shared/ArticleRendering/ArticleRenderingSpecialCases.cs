@@ -39,6 +39,15 @@ public static class ArticleRenderingSpecialCases
     public static Uri BaseUrlForRendering(Uri url)
         => url.IsYouTubeUrl() ? new Uri("https://netnewswire.com/") : url;
 
+    public static string? YouTubeEmbedUrl(string? attachmentUrl)
+    {
+        if (!Uri.TryCreate(attachmentUrl, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https")
+            || !url.IsYouTubeUrl() || !url.AbsolutePath.StartsWith("/v/", StringComparison.Ordinal)) return null;
+        var id = url.AbsolutePath[3..];
+        return id.Length > 0 && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_')
+            ? "https://www.youtube-nocookie.com/embed/" + id : null;
+    }
+
     public static string RemoveStrayLineBreaksIfNeeded(string html, string? feedUrl, string? homePageUrl)
         => new[] { feedUrl, homePageUrl }.Any(url => url is not null
             && SpecialCases.UrlStringMatchesDomain(url, ["macrumors.com"]))

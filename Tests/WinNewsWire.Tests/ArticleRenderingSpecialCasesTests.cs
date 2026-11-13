@@ -12,6 +12,19 @@ namespace WinNewsWire.AppShared.Tests;
 public class ArticleRenderingSpecialCasesTests
 {
     [Theory]
+    [InlineData("https://www.youtube.com/v/abc-DEF_123?version=3", "https://www.youtube-nocookie.com/embed/abc-DEF_123")]
+    [InlineData("http://youtube.com/v/abc", "https://www.youtube-nocookie.com/embed/abc")]
+    [InlineData("https://youtube.com.example.org/v/abc", null)]
+    [InlineData("https://example.com/v/abc", null)]
+    [InlineData("https://youtube.com/v/", null)]
+    [InlineData("https://youtube.com/v/abc/def", null)]
+    [InlineData("https://youtube.com/v/abc%22", null)]
+    [InlineData("https://youtube.com/watch?v=abc", null)]
+    [InlineData("file://youtube.com/v/abc", null)]
+    public void YouTubeFlashEnclosuresUsePrivacyEnhancedPlayers(string url, string? expected)
+        => Assert.Equal(expected, ArticleRenderingSpecialCases.YouTubeEmbedUrl(url));
+
+    [Theory]
     [InlineData("https://www.theverge.com/2024/1/2/foo", true)]
     [InlineData("https://theverge.com/", true)]
     [InlineData("http://blog.theverge.com/", true)]

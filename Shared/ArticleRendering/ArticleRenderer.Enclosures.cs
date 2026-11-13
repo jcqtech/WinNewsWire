@@ -19,6 +19,9 @@ public static partial class ArticleRenderer
         var src = Html(url);
         var dimensions = attachment.Width is > 0 && attachment.Height is > 0
             ? $" width=\"{attachment.Width.Value.ToString(CultureInfo.InvariantCulture)}\" height=\"{attachment.Height.Value.ToString(CultureInfo.InvariantCulture)}\"" : "";
+        if (ArticleRenderingSpecialCases.YouTubeEmbedUrl(url) is { } youtube)
+            return "<figure class=\"nnw-enclosure nnw-enclosure-video\"><iframe src=\"" + Html(youtube) + "\"" + dimensions
+                + " allowfullscreen></iframe></figure>";
         var medium = attachment.DisplayMedium;
         string media;
         string? caption = attachment.Title;
