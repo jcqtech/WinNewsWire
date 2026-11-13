@@ -14,12 +14,9 @@ public static class HtmlMetadataParser
     private sealed class MetadataParserDelegate(bool scanPastHead) : IHtmlScannerDelegate
     {
         public List<HtmlTag> Tags { get; } = [];
-        private bool _finished;
-
         public void DidStartTag(HtmlScanner scanner, ReadOnlyMemory<byte> name, HtmlAttributes attributes, bool selfClosing)
         {
-            if (_finished) return;
-            if (!scanPastHead && XmlAscii.EqualsCaseInsensitive(name.Span, "body"u8)) { _finished = true; return; }
+            if (!scanPastHead && XmlAscii.EqualsCaseInsensitive(name.Span, "body"u8)) { scanner.StopParsing(); return; }
             if (attributes.IsEmpty) return;
             if (XmlAscii.EqualsCaseInsensitive(name.Span, "link"u8))
             {

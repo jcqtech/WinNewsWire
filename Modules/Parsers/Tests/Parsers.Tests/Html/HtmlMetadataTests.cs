@@ -188,6 +188,21 @@ public class HtmlMetadataTests
     }
 
     [Fact]
+    public void MetadataParsingDoesNotAllocateForTheBodyOfLargePages()
+    {
+        const string head = "<head><link rel='icon' href='/head.png'></head>";
+        string image = "<img src='/photo.jpg' data-payload='" + new string('x', 128) + "'>";
+        var data = new ParserData("https://example.com/", Encoding.UTF8.GetBytes(head + "<BoDy>"
+            + string.Concat(Enumerable.Repeat(image, 4096)) + "</body>"));
+        for (int index = 0; index < 8; index++) _ = ParseInline(head);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var metadata = HtmlMetadataParser.Parse(data);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal("https://example.com/head.png", metadata.FaviconLink);
+        Assert.InRange(allocated, 0, 64 * 1024);
+    }
+
+    [Fact]
     public void NonYoutubePagesStopAtBodyAndIgnoreEmbeddedMarkup()
     {
         var metadata = ParseInline("""
