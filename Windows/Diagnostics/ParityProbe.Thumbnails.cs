@@ -593,6 +593,26 @@ internal static partial class ParityProbe
                 setNetworkAllowed(true);
                 await content.ProbeWebView.ExecuteScriptAsync("document.getElementById('shared-source-probe')?.remove()");
             }
+            const string forbiddenUrl = "https://thumbnail.test/forged.bmp";
+            string unsigned = AppShared.ArticleRendering.ArticleImageResource.BaseUrl + "?u=" + Uri.EscapeDataString(forbiddenUrl);
+            string forged = readerImageUrl.Replace(Uri.EscapeDataString("https://thumbnail.test/photo.bmp"),
+                Uri.EscapeDataString(forbiddenUrl), StringComparison.Ordinal);
+            await content.ProbeWebView.ExecuteScriptAsync("(() => { for (const [id, url] of "
+                + System.Text.Json.JsonSerializer.Serialize(new[] { new[] { "unsigned-image", unsigned }, new[] { "forged-image", forged } })
+                + ") { const image = new Image(); image.id = id; image.src = url; document.body.append(image); } })()");
+            try
+            {
+                await WaitFor(() => ScriptBool(content,
+                    "['unsigned-image', 'forged-image'].every(id => { const image = document.getElementById(id);"
+                    + " return image?.complete && image.naturalWidth === 0; })"),
+                    "Unsigned and forged shared-image requests are rejected");
+                Require(!requests.Contains("/forged.bmp"), "Untrusted reader markup started a shared-cache download.");
+            }
+            finally
+            {
+                await content.ProbeWebView.ExecuteScriptAsync(
+                    "['unsigned-image', 'forged-image'].forEach(id => document.getElementById(id)?.remove())");
+            }
             await using (var fallbackServer = new FixtureServer())
             {
                 string originalHtml = model.ArticleHtml;
