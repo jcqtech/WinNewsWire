@@ -177,6 +177,19 @@ public sealed class ArticleRendererTests
         Assert.True(html.IndexOf(first.URL!, StringComparison.Ordinal) < html.IndexOf(second.URL!, StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void UntitledPodcastAttachmentCaptionUsesFileNameDurationAndSize()
+    {
+        var audio = Attachment.Create(null, "https://example.com/atp311.mp3", "audio/mpeg", null, 54919661, 6849)!;
+        var html = ArticleRenderer.Render(Article(image: "https://example.com/artwork.jpg", attachments: [audio]),
+            theme: Theme()).Html;
+        Assert.Contains("<audio controls preload=\"none\" src=\"https://example.com/atp311.mp3\"", html);
+        Assert.Contains("atp311.mp3", html);
+        Assert.Contains("1:54:09", html);
+        Assert.Contains("MB", html);
+        Assert.Contains("<img src=\"https://example.com/artwork.jpg\"", html);
+    }
+
     [Theory]
     [InlineData("audio/mpeg")]
     [InlineData("video/mp4")]
