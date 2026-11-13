@@ -259,7 +259,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     {
         var now = _clock.GetUtcNow();
         var records = await _database.FetchDownloadedImageUsageByLeastRecentAccessAsync().ConfigureAwait(false);
-        var dates = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+        var files = new Dictionary<string, StoredFile>(StringComparer.Ordinal);
         var directory = new DirectoryInfo(_diskCache.Folder);
         try
         {
@@ -269,7 +269,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
             {
                 if ((file.Attributes & FileAttributes.ReparsePoint) != 0)
                     throw new IOException("Image cache cleanup will not traverse a filesystem link: " + file.FullName);
-                dates[file.Name] = file.LastWriteTimeUtc;
+                files[file.Name] = new(file.LastWriteTimeUtc, file.Length);
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -279,7 +279,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         }
         var urlsInUse = _downloads.CopyPendingUrls();
         lock (_backgroundGate) urlsInUse.UnionWith(_revalidatingImages.Keys);
-        var removal = PlanRemoval(records, dates, now, _maximumStoredByteCount, urlsInUse);
+        var removal = PlanRemoval(records, files, now, _maximumStoredByteCount, urlsInUse);
         foreach (var key in removal.Keys) _diskCache.Remove(key);
         await _database.DeleteDownloadedImagesAsync(removal.Urls).ConfigureAwait(false);
         foreach (var url in removal.Urls) _accessDatesSaved.Remove(url);
@@ -288,36 +288,37 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     }
 
     internal sealed record ImageRemoval(IReadOnlyList<string> Urls, IReadOnlySet<string> Keys, long RemainingByteCount);
+    internal sealed record StoredFile(DateTimeOffset ModificationDate, long ByteCount);
 
     internal static ImageRemoval PlanRemoval(IReadOnlyList<DownloadedImageUsage> records,
-        IReadOnlyDictionary<string, DateTimeOffset> fileDates, DateTimeOffset now, long maximumByteCount,
+        IReadOnlyDictionary<string, StoredFile> files, DateTimeOffset now, long maximumByteCount,
         IReadOnlySet<string>? urlsInUse = null)
     {
         var recentChange = now - TimeSpan.FromMinutes(1);
-        var keep = new List<(DownloadedImageUsage Record, string Key)>();
+        var keep = new List<(DownloadedImageUsage Record, string Key, long ByteCount)>();
         var recordedKeys = new HashSet<string>(StringComparer.Ordinal);
         var urls = new List<string>();
         foreach (var record in records)
         {
             string key = record.Url.Md5Hex();
             recordedKeys.Add(key);
-            if (!fileDates.ContainsKey(key) && record.LastAccessed < recentChange) urls.Add(record.Url);
-            else keep.Add((record, key));
+            if (!files.ContainsKey(key) && record.LastAccessed < recentChange) urls.Add(record.Url);
+            else keep.Add((record, key, files.GetValueOrDefault(key)?.ByteCount ?? 0));
         }
-        var keys = fileDates.Where(pair => !recordedKeys.Contains(BaseDiskKey(pair.Key)) && pair.Value < recentChange)
+        var keys = files.Where(pair => !recordedKeys.Contains(BaseDiskKey(pair.Key)) && pair.Value.ModificationDate < recentChange)
             .Select(pair => pair.Key).ToHashSet(StringComparer.Ordinal);
-        long bytes = keep.Sum(item => item.Record.ByteCount);
-        foreach (var (record, key) in keep)
+        long bytes = keep.Sum(item => item.ByteCount);
+        foreach (var (record, key, byteCount) in keep)
         {
             if (bytes <= maximumByteCount || record.LastAccessed >= recentChange) break;
             if (urlsInUse?.Contains(record.Url) == true
-                || fileDates.TryGetValue(key, out var modified) && modified >= recentChange) continue;
+                || files.TryGetValue(key, out var file) && file.ModificationDate >= recentChange) continue;
             urls.Add(record.Url);
             keys.Add(key);
-            bytes -= record.ByteCount;
+            bytes -= byteCount;
         }
         var removedKeys = keys.Concat(urls.Select(url => url.Md5Hex())).ToHashSet(StringComparer.Ordinal);
-        keys.UnionWith(fileDates.Keys.Where(key => BaseDiskKey(key) != key && removedKeys.Contains(BaseDiskKey(key))));
+        keys.UnionWith(files.Keys.Where(key => BaseDiskKey(key) != key && removedKeys.Contains(BaseDiskKey(key))));
         return new(urls, keys, bytes);
     }
 

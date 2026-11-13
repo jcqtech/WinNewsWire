@@ -287,7 +287,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                 foreach (var derived in Directory.EnumerateFiles(_diskCache.Folder, url.Md5Hex() + "-*"))
                     _diskCache.Remove(Path.GetFileName(derived));
             if (_configuration.StoresSourceData && OperatingSystem.IsWindows())
-                await _database.SaveDownloadedImageAsync(new(url, processed.LongLength,
+                await _database.SaveDownloadedImageAsync(new(url,
                     WindowsImage.LargestFramePixelSize(processed), response.ConditionalGet,
                     DownloadedImageCache.CalculateNextCheck(response.CacheMaxAge,
                         response.ConditionalGet is not null, _clock.GetUtcNow()))).ConfigureAwait(false);

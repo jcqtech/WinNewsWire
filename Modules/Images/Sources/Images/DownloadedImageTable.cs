@@ -3,12 +3,12 @@ using WinNewsWire.Web;
 
 namespace WinNewsWire.Images;
 
-public sealed record DownloadedImageRecord(string Url, long ByteCount,
+public sealed record DownloadedImageRecord(string Url,
     (uint Width, uint Height)? PixelSize, ConditionalGetInfo? ConditionalGet, DateTimeOffset? NextCheck = null);
 
 public sealed record DownloadedImageValidation(DateTimeOffset NextCheck, ConditionalGetInfo? ConditionalGet);
 
-public sealed record DownloadedImageUsage(string Url, long ByteCount, DateTimeOffset LastAccessed);
+public sealed record DownloadedImageUsage(string Url, DateTimeOffset LastAccessed);
 
 internal static class DownloadedImageTable
 {
@@ -53,11 +53,11 @@ internal static class DownloadedImageTable
     internal static IReadOnlyList<DownloadedImageUsage> FetchUsageByLeastRecentAccess(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT url,byteCount,lastAccessed FROM downloadedImage ORDER BY lastAccessed,url;";
+        command.CommandText = "SELECT url,lastAccessed FROM downloadedImage ORDER BY lastAccessed,url;";
         using var rows = command.ExecuteReader();
         var result = new List<DownloadedImageUsage>();
         while (rows.Read())
-            result.Add(new(rows.GetString(0), rows.GetInt64(1), DateTimeOffset.UnixEpoch.AddSeconds(rows.GetDouble(2))));
+            result.Add(new(rows.GetString(0), DateTimeOffset.UnixEpoch.AddSeconds(rows.GetDouble(1))));
         return result;
     }
 
@@ -105,11 +105,10 @@ internal static class DownloadedImageTable
     {
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT OR REPLACE INTO downloadedImage (url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck)
-            VALUES ($url,$bytes,$width,$height,$accessed,$etag,$modified,$next);
+            INSERT OR REPLACE INTO downloadedImage (url,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck)
+            VALUES ($url,$width,$height,$accessed,$etag,$modified,$next);
             """;
         command.Parameters.AddWithValue("$url", row.Url);
-        command.Parameters.AddWithValue("$bytes", row.ByteCount);
         command.Parameters.AddWithValue("$width", (object?)row.PixelSize?.Width ?? DBNull.Value);
         command.Parameters.AddWithValue("$height", (object?)row.PixelSize?.Height ?? DBNull.Value);
         command.Parameters.AddWithValue("$accessed", (now - DateTimeOffset.UnixEpoch).TotalSeconds);

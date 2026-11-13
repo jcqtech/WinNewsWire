@@ -42,10 +42,10 @@ public sealed class ImageDatabase : IDisposable
                     CREATE TABLE IF NOT EXISTS homePageFavicon (homePageURL TEXT PRIMARY KEY NOT NULL, faviconURL TEXT, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL);
                     DROP TABLE IF EXISTS articleThumbnailURLs;
-                    CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, byteCount INTEGER NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT, nextCheck REAL NOT NULL DEFAULT 0);
+                    CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT, nextCheck REAL NOT NULL DEFAULT 0);
                     """;
                 command.ExecuteNonQuery();
-                foreach (var (table, column) in new[] { ("downloadFailure", "statusCode"), ("feedIconURL", "lastChecked") })
+                foreach (var (table, column) in new[] { ("downloadFailure", "statusCode"), ("feedIconURL", "lastChecked"), ("downloadedImage", "byteCount") })
                     if (connection.Query($"PRAGMA table_info({table});", row => row.GetString(1)).Contains(column, StringComparer.OrdinalIgnoreCase))
                         connection.Execute($"ALTER TABLE {table} DROP COLUMN {column};");
                 DownloadedImageTable.EnsureValidationColumn(connection);
@@ -79,7 +79,7 @@ public sealed class ImageDatabase : IDisposable
                 ("downloadFailure", "url,lastChecked", false),
                 ("homePageFavicon", "homePageURL,faviconURL,lastChecked", false),
                 ("feedIconURL", "feedURL,iconURL", false),
-                ("downloadedImage", "url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck", true)
+                ("downloadedImage", "url,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck", true)
             ];
             foreach (var (table, columns, optional) in tables)
             {
@@ -148,7 +148,6 @@ public sealed class ImageDatabase : IDisposable
     {
         ArgumentNullException.ThrowIfNull(record);
         ArgumentException.ThrowIfNullOrWhiteSpace(record.Url);
-        ArgumentOutOfRangeException.ThrowIfNegative(record.ByteCount);
         return _queue.RunAsync(connection =>
         {
             DownloadedImageTable.Save(connection, record, _clock.GetUtcNow());

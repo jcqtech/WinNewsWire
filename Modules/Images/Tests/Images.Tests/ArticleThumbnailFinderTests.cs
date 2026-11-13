@@ -253,7 +253,7 @@ public sealed class ArticleThumbnailFinderTests
         using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var article = Article(thumbnail: "https://example.com/icon.png", image: "https://example.com/photo.jpg");
-        await database.SaveDownloadedImageAsync(new(article.RawThumbnailLink!, 1024, (48, 48), null));
+        await database.SaveDownloadedImageAsync(new(article.RawThumbnailLink!, (48, 48), null));
         Assert.False(database.RecentlyFailed(article.RawThumbnailLink!));
         Assert.Equal(article.RawImageLink, finder.ThumbnailUrl(article, ThumbnailMode.Small));
     }

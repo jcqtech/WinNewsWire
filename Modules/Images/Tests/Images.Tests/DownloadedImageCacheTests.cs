@@ -18,20 +18,20 @@ public sealed class DownloadedImageCacheTests
         var old = Now.AddDays(-10);
         var records = new[]
         {
-            new DownloadedImageUsage(Url("a"), 100, old),
-            new DownloadedImageUsage(Url("b"), 100, old.AddSeconds(1)),
-            new DownloadedImageUsage(Url("missing"), 100, old.AddSeconds(2))
+            new DownloadedImageUsage(Url("a"), old),
+            new DownloadedImageUsage(Url("b"), old.AddSeconds(1)),
+            new DownloadedImageUsage(Url("missing"), old.AddSeconds(2))
         };
-        var dates = new Dictionary<string, DateTimeOffset>
+        var files = new Dictionary<string, DownloadedImageCache.StoredFile>
         {
-            [Url("a").Md5Hex()] = old,
-            [Url("b").Md5Hex()] = old,
-            [DownloadedImageCache.DerivedDiskKey(Url("a"), "144")] = Now,
-            [DownloadedImageCache.DerivedDiskKey(Url("b"), "144")] = old,
-            [DownloadedImageCache.DerivedDiskKey(Url("missing"), "144")] = Now,
-            [DownloadedImageCache.DerivedDiskKey(Url("orphan"), "144")] = old
+            [Url("a").Md5Hex()] = new(old, 100),
+            [Url("b").Md5Hex()] = new(old, 100),
+            [DownloadedImageCache.DerivedDiskKey(Url("a"), "144")] = new(Now, 10),
+            [DownloadedImageCache.DerivedDiskKey(Url("b"), "144")] = new(old, 10),
+            [DownloadedImageCache.DerivedDiskKey(Url("missing"), "144")] = new(Now, 10),
+            [DownloadedImageCache.DerivedDiskKey(Url("orphan"), "144")] = new(old, 10)
         };
-        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 150);
+        var removal = DownloadedImageCache.PlanRemoval(records, files, Now, 150);
         Assert.Equal([Url("missing"), Url("a")], removal.Urls);
         Assert.Equal(100, removal.RemainingByteCount);
         Assert.True(removal.Keys.SetEquals([
@@ -471,7 +471,7 @@ public sealed class DownloadedImageCacheTests
             return ValidatedResponse(HttpStatusCode.NotModified, []);
         });
         await fixture.SeedAsync("active");
-        await fixture.Database.SaveDownloadedImageAsync(new(Url("active"), Fixture.Image.Length, (1, 1),
+        await fixture.Database.SaveDownloadedImageAsync(new(Url("active"), (1, 1),
             new(null, "\"v1\""), fixture.Clock.GetUtcNow()));
         fixture.Clock.Advance(TimeSpan.FromDays(10));
         await using var cache = fixture.CreateCache(2);
@@ -506,9 +506,9 @@ public sealed class DownloadedImageCacheTests
     {
         var old = Now.AddDays(-ageDays);
         var records = Enumerable.Range(0, 3)
-            .Select(index => new DownloadedImageUsage(Url(index.ToString()), 100, old)).ToArray();
-        var dates = records.ToDictionary(record => record.Url.Md5Hex(), _ => old);
-        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 200,
+            .Select(index => new DownloadedImageUsage(Url(index.ToString()), old)).ToArray();
+        var files = records.ToDictionary(record => record.Url.Md5Hex(), _ => new DownloadedImageCache.StoredFile(old, 100));
+        var removal = DownloadedImageCache.PlanRemoval(records, files, Now, 200,
             new HashSet<string>(StringComparer.Ordinal) { records[0].Url });
         Assert.Equal([records[1].Url], removal.Urls);
         Assert.Equal(200, removal.RemainingByteCount);
@@ -520,12 +520,12 @@ public sealed class DownloadedImageCacheTests
     {
         var old = Now.AddDays(-10);
         var urls = new[] { Url("a"), Url("b"), Url("c"), Url("fresh") };
-        var records = new[] { new DownloadedImageUsage(Url("missing"), 50, old) }
-            .Concat(urls.Select(url => new DownloadedImageUsage(url, 100, url == urls[3] ? Now : old))).ToArray();
-        var dates = urls.ToDictionary(url => url.Md5Hex(), _ => old);
-        dates["orphan"] = old;
-        dates["fresh-orphan"] = Now;
-        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 350);
+        var records = new[] { new DownloadedImageUsage(Url("missing"), old) }
+            .Concat(urls.Select(url => new DownloadedImageUsage(url, url == urls[3] ? Now : old))).ToArray();
+        var files = urls.ToDictionary(url => url.Md5Hex(), _ => new DownloadedImageCache.StoredFile(old, 100));
+        files["orphan"] = new(old, 100);
+        files["fresh-orphan"] = new(Now, 100);
+        var removal = DownloadedImageCache.PlanRemoval(records, files, Now, 350);
         Assert.Equal([Url("missing"), urls[0]], removal.Urls);
         Assert.True(removal.Keys.SetEquals(["orphan", urls[0].Md5Hex()]));
         Assert.Equal(300L, removal.RemainingByteCount);
@@ -535,9 +535,9 @@ public sealed class DownloadedImageCacheTests
     public void RecentlyUsedImagesAlsoCountTowardTheStartupLimit()
     {
         var records = Enumerable.Range(0, 5)
-            .Select(index => new DownloadedImageUsage(Url(index.ToString()), 100, Now.AddDays(-1).AddSeconds(index))).ToArray();
-        var dates = records.ToDictionary(row => row.Url.Md5Hex(), _ => Now.AddDays(-1));
-        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 200);
+            .Select(index => new DownloadedImageUsage(Url(index.ToString()), Now.AddDays(-1).AddSeconds(index))).ToArray();
+        var files = records.ToDictionary(row => row.Url.Md5Hex(), _ => new DownloadedImageCache.StoredFile(Now.AddDays(-1), 100));
+        var removal = DownloadedImageCache.PlanRemoval(records, files, Now, 200);
         Assert.Equal(records.Take(3).Select(row => row.Url), removal.Urls);
         Assert.Equal(200L, removal.RemainingByteCount);
     }
@@ -547,20 +547,49 @@ public sealed class DownloadedImageCacheTests
     {
         var records = new[]
         {
-            new DownloadedImageUsage(Url("being-replaced"), 100, Now.AddDays(-10)),
-            new DownloadedImageUsage(Url("old"), 100, Now.AddDays(-9)),
-            new DownloadedImageUsage(Url("record-before-file"), 100, Now.AddMinutes(-1))
+            new DownloadedImageUsage(Url("being-replaced"), Now.AddDays(-10)),
+            new DownloadedImageUsage(Url("old"), Now.AddDays(-9)),
+            new DownloadedImageUsage(Url("record-before-file"), Now.AddMinutes(-1))
         };
-        var dates = new Dictionary<string, DateTimeOffset>
+        var files = new Dictionary<string, DownloadedImageCache.StoredFile>
         {
-            [records[0].Url.Md5Hex()] = Now.AddMinutes(-1),
-            [records[1].Url.Md5Hex()] = Now.AddDays(-9),
-            ["fresh-orphan"] = Now.AddMinutes(-1)
+            [records[0].Url.Md5Hex()] = new(Now.AddMinutes(-1), 100),
+            [records[1].Url.Md5Hex()] = new(Now.AddDays(-9), 100),
+            ["fresh-orphan"] = new(Now.AddMinutes(-1), 100)
         };
-        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, 50);
+        var removal = DownloadedImageCache.PlanRemoval(records, files, Now, 50);
         Assert.Equal([records[1].Url], removal.Urls);
         Assert.True(removal.Keys.SetEquals([records[1].Url.Md5Hex()]));
-        Assert.Equal(200L, removal.RemainingByteCount);
+        Assert.Equal(100L, removal.RemainingByteCount);
+    }
+
+    [Fact]
+    public async Task StartupUsesChangedFileLengthsRatherThanPreviouslySavedMetadata()
+    {
+        await using var fixture = new Fixture();
+        await fixture.SeedAsync("a");
+        await fixture.SeedAsync("b");
+        using (var file = File.OpenWrite(fixture.PathFor("b")))
+            file.SetLength(Fixture.Image.LongLength * 3);
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        await using (var cache = fixture.CreateCache(3)) { }
+        Assert.False(File.Exists(fixture.PathFor("a")));
+        Assert.Equal(Fixture.Image.LongLength * 3, new FileInfo(fixture.PathFor("b")).Length);
+        Assert.Equal(Url("b"), Assert.Single(await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Url);
+    }
+
+    [Fact]
+    public async Task StartupDoesNotEvictSourcesToPayForBytesNoLongerOnDisk()
+    {
+        await using var fixture = new Fixture();
+        await fixture.SeedAsync("a");
+        await fixture.SeedAsync("b");
+        using (var file = File.OpenWrite(fixture.PathFor("b"))) file.SetLength(0);
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        await using (var cache = fixture.CreateCache(1)) { }
+        Assert.True(File.Exists(fixture.PathFor("a")));
+        Assert.True(File.Exists(fixture.PathFor("b")));
+        Assert.Equal(2, (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
     }
 
     [Fact]
@@ -1132,7 +1161,7 @@ public sealed class DownloadedImageCacheTests
         {
             File.WriteAllBytes(PathFor(name), Image);
             File.SetLastWriteTimeUtc(PathFor(name), Clock.GetUtcNow().UtcDateTime);
-            await Database.SaveDownloadedImageAsync(new(Url(name), Image.LongLength, (1, 1), null));
+            await Database.SaveDownloadedImageAsync(new(Url(name), (1, 1), null));
         }
         internal DownloadedImageCache CreateCache(int limitImages)
             => new(Database, _directory, Image.LongLength * limitImages,

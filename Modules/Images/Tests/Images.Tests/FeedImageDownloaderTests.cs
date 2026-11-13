@@ -624,7 +624,7 @@ public sealed class FeedImageDownloaderTests
         var source = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.SourceAsync(url));
         Assert.Equal(original, source.Data);
         Assert.Equal(original, await File.ReadAllBytesAsync(source.Path));
-        Assert.Equal(original.LongLength, Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).ByteCount);
+        Assert.Equal(url, Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Url);
         Assert.Equal(2, requests);
     }
 
@@ -678,7 +678,7 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task DownloadedSourceRecordsStoredDimensionsBytesAndHttpValidators()
+    public async Task DownloadedSourceRecordsStoredDimensionsAndHttpValidators()
     {
         const string url = Home + "metadata.bmp";
         const string etag = "W/\"source-v1\"";
@@ -698,17 +698,16 @@ public sealed class FeedImageDownloaderTests
         }.ToString());
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck FROM downloadedImage;";
+        command.CommandText = "SELECT url,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck FROM downloadedImage;";
         using var rows = command.ExecuteReader();
         Assert.True(rows.Read());
         Assert.Equal(url, rows.GetString(0));
-        Assert.Equal(source.Data.LongLength, rows.GetInt64(1));
-        Assert.Equal(1600L, rows.GetInt64(2));
-        Assert.Equal(800L, rows.GetInt64(3));
-        Assert.Equal((fixture.Clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds, rows.GetDouble(4));
-        Assert.Equal(etag, rows.GetString(5));
-        Assert.Equal(modified, rows.GetString(6));
-        Assert.InRange(rows.GetDouble(7),
+        Assert.Equal(1600L, rows.GetInt64(1));
+        Assert.Equal(800L, rows.GetInt64(2));
+        Assert.Equal((fixture.Clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds, rows.GetDouble(3));
+        Assert.Equal(etag, rows.GetString(4));
+        Assert.Equal(modified, rows.GetString(5));
+        Assert.InRange(rows.GetDouble(6),
             (fixture.Clock.GetUtcNow().AddDays(2.4) - DateTimeOffset.UnixEpoch).TotalSeconds,
             (fixture.Clock.GetUtcNow().AddDays(3.6) - DateTimeOffset.UnixEpoch).TotalSeconds);
         Assert.False(rows.Read());

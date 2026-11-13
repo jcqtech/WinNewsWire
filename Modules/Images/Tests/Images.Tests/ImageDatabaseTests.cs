@@ -30,6 +30,7 @@ public sealed class ImageDatabaseTests : IDisposable
         using var connection = Open();
         Assert.DoesNotContain("statusCode", connection.Query("PRAGMA table_info(downloadFailure);", row => row.GetString(1)));
         Assert.DoesNotContain("lastChecked", connection.Query("PRAGMA table_info(feedIconURL);", row => row.GetString(1)));
+        Assert.DoesNotContain("byteCount", connection.Query("PRAGMA table_info(downloadedImage);", row => row.GetString(1)));
     }
 
     [Fact]
@@ -59,7 +60,7 @@ public sealed class ImageDatabaseTests : IDisposable
             await source.SaveHomePageFaviconAsync("https://site.test/", null);
             await source.SaveFeedIconUrlAsync("https://site.test/feed", "legacy");
             await source.RecordFailureAsync("https://site.test/missing");
-            await source.SaveDownloadedImageAsync(new(image, 1024, (48, 48),
+            await source.SaveDownloadedImageAsync(new(image, (48, 48),
                 new(null, "\"legacy\""), _clock.GetUtcNow().AddDays(3)));
             {
                 using var legacy = Open(sourcePath);
@@ -86,7 +87,7 @@ public sealed class ImageDatabaseTests : IDisposable
             Assert.Equal("\"legacy\"", validation.ConditionalGet?.ETag);
             Assert.Equal(oldValidationSchema ? DateTimeOffset.UnixEpoch : _clock.GetUtcNow().AddDays(3), validation.NextCheck);
             var usage = Assert.Single(await database.FetchDownloadedImageUsageByLeastRecentAccessAsync());
-            Assert.Equal(1024, usage.ByteCount);
+            Assert.Equal(_clock.GetUtcNow(), usage.LastAccessed);
             Assert.Equal(image, usage.Url);
         }
         Assert.False(File.Exists(legacyPath));
@@ -204,7 +205,7 @@ public sealed class ImageDatabaseTests : IDisposable
         const string url = "https://site.test/tiny.png";
         using (var database = new ImageDatabase(DatabasePath, _clock))
         {
-            await database.SaveDownloadedImageAsync(new(url, 1024,
+            await database.SaveDownloadedImageAsync(new(url,
                 width is { } w && height is { } h ? (w, h) : null, null));
             Assert.False(database.RecentlyFailed(url));
         }
@@ -215,7 +216,7 @@ public sealed class ImageDatabaseTests : IDisposable
         await reopened.RecordFailureAsync(url);
         await reopened.ClearFailureAsync(url);
         Assert.Equal(unsuitable, reopened.IsUnsuitableForThumbnail(url));
-        await reopened.SaveDownloadedImageAsync(new(url, 2048, (640, 480), null));
+        await reopened.SaveDownloadedImageAsync(new(url, (640, 480), null));
         Assert.False(reopened.IsUnsuitableForThumbnail(url));
         using var refreshed = new ImageDatabase(DatabasePath, _clock);
         Assert.False(refreshed.IsUnsuitableForThumbnail(url));
@@ -226,7 +227,7 @@ public sealed class ImageDatabaseTests : IDisposable
     {
         const string url = "https://site.test/tiny.png";
         using var database = new ImageDatabase(DatabasePath, _clock);
-        await database.SaveDownloadedImageAsync(new(url, 1024, (48, 48), null));
+        await database.SaveDownloadedImageAsync(new(url, (48, 48), null));
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
@@ -234,7 +235,7 @@ public sealed class ImageDatabaseTests : IDisposable
             BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;
             """;
         command.ExecuteNonQuery();
-        await Assert.ThrowsAsync<SqliteException>(() => database.SaveDownloadedImageAsync(new(url, 2048, (640, 480), null)));
+        await Assert.ThrowsAsync<SqliteException>(() => database.SaveDownloadedImageAsync(new(url, (640, 480), null)));
         Assert.True(database.IsUnsuitableForThumbnail(url));
         using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.True(reopened.IsUnsuitableForThumbnail(url));
@@ -245,7 +246,7 @@ public sealed class ImageDatabaseTests : IDisposable
     {
         using var database = new ImageDatabase(DatabasePath, _clock);
         var urls = Enumerable.Range(0, 501).Select(index => "https://site.test/" + index).ToArray();
-        foreach (var url in urls) await database.SaveDownloadedImageAsync(new(url, 100, null, null));
+        foreach (var url in urls) await database.SaveDownloadedImageAsync(new(url, null, null));
         _clock.Advance(TimeSpan.FromDays(1));
         await database.SaveDownloadedImageAccessDateAsync(urls[0]);
         var usage = await database.FetchDownloadedImageUsageByLeastRecentAccessAsync();
@@ -263,7 +264,7 @@ public sealed class ImageDatabaseTests : IDisposable
     {
         using var database = new ImageDatabase(DatabasePath, _clock);
         var urls = Enumerable.Range(0, 501).Select(index => "https://site.test/" + index).ToArray();
-        foreach (var url in urls) await database.SaveDownloadedImageAsync(new(url, 100, null, null));
+        foreach (var url in urls) await database.SaveDownloadedImageAsync(new(url, null, null));
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
@@ -294,6 +295,10 @@ public sealed class ImageDatabaseTests : IDisposable
         Assert.Equal(DateTimeOffset.UnixEpoch, old.NextCheck);
         Assert.Equal("\"old\"", old.ConditionalGet?.ETag);
         Assert.True(database.IsUnsuitableForThumbnail("https://site.test/icon"));
+        using (var connection = Open())
+            Assert.DoesNotContain("byteCount", connection.Query("PRAGMA table_info(downloadedImage);", row => row.GetString(1)));
+        await database.SaveDownloadedImageAsync(new("https://site.test/new-icon", (128, 128), null));
+        Assert.False(database.IsUnsuitableForThumbnail("https://site.test/new-icon"));
         await database.SaveDownloadedImageNextCheckAsync("https://site.test/icon", _clock.GetUtcNow().AddDays(3));
         using var reopened = new ImageDatabase(DatabasePath, _clock);
         Assert.Equal(_clock.GetUtcNow().AddDays(3),
