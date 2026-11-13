@@ -27,6 +27,7 @@ public sealed class ArticleTheme
     public string CreatorName { get; init; } = "";
     public string Version { get; init; } = "1";
     public string ThemeIdentifier { get; init; } = "com.winnewswire.default";
+    public bool UsesGrayscaleIcon { get; init; }
 
     public string TemplateHtml { get; init; } = "";
     public string StylesheetCss { get; init; } = "";
@@ -52,18 +53,24 @@ public sealed class ArticleTheme
                 CreatorName = info.CreatorName ?? "Unknown",
                 Version = info.Version ?? "0",
                 ThemeIdentifier = info.ThemeIdentifier ?? ("com.user." + System.IO.Path.GetFileNameWithoutExtension(folder)),
+                UsesGrayscaleIcon = info.GrayscaleIcon,
                 TemplateHtml = File.Exists(template) ? File.ReadAllText(template) : ReadResource(TemplateFilename),
                 StylesheetCss = ReadResource("core.css") + "\n" + (File.Exists(stylesheet) ? File.ReadAllText(stylesheet) : ReadResource(StylesheetFilename)),
             };
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
         {
             Trace.TraceError($"Could not load article theme {folder}: {ex.Message}");
             return null;
         }
     }
 
-    public record InfoDict(string? ThemeIdentifier, string? Name, string? CreatorHomePage, string? CreatorName, string? Version);
+    public record InfoDict(string? ThemeIdentifier, string? Name, string? CreatorHomePage, string? CreatorName, string? Version,
+        bool GrayscaleIcon = false);
+
+    private static bool GrayscaleSetting(string? value)
+        => value is null ? false : bool.TryParse(value, out var enabled) ? enabled
+            : throw new InvalidDataException("The article theme grayscaleIcon setting must be a Boolean.");
 
     public static InfoDict TryReadInfo(string folder)
     {
@@ -76,7 +83,8 @@ public sealed class ArticleTheme
                 .Where(property => property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
                 .Select(property => property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() : property.Value.GetRawText())
                 .FirstOrDefault();
-            return new(Read("themeIdentifier"), Read("name"), Read("creatorHomePage"), Read("creatorName"), Read("version"));
+            return new(Read("themeIdentifier"), Read("name"), Read("creatorHomePage"), Read("creatorName"), Read("version"),
+                GrayscaleSetting(Read("grayscaleIcon")));
         }
 
         var plist = System.IO.Path.Combine(folder, InfoFilenamePlist);
@@ -84,7 +92,8 @@ public sealed class ArticleTheme
             ?? throw new InvalidDataException("The article theme has no readable Info.plist or Info.json.");
         string? Value(string key) => values.Where(pair => pair.Key.Equals(key, StringComparison.OrdinalIgnoreCase))
             .Select(pair => Convert.ToString(pair.Value, CultureInfo.InvariantCulture)).FirstOrDefault();
-        return new(Value("themeIdentifier"), Value("name"), Value("creatorHomePage"), Value("creatorName"), Value("version"));
+        return new(Value("themeIdentifier"), Value("name"), Value("creatorHomePage"), Value("creatorName"), Value("version"),
+            GrayscaleSetting(Value("grayscaleIcon")));
     }
 
     internal static string ReadResource(string name)

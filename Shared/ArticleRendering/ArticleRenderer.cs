@@ -119,6 +119,7 @@ public static class ArticleRenderer
         var pixels = size switch { ArticleTextSize.Small => 14, ArticleTextSize.Medium => 16, ArticleTextSize.Large => 18, ArticleTextSize.XLarge => 20, ArticleTextSize.XXLarge => 22, _ => 16 };
         var style = MacroProcessor.RenderedTextWith(theme.StylesheetCss,
             new Dictionary<string, string> { ["font-size"] = pixels.ToString(CultureInfo.InvariantCulture) });
+        if (theme.UsesGrayscaleIcon) style += "\n#nnwImageIcon { filter: grayscale(1); }\n";
         return AppleFontFamily.Replace(style, "$1\"Segoe UI Variable\", \"Segoe UI\", sans-serif");
     }
 

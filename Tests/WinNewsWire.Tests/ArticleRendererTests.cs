@@ -132,6 +132,7 @@ public sealed class ArticleRendererTests
                 Assert.DoesNotContain("[[", rendering.Html);
                 Assert.Contains("<p>Body</p>", rendering.Html);
                 Assert.Null(rendering.ThemeFolder);
+                Assert.Equal(themeName == "Gray", rendering.Style.Contains("#nnwImageIcon { filter: grayscale(1); }", StringComparison.Ordinal));
             }
             using var reopened = new ArticleThemesManager(Path.Combine(root, "Themes"), defaults);
             Assert.Equal(themeName, reopened.CurrentTheme.Name);

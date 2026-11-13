@@ -103,6 +103,28 @@ public sealed class ThemeUnzipTests : IDisposable
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void JsonThemeMetadataControlsArticleIconGrayscale(bool enabled)
+    {
+        var path = Path.Combine(_root, "Grayscale.nnwtheme");
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, "Info.json"),
+            System.Text.Json.JsonSerializer.Serialize(new { Name = "Grayscale", grayscaleIcon = enabled }));
+        var theme = Assert.IsType<ArticleTheme>(ArticleTheme.LoadFromFolder(path, false));
+        Assert.Equal(enabled, theme.UsesGrayscaleIcon);
+    }
+
+    [Fact]
+    public void MalformedGrayscaleMetadataRejectsTheTheme()
+    {
+        var path = Path.Combine(_root, "Invalid.nnwtheme");
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, "Info.json"), """{"grayscaleIcon":42}""");
+        Assert.Null(ArticleTheme.LoadFromFolder(path, false));
+    }
+
+    [Theory]
     [InlineData(".. /escaped.txt")]
     [InlineData("Good.nnwtheme/CON.txt")]
     [InlineData("Good.nnwtheme/aux")]
