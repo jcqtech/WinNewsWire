@@ -1,9 +1,9 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using WinNewsWire.ActivityLog;
 using WinNewsWire.Core;
+using WinNewsWire.Parsers;
 using WinNewsWire.Web;
 using ActivityLogger = WinNewsWire.ActivityLog.ActivityLog;
 using ActivityKind = WinNewsWire.ActivityLog.ActivityKind;
@@ -11,13 +11,16 @@ using ActivityKind = WinNewsWire.ActivityLog.ActivityKind;
 namespace WinNewsWire.Images;
 
 internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransient = false);
+internal sealed record ImageResourceConfiguration(int MaxPixelSize, ScaledImageFormat Format = ScaledImageFormat.Png,
+    long MemoryCacheByteLimit = 0, bool RequiresSignificantDimensions = false,
+    DownloadLimiter? DownloadLimiter = null, Func<bool>? NetworkAllowsDownloads = null);
 
 internal sealed class ImageResourceDownloader : IAsyncDisposable
 {
     private readonly ImageMetadataDatabase _database;
     private readonly BinaryDiskCache _diskCache;
     private readonly string? _legacyFolder;
-    private readonly int _maxPixelSize;
+    private readonly ImageResourceConfiguration _configuration;
     private readonly Downloader _downloader;
     private readonly TimeProvider _clock;
     private readonly ActivityLogger _log;
@@ -28,22 +31,26 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly Dictionary<string, Task<ImageResourceResult>> _pending = new(StringComparer.Ordinal);
     private readonly HashSet<Task> _operations = [];
     private readonly Dictionary<string, DateTimeOffset> _transientAttempts = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, DownloadedImage> _cache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LinkedListNode<DownloadedImage>> _cache = new(StringComparer.Ordinal);
+    private readonly LinkedList<DownloadedImage> _cacheOrder = [];
+    private long _cacheBytes;
     private bool _stopping;
     private Task? _shutdown;
 
-    internal ImageResourceDownloader(ImageMetadataDatabase database, string cacheFolder, int maxPixelSize,
+    internal ImageResourceDownloader(ImageMetadataDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
         TimeProvider? clock = null, ActivityLogger? activityLog = null, string? legacyCacheFolder = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFolder);
         ArgumentNullException.ThrowIfNull(kind);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPixelSize);
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(configuration.MaxPixelSize);
+        ArgumentOutOfRangeException.ThrowIfNegative(configuration.MemoryCacheByteLimit);
         _database = database;
         _diskCache = new(cacheFolder);
         _legacyFolder = legacyCacheFolder;
-        _maxPixelSize = maxPixelSize;
+        _configuration = configuration;
         _owner = owner;
         _kind = kind;
         _downloader = downloader ?? Downloader.Shared;
@@ -51,13 +58,13 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         _log = activityLog ?? ActivityLogger.Shared;
     }
 
-    internal Task<ImageResourceResult> FetchAsync(string url, CancellationToken ct)
+    internal Task<ImageResourceResult> FetchAsync(string url, CancellationToken ct, string? activityDetail = null)
     {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_stopping, this);
             var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
-            var operation = FetchCoreAsync(url, cancellation.Token);
+            var operation = FetchCoreAsync(url, cancellation.Token, activityDetail);
             _operations.Add(operation);
             _ = operation.ContinueWith(completed =>
             {
@@ -68,7 +75,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
     }
 
-    private async Task<ImageResourceResult> FetchCoreAsync(string url, CancellationToken ct)
+    private async Task<ImageResourceResult> FetchCoreAsync(string url, CancellationToken ct, string? activityDetail)
     {
         ct.ThrowIfCancellationRequested();
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
@@ -76,13 +83,14 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             Trace.TraceWarning("Skipping a non-web image URL.");
             return new(null);
         }
-        if (_cache.TryGetValue(url, out var cached))
+        if (CachedImage(url) is { } cached)
         {
             if (!File.Exists(cached.Path))
                 await _diskCache.SetAsync(url.Md5Hex(), cached.Data, ct).ConfigureAwait(false);
             return new(cached);
         }
         if (_database.RecentlyFailed(url)) return new(null);
+        if (_configuration.RequiresSignificantDimensions && _database.RecentlyLackedSignificantDimensions(url)) return new(null);
         Task<ImageResourceResult> pending;
         lock (_gate)
         {
@@ -94,7 +102,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                     return new(null, IsTransient: true);
                 pending = Task.Run(async () =>
                 {
-                    try { return await DownloadImageAsync(url, _lifetime.Token).ConfigureAwait(false); }
+                    try { return await DownloadImageAsync(url, _lifetime.Token, activityDetail).ConfigureAwait(false); }
                     finally { lock (_gate) _pending.Remove(url); }
                 });
                 _pending.Add(url, pending);
@@ -106,16 +114,28 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private byte[] ProcessImage(byte[] data)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Images require the Windows image decoder.");
-        return WindowsImage.ScaledImageData(data, _maxPixelSize);
+        if (_configuration.RequiresSignificantDimensions)
+        {
+            var dimensions = WindowsImage.LargestFramePixelSize(data);
+            if (!SignificantImageFilter.HasSignificantDimensions(dimensions.Width, dimensions.Height))
+                throw new InsignificantDimensionsException(dimensions.Width, dimensions.Height);
+        }
+        return WindowsImage.ScaledImageData(data, _configuration.MaxPixelSize, _configuration.Format);
     }
 
-    private async Task<ImageResourceResult> DownloadImageAsync(string url, CancellationToken ct)
+    private async Task<ImageResourceResult> DownloadImageAsync(string url, CancellationToken ct, string? activityDetail)
     {
         string key = url.Md5Hex();
         string path = _diskCache.PathForKey(key);
         if (await ReadFromDiskAsync(url, key, ct).ConfigureAwait(false) is { } cached)
             return Cache(cached);
-        int activity = _log.CreateActivity(_owner, _kind(url));
+        if (_configuration.RequiresSignificantDimensions && _database.RecentlyLackedSignificantDimensions(url)) return new(null);
+        if (_configuration.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
+        using var lease = _configuration.DownloadLimiter is { } limiter
+            ? await limiter.AcquireAsync(ct).ConfigureAwait(false) : null;
+        ct.ThrowIfCancellationRequested();
+        if (_configuration.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
+        int activity = _log.CreateActivity(_owner, _kind(url), activityDetail);
         _log.DidStart(activity);
         DownloadResult response;
         try { response = await _downloader.DownloadAsync(url, null, ct, UserAgentStyle.Browser).ConfigureAwait(false); }
@@ -140,6 +160,13 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             ct.ThrowIfCancellationRequested();
             processed = ProcessImage(bytes);
+        }
+        catch (InsignificantDimensionsException error)
+        {
+            _log.DidFail(activity, error);
+            ct.ThrowIfCancellationRequested();
+            await _database.RecordInsignificantDimensionsAsync(url).ConfigureAwait(false);
+            return new(null);
         }
         catch (InvalidDataException error)
         {
@@ -184,6 +211,13 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             }
             catch (FileNotFoundException) { continue; }
             catch (DirectoryNotFoundException) { continue; }
+            catch (InsignificantDimensionsException error)
+            {
+                Trace.TraceWarning($"Ignoring an unsuitable cached thumbnail {path}: {error.Message}");
+                if (path == destination) _diskCache.Remove(key);
+                await _database.RecordInsignificantDimensionsAsync(url).ConfigureAwait(false);
+                return null;
+            }
             catch (InvalidDataException error)
             {
                 Trace.TraceWarning($"Ignoring an undecodable cached image {path}: {error.Message}");
@@ -205,9 +239,37 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
 
     private ImageResourceResult Cache(DownloadedImage image)
     {
-        _cache[image.Url] = image;
-        lock (_gate) _transientAttempts.Remove(image.Url);
+        lock (_gate)
+        {
+            _transientAttempts.Remove(image.Url);
+            if (_cache.Remove(image.Url, out var previous))
+            {
+                _cacheOrder.Remove(previous);
+                _cacheBytes -= previous.Value.Data.LongLength;
+            }
+            long limit = _configuration.MemoryCacheByteLimit;
+            if (limit > 0 && image.Data.LongLength > limit) return new(image);
+            while (limit > 0 && _cacheBytes + image.Data.LongLength > limit && _cacheOrder.First is { } oldest)
+            {
+                _cacheOrder.RemoveFirst();
+                _cache.Remove(oldest.Value.Url);
+                _cacheBytes -= oldest.Value.Data.LongLength;
+            }
+            _cache.Add(image.Url, _cacheOrder.AddLast(image));
+            _cacheBytes += image.Data.LongLength;
+        }
         return new(image);
+    }
+
+    private DownloadedImage? CachedImage(string url)
+    {
+        lock (_gate)
+        {
+            if (!_cache.TryGetValue(url, out var node)) return null;
+            _cacheOrder.Remove(node);
+            _cacheOrder.AddLast(node);
+            return node.Value;
+        }
     }
 
     private IEnumerable<string> LegacyCachePaths(string url)
@@ -220,7 +282,15 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         if (extension == ".svg") yield return Path.Combine(_legacyFolder, key + extension);
     }
 
-    internal void EmptyCache() => _cache.Clear();
+    internal void EmptyCache()
+    {
+        lock (_gate)
+        {
+            _cache.Clear();
+            _cacheOrder.Clear();
+            _cacheBytes = 0;
+        }
+    }
 
     public ValueTask DisposeAsync()
     {
@@ -237,6 +307,9 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     {
         try { await Task.WhenAll(tasks).ConfigureAwait(false); }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        finally { _cache.Clear(); _lifetime.Dispose(); }
+        finally { EmptyCache(); _lifetime.Dispose(); }
     }
+
+    private sealed class InsignificantDimensionsException(uint width, uint height)
+        : Exception($"Image too small or too narrow ({width}x{height}).");
 }

@@ -63,9 +63,9 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         _metadata = metadata;
         int pixelSize = maxPixelSize ?? DefaultMaxPixelSize();
         string legacyFolder = Path.GetFullPath(legacyCacheFolder ?? cacheFolder);
-        _favicons = new(database, Path.Combine(cacheFolder, "Favicons"), pixelSize,
+        _favicons = new(database, Path.Combine(cacheFolder, "Favicons"), new(pixelSize),
             ActivityOwner.FaviconDownloader, ActivityKind.DownloadFavicon, downloader, clock, activityLog, legacyFolder);
-        _images = new(database, Path.Combine(cacheFolder, "Images"), pixelSize,
+        _images = new(database, Path.Combine(cacheFolder, "Images"), new(pixelSize),
             ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, downloader, clock, activityLog, legacyFolder);
     }
 

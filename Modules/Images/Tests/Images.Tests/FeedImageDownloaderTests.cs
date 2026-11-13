@@ -364,6 +364,147 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
+    public async Task ThumbnailModesShareTheResourcePipelineButKeepTheirSizesAndFilesSeparate()
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native thumbnail decoding requires Windows.");
+        var original = Bitmap(1600, 800);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)));
+        const string url = Home + "photo.bmp";
+        var small = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small,
+            activityDetail: "Article title"));
+        var large = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Large));
+        Assert.Equal(Path.Combine(fixture.CacheDirectory, "Thumbnails", url.Md5Hex()), small.Path);
+        Assert.Equal(Path.Combine(fixture.CacheDirectory, "LargeThumbnails", url.Md5Hex()), large.Path);
+        Assert.Equal(new byte[] { 0xff, 0xd8 }, small.Data[..2]);
+        Assert.Equal(new byte[] { 0xff, 0xd8 }, large.Data[..2]);
+        Assert.Equal((512u, 256u), WindowsImage.LargestFramePixelSize(small.Data));
+        Assert.Equal((1200u, 600u), WindowsImage.LargestFramePixelSize(large.Data));
+        Assert.All(fixture.Activity.CompletedActivities, activity => Assert.Equal(ActivityOwner.ThumbnailDownloader, activity.Owner));
+        Assert.Contains(fixture.Activity.CompletedActivities, activity => activity.Detail == "Article title");
+        fixture.Thumbnails.EmptyCache();
+        fixture.NetworkAllowed = false;
+        Assert.Equal(small.Data, (await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small))?.Data);
+        Assert.Equal(large.Data, (await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Large))?.Data);
+        Assert.Equal(2, fixture.Activity.CompletedActivities.Count);
+    }
+
+    [Theory]
+    [InlineData(32, 32)]
+    [InlineData(1000, 64)]
+    public async Task DownloadedThumbnailDimensionsAreRejectedWithoutSuppressingFeedIcons(int width, int height)
+    {
+        var original = Bitmap(width, height);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)));
+        const string url = Home + "small.bmp";
+        Assert.Null(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small));
+        Assert.True(fixture.ImageDatabase.RecentlyLackedSignificantDimensions(url));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+        Assert.Null(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Large));
+        Assert.Single(fixture.Requests);
+        Assert.NotNull(await fixture.Images.IconAsync(new(Feed, Home, IconUrl: url)));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+    }
+
+    [Fact]
+    public async Task ThumbnailNetworkPolicyDoesNotSuppressDiskOrMemoryHitsOrCreateFailureBackoff()
+    {
+        var original = Bitmap(128, 128);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)));
+        const string url = Home + "photo.bmp";
+        fixture.NetworkAllowed = false;
+        Assert.Null(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small));
+        Assert.Empty(fixture.Requests);
+        Assert.Empty(fixture.Activity.CompletedActivities);
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+        fixture.NetworkAllowed = true;
+        Assert.NotNull(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small));
+        fixture.NetworkAllowed = false;
+        Assert.NotNull(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small));
+        fixture.Thumbnails.EmptyCache();
+        Assert.NotNull(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small));
+        Assert.Single(fixture.Requests);
+    }
+
+    [Fact]
+    public async Task ThumbnailModesShareFourNetworkSlotsAndShutdownCancelsQueuedWork()
+    {
+        var firstFour = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queued = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int running = 0, checks = 0;
+        await using var fixture = new Fixture(async (_, ct) =>
+        {
+            if (Interlocked.Increment(ref running) == 4) firstFour.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+            throw new InvalidOperationException("Unreachable");
+        });
+        var requests = Enumerable.Range(0, 4)
+            .Select(index => fixture.Thumbnails.ImageAsync(Home + index + ".png",
+                index % 2 == 0 ? ThumbnailMode.Small : ThumbnailMode.Large)).ToList();
+        await firstFour.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        fixture.NetworkPolicy = () =>
+        {
+            if (Interlocked.Increment(ref checks) == 2) queued.TrySetResult();
+            return true;
+        };
+        requests.Add(fixture.Thumbnails.ImageAsync(Home + "4.png", ThumbnailMode.Small));
+        requests.Add(fixture.Thumbnails.ImageAsync(Home + "5.png", ThumbnailMode.Large));
+        await queued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(4, Volatile.Read(ref running));
+        await fixture.Thumbnails.DisposeAsync();
+        foreach (var request in requests)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(Home + "4.png"));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(Home + "5.png"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            fixture.Thumbnails.ImageAsync(Home + "after-stop.png", ThumbnailMode.Small));
+    }
+
+    [Fact]
+    public async Task CancelingOneThumbnailWaiterDoesNotCancelAnotherWaiter()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (_, ct) =>
+        {
+            started.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return Response(HttpStatusCode.OK, Bitmap(128, 128));
+        });
+        using var cancellation = new CancellationTokenSource();
+        var canceled = fixture.Thumbnails.ImageAsync(Home + "photo.bmp", ThumbnailMode.Small, cancellation.Token);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var retained = fixture.Thumbnails.ImageAsync(Home + "photo.bmp", ThumbnailMode.Small);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled);
+        Assert.False(retained.IsCompleted);
+        release.TrySetResult();
+        Assert.NotNull(await retained);
+        Assert.Single(fixture.Requests);
+    }
+
+    [Fact]
+    public async Task ResourceMemoryBudgetEvictsTheLeastRecentlyUsedEncodedImage()
+    {
+        var original = Bitmap(128, 128);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)));
+        await using var resource = new ImageResourceDownloader(fixture.ImageDatabase,
+            Path.Combine(fixture.CacheDirectory, "Budgeted"),
+            new(512, MemoryCacheByteLimit: original.LongLength * 2,
+                NetworkAllowsDownloads: () => fixture.NetworkAllowed),
+            ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, fixture.Downloader);
+        var first = Assert.IsType<DownloadedImage>((await resource.FetchAsync(Home + "a.bmp", default)).Image);
+        var second = Assert.IsType<DownloadedImage>((await resource.FetchAsync(Home + "b.bmp", default)).Image);
+        Assert.NotNull((await resource.FetchAsync(first.Url, default)).Image);
+        Assert.NotNull((await resource.FetchAsync(Home + "c.bmp", default)).Image);
+        File.Delete(first.Path);
+        File.Delete(second.Path);
+        fixture.NetworkAllowed = false;
+        Assert.NotNull((await resource.FetchAsync(first.Url, default)).Image);
+        Assert.Null((await resource.FetchAsync(second.Url, default)).Image);
+        Assert.Equal(3, fixture.Requests.Count);
+    }
+
+    [Fact]
     public void WordPressSizingQueriesAreRemovedOnlyForUploadUrls()
     {
         Assert.Equal("https://site.test/wp-content/uploads/icon.png",
@@ -414,6 +555,10 @@ public sealed class FeedImageDownloaderTests
         public HtmlMetadataDatabase HtmlDatabase { get; }
         public HtmlMetadataDownloader Metadata { get; }
         public FeedImageDownloader Images { get; private set; }
+        public ThumbnailDownloader Thumbnails { get; }
+        public Downloader Downloader => _downloader;
+        public bool NetworkAllowed { get; set; } = true;
+        public Func<bool>? NetworkPolicy { get; set; }
         public ActivityLogger Activity { get; }
         public string CacheDirectory => Path.Combine(_directory, "Caches");
         public string LegacyDirectory => Path.Combine(_directory, "Favicons");
@@ -435,6 +580,7 @@ public sealed class FeedImageDownloaderTests
             Activity = new ActivityLogger(Clock);
             Metadata = new(HtmlDatabase, _downloader, Clock, Activity);
             Images = CreateImages();
+            Thumbnails = new(ImageDatabase, CacheDirectory, () => NetworkPolicy?.Invoke() ?? NetworkAllowed, _downloader, Clock, Activity);
         }
         private FeedImageDownloader CreateImages()
             => new(ImageDatabase, Metadata, CacheDirectory, _downloader, Clock, Activity, _maxPixelSize, LegacyDirectory);
@@ -446,6 +592,7 @@ public sealed class FeedImageDownloaderTests
         public async ValueTask DisposeAsync()
         {
             await Images.DisposeAsync();
+            await Thumbnails.DisposeAsync();
             await Metadata.DisposeAsync();
             ImageDatabase.Dispose();
             HtmlDatabase.Dispose();
