@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`60640b235e42bb7fd1e718dedc4c799d24a95cfc`**. This synchronization is in progress.
+`a99fd2e5df5c7b3974a55c22dfaece790056ecaf`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is chosen-thumbnail URL tracking, `7125510fa0582d7f40e8dbe2fed4011e9a832b07`;
+is preloading saved URLs before large-row layout, `b17bb24a671a14512cad1178139bf95c9cabd5ec`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -73,6 +73,18 @@ captures feed metadata on the UI thread before worker discovery; extracted
 content and rendering-only URL rewrites retain their separate behavior.
 Contentless articles are excluded before database discovery, avoiding stale
 HTML thumbnails while permitting discovery if content arrives later.
+Chosen URLs, including negative selections, are now cached per immutable article
+instance and thumbnail mode, bounded to 50,000 entries per mode. Replacing an
+article instance recomputes its selection. Failure notifications invalidate both
+modes first and carry only affected article IDs, allowing native rows to refresh
+without relying on stale per-view URL snapshots. New HTML records invalidate
+dependent choices too; clearing the HTML cache also clears its dependent choices,
+so cached selections cannot accidentally prevent a persistent-record reload.
+The finder can now preload saved positive/negative URLs without parsing HTML or
+publishing availability events. Windows exposes an awaited database operation
+rather than blocking WinUI. Missing records remain eligible for later discovery.
+Integration before initial large-row layout is the next pending source change;
+the new preload API alone is not claimed to eliminate cold-layout movement.
 Standard timeline rows now display
 small thumbnails with local HTML discovery, persisted-failure notifications,
 automatic candidate fallback, and a one-screen download lookahead. Recycled
@@ -275,8 +287,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **148 Ported, 40 Covered, 79 Skipped, and 238 Pending**
-source commits, backed by **163 source-attributed Windows port commits**.
+The inventory currently has **152 Ported, 42 Covered, 79 Skipped, and 232 Pending**
+source commits, backed by **167 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -326,6 +338,9 @@ The last complete passing gate remains **145 image tests and 33 UI groups** afte
 changed-image presentation and host-retry integration.
 The full shared application suite now passes **517 tests**; focused image-parser
 coverage remains **46 tests**. Regular and probe x64 builds are warning-free.
+Subsequent chosen-URL/preload work brings the image suite to **164 passing tests**.
+The focused native thumbnail probe now also passes with article-ID-based failure
+targeting, alongside signed-request rejection and scaled-icon persistence.
 Conditional-request isolation and response metadata pass **141 web tests**. Existing equivalent
 behavior passes 28 binary-cache and 46 image-parser tests.
 The focused native thumbnail probe
@@ -375,8 +390,16 @@ image and completed unsigned/tampered images with zero natural width. Its
 JavaScript assertion had an extra call suffix, subsequently corrected. Later
 focused runs terminated before writing results in `Microsoft.UI.Xaml.dll`,
 exception `0xc000027b`; a synchronous-cleanup control reproduced the crash.
-Do not treat these as a passing corrected full focused probe. The latest full
-reader gate completed, with only the menu assertion described above failing.
+Subsequent corrected full focused probes passed, including unsigned/tampered
+rejection without an HTTP request, signed offline originals, portable copying,
+fallback and changed visible icons. The article-ID-targeted consumer had an
+early termination and a timeout before a passing run of the unchanged binary.
+The latest full reader gate completed, with only the menu assertion described
+above failing; it has not been rerun after the chosen-URL/preload API work.
+Chosen-cache controls fail without snapshot reuse and pre-notification
+invalidation. Regressions cover mode isolation/capacity, same-ID article
+replacement, HTML-cache reload dependency, saved-only preloading, missing and
+negative records, no preload notification, and cancellation followed by retry.
 
 The x64 Windows application builds with zero warnings/errors. The earlier complete parser
 suite passed 535 tests. Earlier
