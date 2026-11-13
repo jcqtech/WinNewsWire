@@ -23,7 +23,7 @@ namespace WinNewsWire.Services;
 
 internal sealed class ArticleThumbnailService : IAsyncDisposable
 {
-    private const int SmallThumbnailMaxPixelSize = 512;
+    private const int SmallThumbnailMaxPixelSize = 256;
     private const int LargeThumbnailMaxPixelSize = 1200;
     private sealed record CachedThumbnail(string Url, ThumbnailMode Mode, SoftwareBitmapSource Source, long ByteCount);
     private sealed class InsignificantThumbnailDimensionsException(uint width, uint height)

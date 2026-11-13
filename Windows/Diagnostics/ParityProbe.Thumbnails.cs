@@ -95,7 +95,7 @@ internal static partial class ParityProbe
         var simultaneous = await Task.WhenAll(service.ThumbnailAsync(article, ThumbnailMode.Small, resolvedUrl: resolvedUrl),
             service.ThumbnailAsync(article, ThumbnailMode.Small, resolvedUrl: resolvedUrl));
         var small = simultaneous[0] ?? throw new InvalidOperationException("The thumbnail did not decode.");
-        Require(service.ProbeLastDecodedSize == (512, 256), "Small thumbnails were not decoded at display size.");
+        Require(service.ProbeLastDecodedSize == (256, 128), "Small thumbnails were not decoded at display size.");
         Require(ReferenceEquals(small, simultaneous[1]) && service.ProbeDecodes == 1,
             "Concurrent discovery/download/decoding was not coalesced.");
         Require(service.ProbeUrlResolutions == resolutions,
@@ -121,17 +121,17 @@ internal static partial class ParityProbe
             "The decoded-image budget did not evict the older small thumbnail.");
         var reloaded = await service.ThumbnailAsync(article, ThumbnailMode.Small);
         Require(reloaded is not null && !ReferenceEquals(small, reloaded) && service.ProbeDecodes == 3
-            && service.ProbeCacheBytes == 512L * 256 * 4,
+            && service.ProbeCacheBytes == 256L * 128 * 4,
             "Decoded thumbnail LRU eviction or byte accounting failed.");
 
         Article FixtureFor(string filename) => new("account", filename, "feed", filename, "Decoder fixture",
             $"<img src='https://thumbnail.test/{filename}'>", null, null, "https://thumbnail.test/article",
             null, null, null, null, null, null, null, new ArticleStatus(filename, false, false, DateTime.UnixEpoch));
         var oriented = await service.ThumbnailAsync(FixtureFor("oriented.tiff"), ThumbnailMode.Small);
-        Require(oriented is not null && service.ProbeLastDecodedSize == (200, 400),
+        Require(oriented is not null && service.ProbeLastDecodedSize == (128, 256),
             "The native thumbnail decoder ignored EXIF orientation.");
         Require(await service.ThumbnailAsync(FixtureFor("frames.tiff"), ThumbnailMode.Small) is not null
-            && service.ProbeLastDecodedSize == (400, 200),
+            && service.ProbeLastDecodedSize == (256, 128),
             "The native decoder must select the first largest-dimension frame, not the first frame or largest area.");
         foreach (var filename in new[] { "small.bmp", "narrow.bmp" })
         {
