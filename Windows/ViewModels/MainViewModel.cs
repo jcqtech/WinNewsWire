@@ -1086,6 +1086,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             });
         });
         if (generation != Volatile.Read(ref _articleLoadGeneration) || _disposed) return;
+        if (!UseColumnLayout && !IsUnifiedLayout && TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large)
+        {
+            await AppService.Shared.ThumbnailImages.LoadSavedAsync(results);
+            if (generation != Volatile.Read(ref _articleLoadGeneration) || _disposed) return;
+        }
         if (restoringSelection is null)
         {
             // The user can change selection while a database fetch is in flight.

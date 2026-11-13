@@ -668,7 +668,39 @@ internal static partial class ParityProbe
                 "Connectivity recovery fills an idle visible thumbnail");
             Require(requests.Count(path => path == "/recovered.bmp") == 1,
                 "Connectivity recovery duplicated the visible image download.");
-            await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large));
+            using (var releaseSaved = new ManualResetEventSlim())
+            {
+                var savedStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var savedFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                bool savedOnUI = true;
+                service.ProbeLoadingSavedUrls = () =>
+                {
+                    savedOnUI = window.DispatcherQueue.HasThreadAccess;
+                    savedStarted.TrySetResult();
+                    try
+                    {
+                        if (!releaseSaved.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Saved thumbnail loading was not released.");
+                    }
+                    finally { savedFinished.TrySetResult(); }
+                };
+                try
+                {
+                    await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large));
+                    await savedStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    var pulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    Require(window.DispatcherQueue.TryEnqueue(() => pulse.TrySetResult()), "Saved-URL loading blocked the UI dispatcher.");
+                    await pulse.Task.WaitAsync(TimeSpan.FromSeconds(1));
+                    Require(!savedOnUI && Descendants(list).OfType<ThumbnailView>().Any(view =>
+                        view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && Grid.GetRow(view) == 0),
+                        "Large-row geometry changed before saved thumbnail URLs loaded.");
+                }
+                finally
+                {
+                    service.ProbeLoadingSavedUrls = null;
+                    releaseSaved.Set();
+                    if (savedStarted.Task.IsCompleted) await savedFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+            }
             await WaitFor(() => Task.FromResult(modeNotifications > 0 && peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
                 && largeMenu.IsChecked && largeMenu.IsEnabled), "Shared large-thumbnail mode");
             Require(modeNotificationsOnUI && new Core.AppDefaults().GetTimelineThumbnailsDisplay() == TimelineThumbnailsDisplay.Large

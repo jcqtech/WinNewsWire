@@ -58,6 +58,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal (int Width, int Height) ProbeLastDecodedSize;
     internal int ProbeDecodeError;
     internal int ProbeUrlResolutions;
+    internal Action? ProbeLoadingSavedUrls;
     internal readonly ConcurrentDictionary<string, DownloadPriority> ProbeDownloadPriorities = new(StringComparer.Ordinal);
 #endif
 
@@ -171,6 +172,20 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         {
             var backend = await _backend.Value.ConfigureAwait(false);
             await backend.Finder.DiscoverThumbnailUrlsAsync(snapshot, token, article => baseUrls[article.ArticleID]).ConfigureAwait(false);
+            return true;
+        }, ct);
+    }
+
+    internal Task LoadSavedAsync(IEnumerable<Article> articles, CancellationToken ct = default)
+    {
+        var snapshot = articles.ToArray();
+        return RunOperationAsync(async token =>
+        {
+            var backend = await _backend.Value.ConfigureAwait(false);
+#if PARITY_PROBE
+            ProbeLoadingSavedUrls?.Invoke();
+#endif
+            await backend.Finder.LoadSavedThumbnailUrlsAsync(snapshot, token).ConfigureAwait(false);
             return true;
         }, ct);
     }

@@ -37,6 +37,7 @@ public sealed partial class MainContent
     private ArticleThumbnailService? _thumbnailService;
     private INotifyCollectionChanged? _thumbnailItems;
     private bool _thumbnailRefreshQueued;
+    private int _thumbnailRefreshVersion;
     private bool _visibleThumbnailRefreshQueued;
     private (int Start, int End)? _thumbnailLookahead;
     private bool ShowsTimelineThumbnails => !_shuttingDown && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout
@@ -119,18 +120,27 @@ public sealed partial class MainContent
 
     private void QueueTimelineThumbnailRefresh()
     {
-        if (_shuttingDown || _thumbnailService is null || _thumbnailRefreshQueued) return;
+        if (_shuttingDown || _thumbnailService is null) return;
+        _thumbnailRefreshVersion++;
+        if (_thumbnailRefreshQueued) return;
         _thumbnailRefreshQueued = true;
         if (!DispatcherQueue.TryEnqueue(() =>
         {
             _thumbnailRefreshQueued = false;
             if (_shuttingDown) return;
-            _thumbnailLookahead = null;
-            foreach (var view in _timelineThumbnails.Keys.ToArray()) RefreshTimelineThumbnail(view);
-            if (!ShowsTimelineThumbnails) return;
+            int version = _thumbnailRefreshVersion;
             var articles = ViewModel.ArticleItems.Select(item => item.SourceArticle).OfType<Article>().ToArray();
-            if (articles.Length > 0) TrackThumbnailTask(() => _thumbnailService.DiscoverAsync(articles, _thumbnailLifetime.Token));
-            QueueVisibleThumbnailRefresh();
+            TrackThumbnailTask(async () =>
+            {
+                if (ShowsTimelineThumbnails && TimelineThumbnailMode == ThumbnailMode.Large && articles.Length > 0)
+                    await _thumbnailService.LoadSavedAsync(articles, _thumbnailLifetime.Token);
+                if (_shuttingDown || version != _thumbnailRefreshVersion) return;
+                _thumbnailLookahead = null;
+                foreach (var view in _timelineThumbnails.Keys.ToArray()) RefreshTimelineThumbnail(view);
+                if (!ShowsTimelineThumbnails) return;
+                if (articles.Length > 0) TrackThumbnailTask(() => _thumbnailService.DiscoverAsync(articles, _thumbnailLifetime.Token));
+                QueueVisibleThumbnailRefresh();
+            });
         }))
         {
             _thumbnailRefreshQueued = false;
