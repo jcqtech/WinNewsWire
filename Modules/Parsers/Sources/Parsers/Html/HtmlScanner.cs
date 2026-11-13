@@ -10,6 +10,9 @@ public sealed class HtmlScanner(IHtmlScannerDelegate scannerDelegate)
     private byte[] _input = [];
     private int _position;
     private bool _parsing;
+    private bool _stopped;
+
+    public void StopParsing() => _stopped = true;
 
     public void Parse(byte[] bytes)
     {
@@ -17,9 +20,10 @@ public sealed class HtmlScanner(IHtmlScannerDelegate scannerDelegate)
         _parsing = true;
         _input = bytes;
         _position = 0;
+        _stopped = false;
         try
         {
-            while (_position < _input.Length)
+            while (!_stopped && _position < _input.Length)
             {
                 if (_input[_position] == XmlAscii.LessThan) ScanMarkup();
                 else
