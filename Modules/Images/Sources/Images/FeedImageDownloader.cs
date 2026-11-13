@@ -166,13 +166,11 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             var declared = await FetchImageAsync(SanitizedIconUrl(iconUrl), favicon: false, ct).ConfigureAwait(false);
             if (declared.Image is { } image)
                 return image;
-            if (declared.IsTransient) return null;
         }
         else if (_database.IconUrl(feed.FeedUrl) is { } known)
         {
             var cached = await FetchImageAsync(known, favicon: false, ct).ConfigureAwait(false);
             if (cached.Image is not null) return cached.Image;
-            if (cached.IsTransient) return null;
         }
         var homePage = HomePage(feed);
         if (homePage is null || ShouldSkipFeedIcon(homePage)) return null;
@@ -199,12 +197,10 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             ? new Uri(url, "/").AbsoluteUri : null;
     }
 
-    private async Task<ImageResourceResult> FetchImageAsync(string url, bool favicon, CancellationToken ct, string? activityDetail = null)
+    private Task<ImageResourceResult> FetchImageAsync(string url, bool favicon, CancellationToken ct, string? activityDetail = null)
     {
         ct.ThrowIfCancellationRequested();
-        bool wasWaiting = !favicon && DownloadedImages.IsWaitingToRetry(url);
-        var result = await (favicon ? _favicons : _images).FetchAsync(url, ct, activityDetail).ConfigureAwait(false);
-        return wasWaiting && result.Image is null ? new(null) : result;
+        return (favicon ? _favicons : _images).FetchAsync(url, ct, activityDetail);
     }
 
     public void EmptyCache()

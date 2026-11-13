@@ -215,9 +215,9 @@ public sealed class FeedImageDownloaderTests
         }));
         if (!declared) await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, icon);
         var feed = new FeedImageSource(Feed, Home, IconUrl: declared ? icon : null);
-        Assert.Null(await fixture.Images.IconAsync(feed));
+        Assert.Equal(Home + "touch.png", (await fixture.Images.IconAsync(feed))?.Url);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(icon));
-        Assert.Single(fixture.Requests);
+        Assert.Equal(3, fixture.Requests.Count);
         Assert.Equal(Home + "touch.png", (await fixture.Images.IconAsync(feed))?.Url);
         Assert.Equal(Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
         Assert.Equal(3, fixture.Requests.Count);
