@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Security.Cryptography;
-using System.Text;
 using WinNewsWire.ActivityLog;
 using WinNewsWire.Core;
 using WinNewsWire.Web;
@@ -13,7 +11,7 @@ internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransi
 internal sealed record ImageResourceConfiguration(int MaxPixelSize, ScaledImageFormat Format = ScaledImageFormat.Png,
     long MemoryCacheByteLimit = 0, DownloadLimiter? DownloadLimiter = null,
     Func<bool>? NetworkAllowsDownloads = null,
-    bool StoresSourceData = false, bool KeepsDiskCache = false);
+    bool StoresSourceData = false);
 internal sealed record ImageResourceRequest(ActivityOwner Owner, ActivityKind Kind, string? Detail,
     Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false);
 
@@ -21,7 +19,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
 {
     private readonly ImageMetadataDatabase _database;
     private readonly BinaryDiskCache _diskCache;
-    private readonly string? _legacyFolder;
     private readonly DownloadedImageCache? _sourceCache;
     private readonly ImageResourceConfiguration _configuration;
     private readonly Downloader _downloader;
@@ -46,7 +43,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
 
     internal ImageResourceDownloader(ImageMetadataDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
-        TimeProvider? clock = null, ActivityLogger? activityLog = null, string? legacyCacheFolder = null,
+        TimeProvider? clock = null, ActivityLogger? activityLog = null,
         DownloadedImageCache? sourceCache = null, SemaphoreSlim? sourceDiskGate = null,
         Func<string, ImageResourceRequest, Task>? sourceWasRead = null, Func<string, long, Task>? sourceWasSaved = null)
     {
@@ -58,7 +55,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(configuration.MemoryCacheByteLimit);
         _database = database;
         _diskCache = new(cacheFolder);
-        _legacyFolder = legacyCacheFolder;
         _sourceCache = sourceCache;
         _sourceDiskGate = sourceDiskGate;
         _sourceWasRead = sourceWasRead;
@@ -98,9 +94,9 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             Trace.TraceWarning("Skipping a non-web image URL.");
             return new(null);
         }
-        if (CachedImage(url) is { } cached)
+        if (CachedImage(url) is { } cached && (_sourceCache is null || File.Exists(cached.Path)))
         {
-            if ((_sourceCache is null || _configuration.KeepsDiskCache) && !File.Exists(cached.Path))
+            if (_sourceCache is null && !File.Exists(cached.Path))
                 await _diskCache.SetAsync(url.Md5Hex(), cached.Data, ct).ConfigureAwait(false);
             return new(cached);
         }
@@ -133,7 +129,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
 
     private async Task<ImageResourceResult> DownloadImageAsync(string url, CancellationToken ct, ImageResourceRequest request)
     {
-        if (_sourceCache is not null && !_configuration.KeepsDiskCache)
+        if (_sourceCache is not null)
             return await ImageFromSourceAsync(url, request, ct).ConfigureAwait(false);
         string key = url.Md5Hex();
         string path = _diskCache.PathForKey(key);
@@ -147,13 +143,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             }
         }
         finally { _sourceDiskGate?.Release(); }
-        if (_sourceCache is not null)
-        {
-            var result = await ImageFromSourceAsync(url, request, ct).ConfigureAwait(false);
-            if (result.Image is not { } image) return result;
-            await _diskCache.SetAsync(key, image.Data, ct).ConfigureAwait(false);
-            return Cache(image with { Path = path });
-        }
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
         using var lease = _configuration.DownloadLimiter is { } limiter
             && (!_configuration.StoresSourceData || request.NetworkAllowsDownloads is not null)
@@ -253,7 +242,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             var image = source with { Data = ProcessImage(source.Data) };
             ct.ThrowIfCancellationRequested();
-            return _configuration.KeepsDiskCache ? new(image) : Cache(image);
+            return Cache(image);
         }
         catch (InvalidDataException error)
         {
@@ -268,40 +257,33 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private async Task<DownloadedImage?> ReadFromDiskAsync(string url, string key, CancellationToken ct)
     {
         string destination = _diskCache.PathForKey(key);
-        foreach (string path in LegacyCachePaths(url).Prepend(destination))
+        byte[]? data;
+        byte[] processed;
+        try
         {
-            byte[]? data;
-            byte[] processed;
-            try
+            data = await _diskCache.GetAsync(key, ct).ConfigureAwait(false);
+            if (data is not { Length: > 0 })
             {
-                data = path == destination ? await _diskCache.GetAsync(key, ct).ConfigureAwait(false)
-                    : await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
-                if (data is not { Length: > 0 })
-                {
-                    if (path == destination && data is not null) _diskCache.Remove(key);
-                    continue;
-                }
-                processed = ProcessImage(data);
+                if (data is not null) _diskCache.Remove(key);
+                return null;
             }
-            catch (FileNotFoundException) { continue; }
-            catch (DirectoryNotFoundException) { continue; }
-            catch (InvalidDataException error)
-            {
-                Trace.TraceWarning($"Ignoring an undecodable cached image {path}: {error.Message}");
-                if (path == destination) _diskCache.Remove(key);
-                continue;
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                Trace.TraceWarning($"Could not read cached image {path}: {error.Message}");
-                continue;
-            }
-            ct.ThrowIfCancellationRequested();
-            if (path != destination || !ReferenceEquals(data, processed))
-                await _diskCache.SetAsync(key, processed, ct).ConfigureAwait(false);
-            return new(url, destination, processed);
+            processed = ProcessImage(data);
         }
-        return null;
+        catch (InvalidDataException error)
+        {
+            Trace.TraceWarning($"Ignoring an undecodable cached image {destination}: {error.Message}");
+            _diskCache.Remove(key);
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Trace.TraceWarning($"Could not read cached image {destination}: {error.Message}");
+            return null;
+        }
+        ct.ThrowIfCancellationRequested();
+        if (!ReferenceEquals(data, processed))
+            await _diskCache.SetAsync(key, processed, ct).ConfigureAwait(false);
+        return new(url, destination, processed);
     }
 
     private ImageResourceResult Cache(DownloadedImage image)
@@ -338,16 +320,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             _cacheOrder.AddLast(node);
             return node.Value;
         }
-    }
-
-    private IEnumerable<string> LegacyCachePaths(string url)
-    {
-        if (_legacyFolder is null) yield break;
-        string extension = Path.GetExtension(new Uri(url).AbsolutePath).ToLowerInvariant();
-        if (extension is not (".png" or ".jpg" or ".jpeg" or ".svg" or ".ico" or ".gif" or ".webp" or ".bmp")) extension = ".image";
-        string key = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(url)));
-        yield return Path.Combine(_legacyFolder, key + (extension == ".svg" ? ".image" : extension));
-        if (extension == ".svg") yield return Path.Combine(_legacyFolder, key + extension);
     }
 
     internal void EmptyCache()

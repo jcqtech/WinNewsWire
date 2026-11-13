@@ -327,8 +327,10 @@ internal static partial class ParityProbe
         {
             var path = await AppShared.Favicons.FaviconDownloader.Shared.FaviconPathAsync(feed);
             Require(path is not null && File.Exists(path), "The feed-image pipeline did not produce a cached image.");
-            Require(path == Path.Combine(AppConfig.CachesDirectory, "Favicons", feed.FaviconUrl!.Md5Hex()),
-                "The feed-image pipeline did not use the native cache directory and filename.");
+            Require(path == Path.Combine(AppConfig.CachesDirectory, "DownloadedImages", feed.FaviconUrl!.Md5Hex()),
+                "The feed-image pipeline did not use the shared source cache directory and filename.");
+            Require(!Directory.Exists(Path.Combine(AppConfig.CachesDirectory, "Favicons")),
+                "The feed-image pipeline recreated the retired favicon cache.");
             var model = window.ProbeContent.ViewModel;
             var list = (ListView)window.ProbeContent.FindName("ArticleListView");
             var row = model.SelectedArticle!;

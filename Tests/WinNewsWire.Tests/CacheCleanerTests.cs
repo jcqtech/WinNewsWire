@@ -46,7 +46,7 @@ public sealed class CacheCleanerTests : IDisposable
     }
 
     [Fact]
-    public void PeriodicFlushIsStrictlyAfterThreeDaysAndKeepsNewFeedIconCaches()
+    public void PeriodicFlushIsStrictlyAfterThreeDaysAndKeepsSharedSourcesAndRetiredFolders()
     {
         CacheCleaner.PurgeIfNecessary(_defaults, Now);
         var favicon = AddFile("Favicons", "icon.png");
@@ -60,8 +60,8 @@ public sealed class CacheCleanerTests : IDisposable
         Assert.True(File.Exists(downloaded));
         Assert.True(File.Exists(mapping));
         CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(3).AddTicks(1));
-        Assert.False(File.Exists(favicon));
-        Assert.False(File.Exists(nativeFavicon));
+        Assert.True(File.Exists(favicon));
+        Assert.True(File.Exists(nativeFavicon));
         Assert.True(File.Exists(downloaded));
         Assert.False(File.Exists(mapping));
         Assert.True(File.Exists(feedIcon));
@@ -69,19 +69,22 @@ public sealed class CacheCleanerTests : IDisposable
     }
 
     [Fact]
-    public void UpgradingRemovesRetiredSizeFoldersOnceWithoutDeletingNewSourcesOrFavicons()
+    public void UpgradingRemovesAllRetiredImageFoldersOnceWithoutDeletingSharedSources()
     {
         _defaults.SetValue(CacheCleaner.ResizingPurgeKey, true);
         _defaults.SetValue(CacheCleaner.LastFlushKey, Now);
-        var old = new[] { "Images", "Thumbnails", "LargeThumbnails" }
+        _defaults.SetValue("didRemoveFoldersReplacedByDownloadedImageCache-2026-10-26", true);
+        var old = new[] { "Favicons", "Images", "Thumbnails", "LargeThumbnails" }
             .Select(folder => AddFile("Caches\\" + folder, "retired")).ToArray();
         var source = AddFile("Caches\\DownloadedImages", "source");
         var favicon = AddFile("Caches\\Favicons", "icon");
+        var legacyFavicon = AddFile("Favicons", "legacy");
         var browser = AddFile("Caches\\WebView2", "data");
         CacheCleaner.PurgeIfNecessary(_defaults, Now);
         Assert.All(old, path => Assert.False(File.Exists(path)));
         Assert.True(File.Exists(source));
-        Assert.True(File.Exists(favicon));
+        Assert.False(File.Exists(favicon));
+        Assert.False(File.Exists(legacyFavicon));
         Assert.True(File.Exists(browser));
         var laterFile = AddFile("Caches\\Images", "not-from-the-upgrade");
         CacheCleaner.PurgeIfNecessary(_defaults, Now.AddHours(1));
@@ -92,7 +95,7 @@ public sealed class CacheCleanerTests : IDisposable
     public void AReadOnlyCacheFailureDoesNotAdvanceTheFlushDate()
     {
         CacheCleaner.PurgeIfNecessary(_defaults, Now);
-        var path = AddFile("Favicons", "locked.png");
+        var path = AddFile("Caches", "FeedURLToIconURLCache.plist");
         File.SetAttributes(path, FileAttributes.ReadOnly);
         try
         {

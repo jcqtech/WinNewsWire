@@ -8,7 +8,7 @@ public static class CacheCleaner
 {
     internal const string ResizingPurgeKey = "didPurgeImageCachesForResizing-2026-03-30";
     internal const string LastFlushKey = "lastImageCacheFlushDate";
-    internal const string DownloadedImagesPurgeKey = "didRemoveFoldersReplacedByDownloadedImageCache-2026-10-26";
+    internal const string DownloadedImagesPurgeKey = "didRemoveFoldersReplacedByDownloadedImageCache-2026-10-27";
 
     public static void PurgeIfNecessary(AppDefaults defaults, DateTime? now = null)
     {
@@ -19,13 +19,15 @@ public static class CacheCleaner
         bool periodicFlush = last is { } previous && date - previous > TimeSpan.FromDays(3);
         var caches = AppConfig.CachesDirectory;
         var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!resized || periodicFlush)
+        if (!resized)
         {
             targets.Add(Path.Combine(AppConfig.DataDirectory, "Favicons"));
             targets.Add(Path.Combine(caches, "Favicons"));
         }
         if (!removedOldFolders)
         {
+            targets.Add(Path.Combine(AppConfig.DataDirectory, "Favicons"));
+            targets.Add(Path.Combine(caches, "Favicons"));
             targets.Add(Path.Combine(caches, "Images"));
             targets.Add(Path.Combine(caches, "Thumbnails"));
             targets.Add(Path.Combine(caches, "LargeThumbnails"));

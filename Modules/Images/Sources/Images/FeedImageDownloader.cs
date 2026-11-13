@@ -17,7 +17,6 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private static Func<bool> _sharedBackgroundNetworkPolicy = () => NetworkMonitor.IsAvailable;
     private static readonly Lazy<FeedImageDownloader> SharedDownloader = new(() =>
         new(ImageMetadataDatabase.Shared, HtmlMetadataDownloader.Shared, AppConfig.CachesDirectory,
-            legacyCacheFolder: Path.Combine(AppConfig.DataDirectory, "Favicons"),
             networkAllowsUpdates: () => Volatile.Read(ref _sharedBackgroundNetworkPolicy)()));
     // Opening and maintaining the metadata databases must not happen on a UI caller's first image request.
     private static readonly Lazy<Task<FeedImageDownloader>> SharedInitialization = new(() => Task.Run(() => Shared));
@@ -65,7 +64,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
 
     public FeedImageDownloader(ImageMetadataDatabase database, HtmlMetadataDownloader metadata, string cacheFolder,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null, int? maxPixelSize = null,
-        string? legacyCacheFolder = null, DownloadedImageCache? downloadedImages = null,
+        DownloadedImageCache? downloadedImages = null,
         Func<bool>? networkAllowsUpdates = null)
     {
         ArgumentNullException.ThrowIfNull(database);
@@ -74,12 +73,11 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         _database = database;
         _metadata = metadata;
         int pixelSize = maxPixelSize ?? DefaultMaxPixelSize();
-        string legacyFolder = Path.GetFullPath(legacyCacheFolder ?? cacheFolder);
         DownloadedImages = downloadedImages ?? new(database, cacheFolder, downloader, clock, activityLog, networkAllowsUpdates);
         _ownsDownloadedImages = downloadedImages is null;
-        _favicons = new(database, Path.Combine(cacheFolder, "Favicons"), new(pixelSize, KeepsDiskCache: true),
-            ActivityOwner.FaviconDownloader, ActivityKind.DownloadFavicon, downloader, clock, activityLog, legacyFolder,
-            DownloadedImages);
+        _favicons = new(database, Path.Combine(cacheFolder, "Favicons"), new(pixelSize),
+            ActivityOwner.FaviconDownloader, ActivityKind.DownloadFavicon, downloader, clock, activityLog,
+            sourceCache: DownloadedImages);
         _images = new(database, Path.Combine(cacheFolder, "Images"), new(pixelSize),
             ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, downloader, clock, activityLog,
             sourceCache: DownloadedImages);
@@ -101,14 +99,14 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         string? homePage = HomePage(feed);
         if (feed.FaviconUrl is { Length: > 0 } declared)
         {
-            var image = (await FetchImageAsync(declared, favicon: true, ct).ConfigureAwait(false)).Image;
+            var image = (await FetchImageAsync(declared, favicon: true, ct, homePage).ConfigureAwait(false)).Image;
             if (image is not null && homePage is not null) await _database.SaveHomePageFaviconAsync(homePage, declared).ConfigureAwait(false);
             return image;
         }
         if (homePage is null || _database.HomePageHasNoFavicon(homePage)) return null;
         if (_database.FaviconUrl(homePage) is { } known)
         {
-            var previous = await FetchImageAsync(known, favicon: true, ct).ConfigureAwait(false);
+            var previous = await FetchImageAsync(known, favicon: true, ct, homePage).ConfigureAwait(false);
             if (previous.Image is not null) return previous.Image;
             if (previous.IsTransient) return null;
         }
@@ -119,7 +117,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         bool transient = false;
         foreach (var candidate in candidates.Append(root))
         {
-            var result = await FetchImageAsync(candidate, favicon: true, ct).ConfigureAwait(false);
+            var result = await FetchImageAsync(candidate, favicon: true, ct, homePage).ConfigureAwait(false);
             if (result.Image is { } image)
             {
                 await _database.SaveHomePageFaviconAsync(homePage, candidate).ConfigureAwait(false);
@@ -181,8 +179,8 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             ? new Uri(url, "/").AbsoluteUri : null;
     }
 
-    private Task<ImageResourceResult> FetchImageAsync(string url, bool favicon, CancellationToken ct)
-        => (favicon ? _favicons : _images).FetchAsync(url, ct);
+    private Task<ImageResourceResult> FetchImageAsync(string url, bool favicon, CancellationToken ct, string? activityDetail = null)
+        => (favicon ? _favicons : _images).FetchAsync(url, ct, activityDetail);
 
     public void EmptyCache()
     {

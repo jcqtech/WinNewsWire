@@ -198,15 +198,16 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task ResampledBytesReachMemoryAndDiskWhileActivityCountsTheOriginalDownload()
+    public async Task FaviconRepresentationsStayInMemoryWhileDiskKeepsTheSharedSource()
     {
         var original = Bitmap(192, 96);
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)), maxPixelSize: 48);
         var source = new FeedImageSource(Feed, Home, Home + "large.bmp");
         var image = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
         AssertPngSize(image.Data, 48, 24);
-        Assert.Equal(image.Data, await File.ReadAllBytesAsync(image.Path));
+        Assert.Equal(original, await File.ReadAllBytesAsync(image.Path));
         Assert.Equal(ActivityLogger.DataSizeMessage(original.LongLength), Assert.Single(fixture.Activity.CompletedActivities).CompletionMessage);
+        Assert.Equal(Home, Assert.Single(fixture.Activity.CompletedActivities).Detail);
         fixture.Images.EmptyCache();
         var cached = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
         Assert.Equal(image.Data, cached.Data);
@@ -215,21 +216,19 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task OversizedLegacyDiskImagesAreResampledWithoutDownloadingAgain()
+    public async Task FaviconsReuseTheFullThumbnailSourceWithoutReplacingItWithTheirSmallRepresentation()
     {
-        await using var fixture = new Fixture((_, _) => throw new InvalidOperationException("The disk image should be reused."), maxPixelSize: 48);
-        string url = Home + "legacy.bmp";
-        string path = fixture.LegacyPath(url, ".bmp");
-        Directory.CreateDirectory(fixture.LegacyDirectory);
         var original = Bitmap(192, 96);
-        await File.WriteAllBytesAsync(path, original);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)), maxPixelSize: 48);
+        string url = Home + "legacy.bmp";
+        var source = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.SourceAsync(url));
         var image = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(new(Feed, Home, url)));
         Assert.Equal(fixture.NativePath(url), image.Path);
         AssertPngSize(image.Data, 48, 24);
-        Assert.Equal(image.Data, await File.ReadAllBytesAsync(image.Path));
-        Assert.Equal(original, await File.ReadAllBytesAsync(path));
-        Assert.Empty(fixture.Requests);
-        Assert.Empty(fixture.Activity.CompletedActivities);
+        Assert.Equal(source.Path, image.Path);
+        Assert.Equal(original, await File.ReadAllBytesAsync(image.Path));
+        Assert.Single(fixture.Requests);
+        Assert.Single(fixture.Activity.CompletedActivities);
     }
 
     [Fact]
@@ -244,7 +243,7 @@ public sealed class FeedImageDownloaderTests
         var repaired = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
         Assert.Equal(Image, repaired.Data);
         Assert.Equal(Image, await File.ReadAllBytesAsync(first.Path));
-        Assert.Single(fixture.Requests);
+        Assert.Equal(2, fixture.Requests.Count);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(source.FaviconUrl!));
     }
 
@@ -263,9 +262,9 @@ public sealed class FeedImageDownloaderTests
     [InlineData("cached.svg", ".svg")]
     [InlineData("cached.svg", ".image")]
     [InlineData("cached", ".image")]
-    public async Task LegacyCacheHitsAreCopiedToNativeFilesWithoutNetworkAccessOrDeletion(string name, string extension)
+    public async Task RetiredLegacyFaviconFilesAreNotReintroducedIntoTheSharedCache(string name, string extension)
     {
-        await using var fixture = new Fixture((_, _) => throw new InvalidOperationException("No network access is expected."));
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));
         string url = Home + name;
         string legacy = fixture.LegacyPath(url, extension);
         Directory.CreateDirectory(fixture.LegacyDirectory);
@@ -274,14 +273,14 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal(fixture.NativePath(url), image.Path);
         Assert.Equal(Image, await File.ReadAllBytesAsync(image.Path));
         Assert.Equal(Image, await File.ReadAllBytesAsync(legacy));
-        Assert.Empty(fixture.Requests);
+        Assert.Single(fixture.Requests);
         await fixture.ReopenImagesAsync();
         Assert.Equal(Image, (await fixture.Images.FaviconAsync(new(Feed, Home, url)))?.Data);
-        Assert.Empty(fixture.Requests);
+        Assert.Single(fixture.Requests);
     }
 
     [Fact]
-    public async Task NativeCacheEntriesTakePrecedenceOverLegacyFiles()
+    public async Task SharedSourceEntriesTakePrecedenceOverRetiredLegacyFiles()
     {
         await using var fixture = new Fixture((_, _) => throw new InvalidOperationException("No network access is expected."));
         string url = Home + "cached.png";
@@ -297,7 +296,7 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task ImageAndFaviconCachesKeepSeparateNativePathsForTheSameUrl()
+    public async Task IconsAndFaviconsShareOneNativeSourcePathAndDoNotCreateAFaviconFolder()
     {
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));
         string url = Home + "shared.png";
@@ -305,7 +304,8 @@ public sealed class FeedImageDownloaderTests
             fixture.Images.FaviconAsync(new(Feed, Home, FaviconUrl: url)),
             fixture.Images.IconAsync(new(Feed, Home, IconUrl: url)));
         Assert.Equal(fixture.NativePath(url), results[0]?.Path);
-        Assert.Equal(fixture.NativePath(url, favicon: false), results[1]?.Path);
+        Assert.Equal(fixture.NativePath(url), results[1]?.Path);
+        Assert.False(Directory.Exists(Path.Combine(fixture.CacheDirectory, "Favicons")));
         Assert.Equal(Image, await File.ReadAllBytesAsync(results[0]!.Path));
         Assert.Equal(Image, await File.ReadAllBytesAsync(results[1]!.Path));
         Assert.Single(fixture.Requests);
@@ -316,33 +316,35 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task MigrationWriteFailureKeepsTheLegacyFileAndDoesNotPublishAMapping()
+    public async Task SharedSourceWriteFailureDoesNotPublishAFaviconMappingOrChangeRetiredFiles()
     {
-        await using var fixture = new Fixture((_, _) => throw new InvalidOperationException("A cache write failure must not cause a download."));
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));
         string url = Home + "cached.png";
         Directory.CreateDirectory(fixture.LegacyDirectory);
         Directory.CreateDirectory(fixture.CacheDirectory);
         await File.WriteAllBytesAsync(fixture.LegacyPath(url, ".png"), Image);
-        await File.WriteAllTextAsync(Path.Combine(fixture.CacheDirectory, "Favicons"), "occupied");
+        Directory.CreateDirectory(fixture.NativePath(url));
         var error = await Record.ExceptionAsync(() => fixture.Images.FaviconAsync(new(Feed, Home, url)));
         Assert.True(error is IOException or UnauthorizedAccessException);
         Assert.Equal(Image, await File.ReadAllBytesAsync(fixture.LegacyPath(url, ".png")));
         Assert.Null(fixture.ImageDatabase.FaviconUrl(Home));
-        Assert.Empty(fixture.Requests);
+        Assert.Single(fixture.Requests);
     }
 
     [Fact]
-    public async Task MemoryHitsRestorePurgedNativeFilesWithoutRedownloading()
+    public async Task MemoryHitsRepairMissingSourcesWithoutReplacingThemWithTheirSmallDisplayRepresentation()
     {
-        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));
+        var original = Bitmap(192, 96);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)), maxPixelSize: 48);
         var source = new FeedImageSource(Feed, Home, Home + "cached.png");
         var first = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
-        Directory.Delete(Path.GetDirectoryName(first.Path)!, recursive: true);
+        File.Delete(first.Path);
         fixture.Clock.Advance(TimeSpan.FromHours(1));
         var restored = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
         Assert.Equal(first.Path, restored.Path);
-        Assert.Equal(Image, await File.ReadAllBytesAsync(restored.Path));
-        Assert.Single(fixture.Requests);
+        AssertPngSize(restored.Data, 48, 24);
+        Assert.Equal(original, await File.ReadAllBytesAsync(restored.Path));
+        Assert.Equal(2, fixture.Requests.Count);
     }
 
     [Fact]
@@ -435,8 +437,10 @@ public sealed class FeedImageDownloaderTests
         Assert.False(rows.Read());
     }
 
-    [Fact]
-    public async Task GenericIconReadsScheduleConditionalValidationAfterTheirMemoryCacheIsCleared()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IconAndFaviconReadsScheduleConditionalValidationAfterTheirMemoryCacheIsCleared(bool favicon)
     {
         int requests = 0;
         string? conditionalTag = null;
@@ -451,11 +455,12 @@ public sealed class FeedImageDownloaderTests
             response.Headers.TryAddWithoutValidation("ETag", "\"icon-v1\"");
             return Task.FromResult(response);
         });
-        var feed = new FeedImageSource(Feed, Home, IconUrl: Home + "icon.bmp");
-        Assert.NotNull(await fixture.Images.IconAsync(feed));
+        var feed = new FeedImageSource(Feed, Home, FaviconUrl: Home + "icon.bmp", IconUrl: Home + "icon.bmp");
+        Task<DownloadedImage?> ReadAsync() => favicon ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed);
+        Assert.NotNull(await ReadAsync());
         fixture.Clock.Advance(TimeSpan.FromDays(8));
         fixture.Images.EmptyCache();
-        Assert.NotNull(await fixture.Images.IconAsync(feed));
+        Assert.NotNull(await ReadAsync());
         await fixture.Images.DownloadedImages.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(2, requests);
         Assert.Equal("\"icon-v1\"", conditionalTag);
@@ -709,7 +714,7 @@ public sealed class FeedImageDownloaderTests
         public ActivityLogger Activity { get; }
         public string CacheDirectory => Path.Combine(_directory, "Caches");
         public string LegacyDirectory => Path.Combine(_directory, "Favicons");
-        public string NativePath(string url, bool favicon = true) => Path.Combine(CacheDirectory, favicon ? "Favicons" : "DownloadedImages", url.Md5Hex());
+        public string NativePath(string url) => Path.Combine(CacheDirectory, "DownloadedImages", url.Md5Hex());
         public string LegacyPath(string url, string extension) => Path.Combine(LegacyDirectory, Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(url))) + extension);
         public ConcurrentQueue<string> Requests { get; } = new();
         public Fixture(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond,
@@ -735,7 +740,7 @@ public sealed class FeedImageDownloaderTests
         }
         private FeedImageDownloader CreateImages()
             => new(ImageDatabase, Metadata, CacheDirectory, _downloader, Clock, Activity, _maxPixelSize,
-                LegacyDirectory, _downloadedImages);
+                _downloadedImages);
         public async Task ReopenImagesAsync()
         {
             await Images.DisposeAsync();
