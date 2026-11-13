@@ -1252,9 +1252,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void ObserveFeedImages(Images.FeedImageDownloader? service)
     {
-        if (_feedImages is not null) _feedImages.ImageDidBecomeAvailable -= FeedImageDidBecomeAvailable;
+        if (_feedImages is not null)
+        {
+            _feedImages.ImageDidBecomeAvailable -= FeedImageDidBecomeAvailable;
+            _feedImages.FeedIconDidBecomeAvailable -= FeedIconDidBecomeAvailable;
+        }
         _feedImages = service;
-        if (service is not null) service.ImageDidBecomeAvailable += FeedImageDidBecomeAvailable;
+        if (service is not null)
+        {
+            service.ImageDidBecomeAvailable += FeedImageDidBecomeAvailable;
+            service.FeedIconDidBecomeAvailable += FeedIconDidBecomeAvailable;
+        }
+    }
+
+    private void FeedIconDidBecomeAvailable(object? sender, Images.FeedIconImage recovered)
+    {
+        if (_disposed) return;
+        if (!_dispatcher.TryEnqueue(() =>
+        {
+            if (_disposed || !ReferenceEquals(sender, _feedImages)) return;
+            foreach (var item in ArticleItems)
+                if (item.FeedUrl == recovered.Feed.FeedUrl && item.FeedIconUrl == recovered.Feed.IconUrl
+                    && item.FeedHomePageUrl == recovered.Feed.HomePageUrl)
+                    item.FaviconPath = recovered.Image.Path;
+        }) && !_disposed)
+            System.Diagnostics.Trace.TraceError($"Could not dispatch a recovered feed icon at {recovered.Image.Url}.");
     }
 
     private void FeedImageDidBecomeAvailable(object? sender, Images.DownloadedImage image)

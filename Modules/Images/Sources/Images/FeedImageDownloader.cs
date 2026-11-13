@@ -11,6 +11,7 @@ namespace WinNewsWire.Images;
 public sealed record FeedImageSource(string FeedUrl, string? HomePageUrl = null, string? FaviconUrl = null, string? IconUrl = null);
 /// <summary>Data is the requested representation; Path can identify its larger shared disk source.</summary>
 public sealed record DownloadedImage(string Url, string Path, byte[] Data);
+public sealed record FeedIconImage(FeedImageSource Feed, DownloadedImage Image);
 
 public sealed class FeedImageDownloader : IAsyncDisposable
 {
@@ -58,7 +59,14 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     public DownloadedImageCache DownloadedImages { get; }
     /// <summary>Raised on a worker when a changed source has a freshly rebuilt icon representation.</summary>
     public event EventHandler<DownloadedImage>? ImageDidBecomeAvailable;
+    public event EventHandler<FeedIconImage>? FeedIconDidBecomeAvailable;
     private readonly object _gate = new();
+    private sealed class OwnIconWait(string url)
+    {
+        internal string Url { get; } = url;
+        internal DownloadedImage? Image { get; set; }
+    }
+    private readonly Dictionary<FeedImageSource, OwnIconWait> _waitingForOwnIcons = [];
     private readonly CancellationTokenSource _lifetime = new();
     private readonly HashSet<Task> _operations = [];
     private bool _stopping;
@@ -84,6 +92,32 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, downloader, clock, activityLog,
             sourceCache: DownloadedImages);
         DownloadedImages.DownloadedImageChanged += SourceChanged;
+        NetworkMonitor.ConnectivityChanged += NetworkStatusChanged;
+    }
+
+    internal void NetworkStatusChanged(object? sender, bool available)
+    {
+        if (!available) return;
+        KeyValuePair<FeedImageSource, OwnIconWait>[] waiting;
+        lock (_gate)
+        {
+            if (_stopping) return;
+            waiting = _waitingForOwnIcons.ToArray();
+        }
+        foreach (var (feed, ownIcon) in waiting)
+        {
+            if (DownloadedImages.IsWaitingToRetry(ownIcon.Url)) continue;
+            lock (_gate)
+            {
+                if (_stopping) return;
+                var task = RunOperationAsync(token => IconCoreAsync(feed, token), CancellationToken.None);
+                _ = task.ContinueWith(completed =>
+                {
+                    if (completed.IsFaulted)
+                        Trace.TraceError($"Could not retry the feed icon for {feed.FeedUrl}: {completed.Exception}");
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
+        }
     }
 
     private void SourceChanged(object? sender, string url)
@@ -161,17 +195,43 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         ct.ThrowIfCancellationRequested();
         if (ShouldSkipFeedIcon(feed.FeedUrl)) return null;
         string? iconUrl = SpecialCases.ContainsSpecialCase(feed.FeedUrl, IgnoredFeedIconHosts) ? null : feed.IconUrl;
+        OwnIconWait? ownIcon = null;
         if (iconUrl is { Length: > 0 })
         {
-            var declared = await FetchImageAsync(SanitizedIconUrl(iconUrl), favicon: false, ct).ConfigureAwait(false);
+            var url = SanitizedIconUrl(iconUrl);
+            var declared = await FetchImageAsync(url, favicon: false, ct).ConfigureAwait(false);
             if (declared.Image is { } image)
+            {
+                OwnIconWait? recovered;
+                lock (_gate)
+                {
+                    if (_waitingForOwnIcons.Remove(feed, out recovered)) recovered.Image = image;
+                }
+                if (recovered is not null) FeedIconDidBecomeAvailable?.Invoke(this, new(feed, image));
                 return image;
+            }
+            bool waiting = DownloadedImages.IsWaitingToRetry(url);
+            lock (_gate)
+            {
+                if (waiting)
+                {
+                    if (!_waitingForOwnIcons.TryGetValue(feed, out ownIcon))
+                        _waitingForOwnIcons[feed] = ownIcon = new(url);
+                }
+                else _waitingForOwnIcons.Remove(feed);
+            }
         }
         else if (_database.IconUrl(feed.FeedUrl) is { } known)
         {
             var cached = await FetchImageAsync(known, favicon: false, ct).ConfigureAwait(false);
             if (cached.Image is not null) return cached.Image;
         }
+        var fallback = await HomePageIconCoreAsync(feed, ct).ConfigureAwait(false);
+        lock (_gate) return ownIcon?.Image ?? fallback;
+    }
+
+    private async Task<DownloadedImage?> HomePageIconCoreAsync(FeedImageSource feed, CancellationToken ct)
+    {
         var homePage = HomePage(feed);
         if (homePage is null || ShouldSkipFeedIcon(homePage)) return null;
         var metadata = await _metadata.GetMetadataAsync(homePage, ct).ConfigureAwait(false);
@@ -236,6 +296,8 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             if (_shutdown is not null) return new(_shutdown);
             _stopping = true;
             DownloadedImages.DownloadedImageChanged -= SourceChanged;
+            NetworkMonitor.ConnectivityChanged -= NetworkStatusChanged;
+            _waitingForOwnIcons.Clear();
             _lifetime.Cancel();
             return new(_shutdown = DrainAsync(_operations.ToArray()));
         }

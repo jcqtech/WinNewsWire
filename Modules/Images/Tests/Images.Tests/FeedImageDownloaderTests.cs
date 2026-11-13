@@ -363,6 +363,54 @@ public sealed class FeedImageDownloaderTests
         Assert.Empty(fixture.Requests);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RecoveredOwnIconsNotifyWithoutAnotherUiRequestAfterConnectivityReturns(bool holdFallback)
+    {
+        int iconRequests = 0;
+        const string icon = Home + "own.png";
+        var fallbackStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFallback = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!holdFallback) releaseFallback.TrySetResult();
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/touch.png")
+            {
+                fallbackStarted.TrySetResult();
+                await releaseFallback.Task.WaitAsync(ct);
+            }
+            return request.RequestUri!.AbsolutePath switch
+            {
+                "/own.png" => Response(++iconRequests == 1 ? HttpStatusCode.InternalServerError : HttpStatusCode.OK,
+                    iconRequests == 1 ? [] : Image),
+                "/" => HtmlResponse("<link rel='apple-touch-icon' sizes='180x180' href='/touch.png'>"),
+                "/touch.png" => Response(HttpStatusCode.OK, Image),
+                _ => throw new InvalidOperationException("Unexpected recovery request.")
+            };
+        });
+        var feed = new FeedImageSource(Feed, Home, IconUrl: icon);
+        var original = fixture.Images.IconAsync(feed);
+        try
+        {
+            await fallbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (!holdFallback) Assert.Equal(Home + "touch.png", (await original)?.Url);
+            var recovered = new TaskCompletionSource<FeedIconImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            fixture.Images.FeedIconDidBecomeAvailable += (_, image) => recovered.TrySetResult(image);
+            fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
+            fixture.Images.NetworkStatusChanged(null, true);
+            var available = await recovered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(feed, available.Feed);
+            Assert.Equal(icon, available.Image.Url);
+            Assert.Equal(2, iconRequests);
+            releaseFallback.TrySetResult();
+            Assert.Equal(holdFallback ? icon : Home + "touch.png", (await original)?.Url);
+            Assert.Equal(Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
+            Assert.Equal(icon, (await fixture.Images.IconAsync(feed))?.Url);
+        }
+        finally { releaseFallback.TrySetResult(); }
+    }
+
     [Fact]
     public async Task IconsAndFaviconsShareOneNativeSourcePathAndDoNotCreateAFaviconFolder()
     {

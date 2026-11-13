@@ -260,6 +260,7 @@ internal static partial class ParityProbe
         await CheckThumbnailDecodeQueueAsync(window);
         await CheckVisibleOnlyThumbnailLoadingAsync(window);
         await CheckChangedFeedIconsAsync(window);
+        await CheckRecoveredFeedIconsAsync(window);
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
         bool stopped = false;
@@ -578,6 +579,81 @@ internal static partial class ParityProbe
             model.IsUnifiedLayout = previousUnified;
             Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
             Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
+        }
+    }
+
+    private static async Task CheckRecoveredFeedIconsAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSelection = model.SelectedArticle;
+        var previousImages = model.ProbeFeedImages;
+        var previousIcons = Core.AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+        bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
+        var clock = new ChangedImageClock();
+        int ownRequests = 0;
+        using var http = new HttpClient(new ThumbnailHandler((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath switch
+            {
+                "/own.bmp" => new HttpResponseMessage(++ownRequests == 1 ? HttpStatusCode.InternalServerError : HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(ownRequests == 1 ? [] : ThumbnailBitmap(1600, 800))
+                },
+                "/" => new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("<link rel='apple-touch-icon' sizes='180x180' href='/fallback.bmp'>",
+                        System.Text.Encoding.UTF8, "text/html")
+                },
+                "/fallback.bmp" => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(ThumbnailBitmap(128, 128)) },
+                _ => throw new InvalidOperationException("Unexpected feed-icon recovery request.")
+            })));
+        var downloader = new Downloader(http, clock);
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "recovered-icon.db"), clock);
+        using var htmlDatabase = new HTMLMetadata.HtmlMetadataDatabase(":memory:", clock);
+        await using var metadata = new HTMLMetadata.HtmlMetadataDownloader(htmlDatabase, downloader, clock);
+        await using var images = new FeedImageDownloader(database, metadata, Path.Combine(OutputDirectory, "recovered-icons"),
+            downloader, clock, maxPixelSize: 48, networkAllowsUpdates: () => true);
+        var feed = new FeedImageSource("https://thumbnail.test/recovered-feed", "https://thumbnail.test/",
+            IconUrl: "https://thumbnail.test/own.bmp");
+        var fallback = await images.IconAsync(feed) ?? throw new InvalidOperationException("The fallback icon did not load.");
+        var row = new Models.FeedItem
+        {
+            Id = "recovered-icon", FeedTitle = "Recovered icon fixture", FaviconPath = fallback.Path,
+            FeedUrl = feed.FeedUrl, FeedHomePageUrl = feed.HomePageUrl, FeedIconUrl = feed.IconUrl!
+        };
+        var unrelated = new Models.FeedItem { Id = "unrelated-recovery", FaviconPath = fallback.Path, FeedIconUrl = feed.IconUrl! };
+        bool onUI = true;
+        row.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(Models.FeedItem.FaviconSource))
+                onUI &= window.DispatcherQueue.HasThreadAccess;
+        };
+        var list = (ListView)content.FindName("ArticleListView");
+        try
+        {
+            Core.AppDefaults.Shared.UseColumnLayout = false;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
+            model.ProbeFeedImages = images;
+            model.SelectedArticle = null;
+            model.ArticleItems = new ObservableCollection<Models.FeedItem> { row, unrelated };
+            await WaitFor(() => Task.FromResult(list.ContainerFromItem(row) is not null), "Fallback icon row");
+            var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
+            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 128 }), "Native fallback icon");
+            clock.Advance(TimeSpan.FromMinutes(37));
+            var own = await images.IconAsync(feed) ?? throw new InvalidOperationException("The own icon did not recover.");
+            await WaitFor(() => Task.FromResult(row.FaviconPath == own.Path
+                && icon.ImageSource is BitmapImage { PixelWidth: 1600, PixelHeight: 800 }), "Recovered native feed icon");
+            Require(onUI && ownRequests == 2 && unrelated.FaviconPath == fallback.Path && unrelated.FaviconSource.Revision == 0,
+                "Feed-icon recovery changed unrelated rows, ran off UI, or downloaded more than once.");
+        }
+        finally
+        {
+            model.ProbeFeedImages = previousImages;
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousIcons);
         }
     }
 
