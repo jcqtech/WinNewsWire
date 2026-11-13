@@ -187,6 +187,23 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
+    public async Task FailedProvidedImageStartsHtmlDiscoveryOnlyAfterTheProvidedSourceFails()
+    {
+        using var database = new ImageDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        const string provided = "https://example.com/thumbnail.jpg";
+        var article = Article(thumbnail: provided, html: "<img src='/photo.jpg' width='640' height='480'>");
+        await finder.DiscoverThumbnailUrlsAsync([article]);
+        Assert.Equal(provided, finder.ThumbnailUrl(article, ThumbnailMode.Small));
+        Assert.Empty(await database.FetchArticleThumbnailsAsync(["1"]));
+        await database.RecordFailureAsync(provided, 404);
+        finder.ThumbnailUrlDidFail(provided);
+        Assert.Null(finder.ThumbnailUrl(article, ThumbnailMode.Small));
+        await finder.DiscoverThumbnailUrlsAsync([article]);
+        Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(article, ThumbnailMode.Small));
+    }
+
+    [Fact]
     public async Task HtmlDiscoveryPersistsPositiveAndNegativeResultsAndNotifiesOnlyFoundArticles()
     {
         using var database = new ImageDatabase(":memory:");
