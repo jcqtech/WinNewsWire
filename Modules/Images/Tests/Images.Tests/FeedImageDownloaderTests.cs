@@ -323,6 +323,26 @@ public sealed class FeedImageDownloaderTests
 
     [Theory]
     [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.OK)]
+    public async Task FailedDeclaredIconsUseSavedHomepageIconsWithoutLoadingHomepageMetadata(HttpStatusCode status)
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
+        {
+            "/declared.png" => Response(status, "<html>Not an image</html>"u8.ToArray()),
+            "/saved.png" => Response(HttpStatusCode.OK, Image),
+            _ => throw new InvalidOperationException("Homepage metadata must not delay the saved icon.")
+        }));
+        Assert.NotNull(await fixture.Images.IconAsync(new(Feed, Home, IconUrl: Home + "saved.png")));
+        await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, Home + "saved.png");
+        var image = await fixture.Images.IconAsync(new(Feed, Home, IconUrl: Home + "declared.png"));
+        Assert.Equal(Home + "saved.png", image?.Url);
+        Assert.Equal([Home + "saved.png", Home + "declared.png"], fixture.Requests);
+        Assert.Equal(Home + "saved.png", fixture.ImageDatabase.IconUrl(Feed));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
     [InlineData(HttpStatusCode.OK)]
     public async Task DefinitivelyFailedDeclaredIconUsesHomepageMetadata(HttpStatusCode failure)
     {

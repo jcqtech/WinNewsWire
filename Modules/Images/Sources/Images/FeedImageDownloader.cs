@@ -232,13 +232,13 @@ public sealed class FeedImageDownloader : IAsyncDisposable
                 else _waitingForOwnIcons.Remove(feed);
             }
         }
-        else if (_database.IconUrl(feed.FeedUrl) is { } known)
+        if (_database.IconUrl(feed.FeedUrl) is { } known)
         {
             var cached = await FetchImageAsync(known, favicon: false, ct).ConfigureAwait(false);
             if (cached.Image is not null)
             {
-                CheckForNewHomePageIcon(feed, known);
-                return cached.Image;
+                if (iconUrl is not { Length: > 0 }) CheckForNewHomePageIcon(feed, known);
+                lock (_gate) return ownIcon?.Image ?? cached.Image;
             }
         }
         var fallback = await HomePageIconCoreAsync(feed, ct).ConfigureAwait(false);
