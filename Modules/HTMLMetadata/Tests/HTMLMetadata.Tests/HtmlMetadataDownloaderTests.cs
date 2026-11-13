@@ -41,24 +41,51 @@ public sealed class HtmlMetadataDownloaderTests
         Assert.Equal(2, count);
     }
 
-    [Fact]
-    public async Task RedirectedMetadataIsPersistedUnderTheRequestedUrl()
+    [Theory]
+    [InlineData(Url, "https://original.test/news/")]
+    [InlineData(Url, "https://WWW.original.test/news/")]
+    [InlineData("https://www.original.test/", "http://original.test/news/")]
+    public async Task SameHostRedirectedMetadataIsPersistedUnderTheRequestedUrl(string requested, string redirected)
     {
         var clock = new HtmlMetadataDatabaseTests.TestClock();
         using var database = new HtmlMetadataDatabase(":memory:", clock);
-        using var handler = new Handler(_ => Task.FromResult(Response(HttpStatusCode.OK, Html, "https://final.test/news/")));
+        using var handler = new Handler(_ => Task.FromResult(Response(HttpStatusCode.OK, Html, redirected)));
         using var http = new HttpClient(handler);
         var log = new ActivityLogger(clock);
         await using var downloader = new HtmlMetadataDownloader(database, new Downloader(http, clock), clock, log);
-        var result = Assert.IsType<HtmlMetadataRecord>(await downloader.GetMetadataAsync(Url));
-        Assert.Equal(Url, result.Url);
-        Assert.Equal("https://final.test/news/icon.png", Assert.Single(result.Favicons).UrlString);
+        var result = Assert.IsType<HtmlMetadataRecord>(await downloader.GetMetadataAsync(requested));
+        Assert.Equal(requested, result.Url);
+        Assert.Equal(new Uri(new Uri(redirected), "icon.png").AbsoluteUri, Assert.Single(result.Favicons).UrlString);
         downloader.EmptyCache();
-        Assert.NotNull(await downloader.GetMetadataAsync(Url));
+        Assert.NotNull(await downloader.GetMetadataAsync(requested));
         Assert.Equal(1, handler.Calls);
-        Assert.NotNull(await database.CachedRecordAsync(Url));
-        Assert.Null(await database.CachedRecordAsync("https://final.test/news/"));
+        Assert.NotNull(await database.CachedRecordAsync(requested));
+        Assert.Null(await database.CachedRecordAsync(redirected));
         Assert.Single(log.CompletedActivities);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CrossHostRedirectsCannotPoisonSavedHomepageMetadata(bool hasStaleRecord)
+    {
+        var clock = new HtmlMetadataDatabaseTests.TestClock();
+        using var database = new HtmlMetadataDatabase(":memory:", clock);
+        var savedDate = clock.GetUtcNow();
+        const string old = "https://original.test/old.png";
+        if (hasStaleRecord) await database.SaveAsync(new(Url, twitterImageUrl: old));
+        clock.Advance(TimeSpan.FromDays(7));
+        using var handler = new Handler(_ => Task.FromResult(Response(HttpStatusCode.OK, Html, "https://portal.test/login/")));
+        using var http = new HttpClient(handler);
+        var log = new ActivityLogger(clock);
+        await using var downloader = new HtmlMetadataDownloader(database, new Downloader(http, clock), clock, log);
+        var result = await downloader.GetMetadataAsync(Url);
+        if (hasStaleRecord) Assert.Equal(old, result?.TwitterImageUrl);
+        else Assert.Null(result);
+        Assert.Equal(hasStaleRecord ? (DateTimeOffset?)savedDate : null, await database.LastDownloadDateAsync(Url));
+        Assert.Null(await database.CachedRecordAsync(Url));
+        Assert.False(await database.RecentlyFailedAsync(Url));
+        Assert.NotNull(Assert.Single(log.CompletedActivities).Error);
     }
 
     [Fact]

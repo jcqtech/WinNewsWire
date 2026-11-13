@@ -41,6 +41,9 @@ public sealed class HtmlMetadataDownloader : IAsyncDisposable
     public static bool ShouldSkip(string url) => SpecialCases.ContainsSpecialCase(url,
         [SpecialCases.RachelByTheBayHostName, SpecialCases.OpenRSSOrgHostName]);
 
+    private static string HostIgnoringWww(Uri url)
+        => url.IdnHost.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? url.IdnHost[4..] : url.IdnHost;
+
     public HtmlMetadataRecord? CachedMetadata(string url)
     {
         if (ShouldSkip(url)) return null;
@@ -109,6 +112,13 @@ public sealed class HtmlMetadataDownloader : IAsyncDisposable
         {
             _log.DidFail(activity, error);
             await _database.NoteTransientFailureAsync(url).ConfigureAwait(false);
+            return await ReturnStaleAsync(url).ConfigureAwait(false);
+        }
+
+        var responseUrl = new Uri(response.Url);
+        if (!string.Equals(HostIgnoringWww(new Uri(url)), HostIgnoringWww(responseUrl), StringComparison.OrdinalIgnoreCase))
+        {
+            _log.DidFail(activity, new HttpRequestException("HTML metadata redirected to a different host: " + responseUrl.IdnHost));
             return await ReturnStaleAsync(url).ConfigureAwait(false);
         }
 
