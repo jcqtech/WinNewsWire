@@ -32,7 +32,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             if (chosen.TryGetValue(article.ArticleID, out var cached) && ReferenceEquals(cached.Article, article))
                 return cached.Url;
             var url = ProvidedThumbnailUrl(article, mode)
-                ?? (_htmlUrls.TryGetValue(article.ArticleID, out var urls) ? urls.FirstOrDefault(IsUsable) : null);
+                ?? (_htmlUrls.TryGetValue(article.ArticleID, out var urls) ? urls.FirstOrDefault(url => !HasFailed(url)) : null);
             if (chosen.Count >= MaximumCachedArticleCount) chosen.Clear();
             chosen[article.ArticleID] = new(article, url);
             return url;
@@ -125,7 +125,8 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             attachment.DisplayMedium == Attachment.AttachmentMedium.Image && attachment.URL is { } url
                 && SignificantImageFilter.IsSignificant(url, attachment.Width, attachment.Height))?.URL;
         var candidates = mode == ThumbnailMode.Small ? new[] { thumbnail, image, attachment } : [image, attachment, thumbnail];
-        return candidates.FirstOrDefault(url => url is not null && IsUsable(url));
+        return candidates.FirstOrDefault(url => url is not null && !HasFailed(url)
+            && SignificantImageFilter.IsSignificant(url, null, null));
     }
 
     public void RecordDecodingFailure(string url)
@@ -154,11 +155,10 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             foreach (var id in ids) chosen.Remove(id);
     }
 
-    private bool IsUsable(string url)
+    private bool HasFailed(string url)
     {
-        if (!SignificantImageFilter.IsSignificant(url, null, null)
-            || _database.RecentlyFailed(url) || _database.IsUnsuitableForThumbnail(url)) return false;
-        lock (_gate) return !_decodingFailures.Contains(url);
+        if (_database.RecentlyFailed(url) || _database.IsUnsuitableForThumbnail(url)) return true;
+        lock (_gate) return _decodingFailures.Contains(url);
     }
 
     private static string? NormalizedUrl(string? value)
