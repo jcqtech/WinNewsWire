@@ -47,6 +47,16 @@ public sealed partial class AppService
     private MemoryPressureMonitor? _memoryMonitor;
     private readonly object _maintenanceGate = new();
     private Task _maintenance = Task.CompletedTask;
+    private Services.ArticleThumbnailService? _thumbnailImages;
+    internal Services.ArticleThumbnailService ThumbnailImages
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_shutdown is not null, this);
+            return _thumbnailImages ??= new(_dispatcher
+                ?? throw new InvalidOperationException("Thumbnails require the application UI dispatcher."));
+        }
+    }
 
     private AppService()
     {
@@ -122,11 +132,15 @@ public sealed partial class AppService
         }
     }
 
-    private static async Task StopImageDownloadsAsync()
+    private async Task StopImageDownloadsAsync()
     {
         try
         {
-            await Images.FeedImageDownloader.DisposeSharedAsync();
+            try
+            {
+                if (_thumbnailImages is not null) await _thumbnailImages.DisposeAsync();
+            }
+            finally { await Images.FeedImageDownloader.DisposeSharedAsync(); }
         }
         finally
         {
@@ -170,6 +184,7 @@ public sealed partial class AppService
         Helpers.IconView.EmptyCache();
         ArticleStringFormatter.Shared.EmptyCaches();
         FaviconDownloader.Shared.EmptyCache();
+        _thumbnailImages?.EmptyCache();
         if (HTMLMetadata.HtmlMetadataDownloader.IsSharedCreated) HTMLMetadata.HtmlMetadataDownloader.Shared.EmptyCache();
         Web.Downloader.Shared.EmptyCache();
         Articles.AuthorCache.Shared.Clear();

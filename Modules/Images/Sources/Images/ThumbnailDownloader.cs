@@ -9,7 +9,7 @@ namespace WinNewsWire.Images;
 public sealed class ThumbnailDownloader : IAsyncDisposable
 {
     private readonly ImageResourceDownloader _small;
-    private readonly ImageResourceDownloader _large;
+    private readonly Lazy<ImageResourceDownloader> _large;
     private readonly object _gate = new();
     private Task? _shutdown;
 
@@ -24,31 +24,38 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
             limiter, networkAllowsDownloads);
         _small = new(database, Path.Combine(cacheFolder, "Thumbnails"), small,
             ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, downloader, clock, activityLog);
-        _large = new(database, Path.Combine(cacheFolder, "LargeThumbnails"), small with { MaxPixelSize = 1200 },
-            ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, downloader, clock, activityLog);
+        _large = new(() => new(database, Path.Combine(cacheFolder, "LargeThumbnails"), small with { MaxPixelSize = 1200 },
+            ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, downloader, clock, activityLog));
     }
 
     public async Task<DownloadedImage?> ImageAsync(string url, ThumbnailMode mode,
         CancellationToken ct = default, string? activityDetail = null)
     {
-        var service = mode switch
+        Task<ImageResourceResult> pending;
+        lock (_gate)
         {
-            ThumbnailMode.Small => _small,
-            ThumbnailMode.Large => _large,
-            _ => throw new ArgumentOutOfRangeException(nameof(mode))
-        };
-        return (await service.FetchAsync(url, ct, activityDetail).ConfigureAwait(false)).Image;
+            ObjectDisposedException.ThrowIf(_shutdown is not null, this);
+            var service = mode switch
+            {
+                ThumbnailMode.Small => _small,
+                ThumbnailMode.Large => _large.Value,
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
+            };
+            pending = service.FetchAsync(url, ct, activityDetail);
+        }
+        return (await pending.ConfigureAwait(false)).Image;
     }
 
     public void EmptyCache()
     {
         _small.EmptyCache();
-        _large.EmptyCache();
+        if (_large.IsValueCreated) _large.Value.EmptyCache();
     }
 
     public ValueTask DisposeAsync()
     {
         lock (_gate)
-            return new(_shutdown ??= Task.WhenAll(_small.DisposeAsync().AsTask(), _large.DisposeAsync().AsTask()));
+            return new(_shutdown ??= Task.WhenAll(_small.DisposeAsync().AsTask(),
+                _large.IsValueCreated ? _large.Value.DisposeAsync().AsTask() : Task.CompletedTask));
     }
 }
