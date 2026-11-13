@@ -60,8 +60,8 @@ public static class HtmlImageParser
         {
             yield return attributes["data-lazy-src"];
             yield return attributes["data-src"];
-            yield return attributes["src"];
             yield return LargestSrcsetCandidate(attributes["srcset"]);
+            yield return attributes["src"];
         }
     }
 

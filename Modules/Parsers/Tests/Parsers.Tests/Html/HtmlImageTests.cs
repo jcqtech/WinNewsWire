@@ -26,6 +26,11 @@ public class HtmlImageTests
     }
 
     [Fact]
+    public void SrcsetTakesPrecedenceOverOrdinarySource()
+        => Assert.Equal("https://example.com/large.jpg",
+            First("""<img src="/placeholder.jpg" srcset="/small.jpg 300w, /large.jpg 1024w">""")?.Url);
+
+    [Fact]
     public void SharingButtonsAndGravatarsDoNotDisplaceArticlePhoto()
     {
         var html = """
