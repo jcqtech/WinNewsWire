@@ -54,7 +54,8 @@ public sealed record FeedlyEntry(
     [property: JsonPropertyName("tags")] List<FeedlyTag>? Tags,
     [property: JsonPropertyName("categories")] List<FeedlyCategory>? Categories,
     [property: JsonPropertyName("enclosure")] List<FeedlyLink>? Enclosure,
-    [property: JsonPropertyName("published")] long? Published = null)
+    [property: JsonPropertyName("published")] long? Published = null,
+    [property: JsonPropertyName("visual")] FeedlyVisual? Visual = null)
 {
     public string? ExternalUrl
     {
@@ -71,6 +72,8 @@ public sealed record FeedlyEntry(
     public DateTime? DateModified => Recrawled is null ? null : DateTimeOffset.FromUnixTimeMilliseconds(Recrawled.Value).UtcDateTime;
     public string? ContentHtml => Content?.Content ?? Summary?.Content;
 }
+
+public sealed record FeedlyVisual([property: JsonPropertyName("url")] string? Url);
 
 public static class FeedlyRTLTextSanitizer
 {
@@ -112,9 +115,10 @@ public sealed class FeedlyEntryParser(FeedlyEntry entry)
     public IReadOnlyList<ParsedAttachment>? Attachments => entry.Enclosure?
         .Select(link => ParsedAttachment.Create(link.Href, link.Type, null, null, null))
         .OfType<ParsedAttachment>().ToArray() is { Length: > 0 } attachments ? attachments : null;
+    public string? ImageUrl => entry.Visual?.Url is { Length: > 0 } url && url != "none" ? url : null;
 
     public ParsedItem? ParsedItemRepresentation => FeedUrl is { } feedUrl
-        ? new(ID, ID, feedUrl, null, ExternalUrl, Title, null, ContentHtml, null, null, Summary, null, null,
+        ? new(ID, ID, feedUrl, null, ExternalUrl, Title, null, ContentHtml, null, null, Summary, ImageUrl, null,
             DatePublished, DateModified, Authors, Tags, Attachments) : null;
 }
 

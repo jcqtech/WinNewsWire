@@ -63,6 +63,18 @@ public sealed class FeedlyFeedParserTests
 
 public sealed class FeedlyEntryParserTests
 {
+    [Theory]
+    [InlineData("https://example.test/image.jpg", "https://example.test/image.jpg")]
+    [InlineData("none", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void VisualImageIsParsedExceptForFeedlysMissingImageSentinel(string? url, string? expected)
+    {
+        var entry = System.Text.Json.JsonSerializer.Deserialize<FeedlyEntry>(
+            System.Text.Json.JsonSerializer.Serialize(new { id = "entry", crawled = 0, origin = new { streamId = "feed/1" }, visual = new { url } }))!;
+        Assert.Equal(expected, new FeedlyEntryParser(entry).ParsedItemRepresentation!.ImageUrl);
+    }
+
     private static readonly DateTime ReferenceDate = new(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc);
     private static long Milliseconds(DateTime date) => new DateTimeOffset(date).ToUnixTimeMilliseconds();
     private static FeedlyEntry Entry => new("tests/feeds/1/entries/1", "Test Entry 1", null, null, null,
