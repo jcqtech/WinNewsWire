@@ -9,6 +9,28 @@ public class RssParserTests
 {
     private static ParserData Load(string f, string ext, string url) => TestResources.Load($"{f}.{ext}", url);
 
+    [Theory]
+    [InlineData("gravatar.com", true)]
+    [InlineData("2.gravatar.com", true)]
+    [InlineData("gravatar.com.example.net", false)]
+    [InlineData("example.com", false)]
+    public void GravatarMediaIsUsedAsAuthorAvatarInsteadOfAttachment(string host, bool matches)
+    {
+        var url = $"https://{host}/avatar/alice";
+        var xml = $"""
+            <rss xmlns:m="http://search.yahoo.com/mrss/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <channel><item><guid>1</guid><title>Article</title><dc:creator>Alice</dc:creator>
+            <m:content url="{url}" medium="image"><m:title>aLiCe</m:title></m:content>
+            </item></channel></rss>
+            """;
+        var item = Assert.Single(RssParser.Parse(new ParserData("https://example.com/feed",
+            System.Text.Encoding.UTF8.GetBytes(xml))).Items);
+        Assert.Equal("Article", item.Title);
+        Assert.Equal(matches ? url : null, Assert.Single(item.Authors!).AvatarUrl);
+        if (matches) Assert.Null(item.Attachments);
+        else Assert.Equal(url, Assert.Single(item.Attachments!).Url);
+    }
+
     [Fact]
     public void DuplicateMediaMetadataMergesInPlaceWithoutReordering()
     {

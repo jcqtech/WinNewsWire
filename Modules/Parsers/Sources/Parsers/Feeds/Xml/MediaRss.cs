@@ -44,6 +44,11 @@ internal static class MediaRss
     private static long? PositiveInteger(string? value)
         => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) && number > 0
             ? number : null;
+
+    public static bool IsGravatar(Uri url)
+        => (url.Host.Equals("gravatar.com", StringComparison.OrdinalIgnoreCase)
+            || url.Host.EndsWith(".gravatar.com", StringComparison.OrdinalIgnoreCase))
+            && url.AbsolutePath.StartsWith("/avatar/", StringComparison.Ordinal);
 }
 
 internal sealed class MediaElementTracker
@@ -51,12 +56,14 @@ internal sealed class MediaElementTracker
     public int ContainerDepth { get; private set; }
     private bool _inGroup;
     private ParsedAttachment? _first, _default;
+    private string? _gravatarUrl;
 
     public void Reset()
     {
         ContainerDepth = 0;
         _inGroup = false;
         _first = _default = null;
+        _gravatarUrl = null;
     }
 
     public bool Start(ReadOnlySpan<byte> name, XmlAttributes attributes, RssItem item, XmlSaxParser parser, Func<string, string?> resolveUrl)
@@ -79,8 +86,18 @@ internal sealed class MediaElementTracker
                     if (string.Equals(attributes.ValueForNameCaseInsensitive("isDefault"), "true", StringComparison.OrdinalIgnoreCase))
                         _default ??= attachment;
                 }
-                else item.Attachments.Add(attachment);
+                else
+                {
+                    item.Attachments.Add(attachment);
+                    if (Uri.TryCreate(url, UriKind.Absolute, out var parsed) && MediaRss.IsGravatar(parsed)) _gravatarUrl = url;
+                }
             }
+            ContainerDepth++;
+            return false;
+        }
+        if (name.SequenceEqual("title"u8) && _gravatarUrl is not null)
+        {
+            parser.BeginStoringCharacters();
             ContainerDepth++;
             return false;
         }
@@ -109,7 +126,17 @@ internal sealed class MediaElementTracker
             _first = _default = null;
             ContainerDepth--;
         }
-        else if (name.SequenceEqual("content"u8)) ContainerDepth--;
+        else if (name.SequenceEqual("content"u8))
+        {
+            _gravatarUrl = null;
+            ContainerDepth--;
+        }
+        else if (name.SequenceEqual("title"u8))
+        {
+            if (_gravatarUrl is { } url && parser.CurrentStringWithTrimmedWhitespace is { Length: > 0 } title)
+                item.GravatarTitlesByUrl[url] = title;
+            ContainerDepth--;
+        }
         else if (name.SequenceEqual("description"u8))
         {
             item.MediaDescription ??= parser.CurrentStringWithTrimmedWhitespace;

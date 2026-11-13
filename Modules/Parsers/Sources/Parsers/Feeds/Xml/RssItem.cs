@@ -22,6 +22,7 @@ internal sealed class RssItem
     public long? ITunesDurationInSeconds { get; set; }
     public string? MediaDescription { get; set; }
     public bool MediaDescriptionIsHtml { get; set; }
+    public Dictionary<string, string> GravatarTitlesByUrl { get; } = new(StringComparer.Ordinal);
 
     public string UniqueId
     {
@@ -53,25 +54,35 @@ internal sealed class RssItem
             if (MediaDescriptionIsHtml) contentHtml = description;
             else contentText = description;
         }
+        var avatarUrls = new HashSet<string>(StringComparer.Ordinal);
+        var authors = Authors.Select(author =>
+        {
+            var avatar = author.AvatarUrl is null && author.Name is { } name
+                ? GravatarTitlesByUrl.FirstOrDefault(pair => pair.Value.Equals(name, StringComparison.OrdinalIgnoreCase)).Key : null;
+            if (avatar is null) return author;
+            avatarUrls.Add(avatar);
+            return author with { AvatarUrl = avatar };
+        }).ToHashSet();
         return new ParsedItem(
             syncServiceId: null, uniqueId: UniqueId, feedUrl: feedUrl,
             url: Permalink, externalUrl: Link, title: Title, language: Language,
             contentHtml: contentHtml, contentText: contentText, markdown: Markdown, summary: summary,
             imageUrl: ImageUrl ?? ITunesImageUrl, bannerImageUrl: null, datePublished: DatePublished, dateModified: DateModified,
-            authors: Authors.Count == 0 ? null : Authors, tags: null,
-            attachments: MergedAttachments())
+            authors: authors.Count == 0 ? null : authors, tags: null,
+            attachments: MergedAttachments(avatarUrls))
         {
             LegacyUniqueId = legacyUniqueId == UniqueId ? null : legacyUniqueId
         };
     }
 
-    private IReadOnlyList<ParsedAttachment>? MergedAttachments()
+    private IReadOnlyList<ParsedAttachment>? MergedAttachments(IReadOnlySet<string> avatarUrls)
     {
         if (Attachments.Count == 0) return null;
         var merged = new List<ParsedAttachment>();
         var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var attachment in Attachments)
         {
+            if (avatarUrls.Contains(attachment.Url)) continue;
             if (indexes.TryGetValue(attachment.Url, out var index))
             {
                 var existing = merged[index];
@@ -92,7 +103,7 @@ internal sealed class RssItem
                 merged.Add(attachment);
             }
         }
-        return merged.Select(attachment => attachment.DurationInSeconds is null
+        return merged.Count == 0 ? null : merged.Select(attachment => attachment.DurationInSeconds is null
             && ITunesDurationInSeconds is { } duration
             && (attachment.Medium is ParsedAttachment.AttachmentMedium.Audio or ParsedAttachment.AttachmentMedium.Video
                 || attachment.MimeType?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true
