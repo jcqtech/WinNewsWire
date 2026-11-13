@@ -5,8 +5,15 @@ namespace WinNewsWire.Core;
 
 public static partial class StringExtensions
 {
-    private static readonly Regex PlainTextUrl = new(@"\b(?:https?://|mailto:)[^\s<>""']+",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private const string PlainTextDomainLabel = @"[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}-]*[\p{L}\p{N}\p{M}])?";
+    private const string PlainTextDomain = PlainTextDomainLabel + @"(?:\." + PlainTextDomainLabel
+        + @")*\.(?:xn--[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|[\p{L}]{2,})";
+    private const string PlainTextEmailAtom = @"[a-z0-9!#$%&'*+/=?^_`{|}~-]+";
+    private static readonly Regex PlainTextUrl = new(
+        @"\b(?<explicit>(?:https?://|mailto:)[^\s<>""']+)"
+        + @"|(?<email>" + PlainTextEmailAtom + @"(?:\." + PlainTextEmailAtom + ")*@" + PlainTextDomain + ")"
+        + @"|(?<web>" + PlainTextDomain + @"(?::[0-9]{1,5})?(?:[/?#][^\s<>""']*)?)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     public static string ConvertingPlainTextToHtml(this string text)
     {
@@ -34,9 +41,13 @@ public static partial class StringExtensions
         foreach (Match match in PlainTextUrl.Matches(line))
         {
             string value = TrimPlainTextUrl(match.Value);
-            if (!Uri.TryCreate(value, UriKind.Absolute, out var url)
+            bool isExplicit = match.Groups["explicit"].Success;
+            if (!isExplicit && !IsBareAddressBoundary(line, match.Index, value.Length)) continue;
+            string target = isExplicit ? value : (match.Groups["email"].Success ? "mailto:" : "http://") + value;
+            if (!Uri.TryCreate(target, UriKind.Absolute, out var url)
                 || url.Scheme is not ("http" or "https" or "mailto")
                 || url.Scheme is "http" or "https" && url.Host.Length == 0) continue;
+            if (!isExplicit && (url.Host.Length > 253 || url.Host.Split('.').Any(label => label.Length > 63))) continue;
             html.Append(line[position..match.Index].EscapingSpecialXmlCharacters());
             html.Append("<a href=\"").Append(url.AbsoluteUri.EscapingSpecialXmlCharacters()).Append("\">")
                 .Append(value.EscapingSpecialXmlCharacters()).Append("</a>");
@@ -44,6 +55,15 @@ public static partial class StringExtensions
         }
         html.Append(line[position..].EscapingSpecialXmlCharacters());
         return html.ToString();
+    }
+
+    private static bool IsBareAddressBoundary(string line, int start, int length)
+    {
+        if (start > 0 && (char.IsLetterOrDigit(line[start - 1])
+            || line[start - 1] is '_' or '@' or '.' or '/' or '\\' or '-' or ':')) return false;
+        int end = start + length;
+        if (end < line.Length && (char.IsLetterOrDigit(line[end]) || line[end] is '_' or '@' or '-')) return false;
+        return end + 1 >= line.Length || line[end] != '.' || !char.IsLetterOrDigit(line[end + 1]);
     }
 
     private static string TrimPlainTextUrl(string value)

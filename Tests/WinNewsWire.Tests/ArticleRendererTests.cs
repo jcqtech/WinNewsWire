@@ -471,6 +471,51 @@ public sealed class ArticleRendererTests
             + "<a href=\"mailto:reader@example.test\">mailto:reader@example.test</a>! javascript:alert(1)</p>", html);
     }
 
+    [Theory]
+    [InlineData("example.com", "http://example.com/")]
+    [InlineData("www.example.com/news?a=1&b=2", "http://www.example.com/news?a=1&b=2")]
+    [InlineData("EXAMPLE.COM", "http://example.com/")]
+    [InlineData("reader+news@example.com", "mailto:reader+news@example.com")]
+    [InlineData("bücher.de", "http://bücher.de/")]
+    [InlineData("xn--bcher-kva.de", "http://xn--bcher-kva.de/")]
+    public void PlainTextRecognizesBareAddressesWithoutChangingTheirText(string text, string expectedTarget)
+    {
+        var html = ArticleRenderer.Render(Article(body: null, text: text), theme: Theme("[[body]]")).Html;
+        var document = System.Xml.Linq.XDocument.Parse(html);
+        var link = Assert.Single(document.Descendants("a"));
+        Assert.Equal(expectedTarget, link.Attribute("href")?.Value);
+        Assert.Equal(text, link.Value);
+    }
+
+    [Theory]
+    [InlineData("ftp://example.com/file")]
+    [InlineData("javascript:example.com")]
+    [InlineData("reader@@example.com")]
+    [InlineData("reader..name@example.com")]
+    [InlineData("version 1.2.3")]
+    public void BareAddressRecognitionDoesNotLinkUnsupportedSchemesOrPartialAddresses(string text)
+    {
+        var html = ArticleRenderer.Render(Article(body: null, text: text), theme: Theme("[[body]]")).Html;
+        Assert.DoesNotContain("<a ", html);
+    }
+
+    [Fact]
+    public void BareAddressesPreserveSurroundingMarkupTextAndBalancedPathPunctuation()
+    {
+        const string text = "Contact <reader@example.com> & (www.example.com/a_(b)).";
+        var html = ArticleRenderer.Render(Article(body: null, text: text), theme: Theme("[[body]]")).Html;
+        Assert.Equal("<p>Contact &lt;<a href=\"mailto:reader@example.com\">reader@example.com</a>&gt; &amp; "
+            + "(<a href=\"http://www.example.com/a_(b)\">www.example.com/a_(b)</a>).</p>", html);
+    }
+
+    [Fact]
+    public void BareAddressRecognitionRejectsOverlongDomainLabels()
+    {
+        var text = new string('a', 64) + ".com";
+        var html = ArticleRenderer.Render(Article(body: null, text: text), theme: Theme("[[body]]")).Html;
+        Assert.DoesNotContain("<a ", html);
+    }
+
     [Fact]
     public void AllNativeDateMacrosArePopulated()
     {
