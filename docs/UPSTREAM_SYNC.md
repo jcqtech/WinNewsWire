@@ -9,7 +9,8 @@ not a claim that every change through it has been incorporated.**
 
 The commit inventory in [UPSTREAM_COMMITS.csv](UPSTREAM_COMMITS.csv) records
 individual source commits, changed paths, disposition, and corresponding Windows
-commits. `Pending` means not incorporated; it must not be interpreted as a
+commits (semicolon-separated when a Windows adaptation needs a follow-up).
+`Pending` means not incorporated; it must not be interpreted as a
 platform-specific skip. Source commit IDs are also recorded in the
 `NetNewsWire-Commit` trailer of each Windows port commit.
 
@@ -20,19 +21,62 @@ The **fully incorporated watermark remains
 The inventory records the individually completed ports; unresolved earlier
 desktop, media, image-cache, and appearance changes prevent advancing that watermark.
 
-The latest individually incorporated source commit by source-history order is
-`81345183cd1125aca8eaf2d52704ee9b53f9a22b` (Atom XHTML CDATA regression coverage).
+The latest individually ported change by source-history order is
+`35c27e3b5fe1044f49fa6c653c01980d9d5b5801` (open the double-clicked timeline row,
+not the previously selected article). Its merge,
+`98e71194a1b10dc2383e9a5a053cb2aa301b8711`, is recorded as covered.
 It is **not** a whole-repository checkpoint. Other completed ports include magnet
 links, MacRumors/FreshRSS/Rust reader fixes, raw-text scanning and entity decoding,
 footnote positioning, lazy iframes, Plum/Gray themes, and theme-specific reader-icon
-grayscale. Versioned media templates shipped with the themes are not yet selected:
-media macros and their supporting models/rendering remain pending.
+grayscale. The default theme now has text-size-aware line lengths and upstream
+color, caption, icon, monospace-font, and link-styling refinements, adapted to Windows.
+
+Media RSS is parsed in RSS/Atom, including dimensions, media types, durations,
+descriptions, artwork, author Gravatars, rendition selection, and feed-image
+filtering. Ordered attachments are stored as article-scoped JSON, with a migration
+from the old Windows normalized tables. Reader rendering includes audio/video/image
+enclosures, privacy-enhanced YouTube embeds, artwork fallback, and legacy-theme
+enclosure placement. Separate thumbnail URLs now survive parsing, article equality,
+database migration, and cold-cache reads. Feedbin, Feedly, NewsBlur, and Reader API
+media metadata is incorporated, including NewsBlur's ordered secure-image mapping.
+
+Other ports include feed-title OPML autosave, feed/theme protocol links, and
+consistent successful-refresh completion dates. Windows-specific shared adapters
+preserve attachment order, dimensions/media types, and thumbnail metadata.
+
+The inventory currently has **45 Ported, 9 Covered, 41 Skipped, and 410 Pending**
+source commits, backed by **49 source-attributed Windows commits**. Skips have
+specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
+toolchain adjustments, and deletion of unused Apple asset-catalog resources.
+These counts do not imply that the remaining changes have been fully assessed.
+
+Still pending are the desktop status bar and follow-ups, the image-cache/thumbnail
+discovery/downloading rewrite, appearance settings, remaining navigation/scroll
+fixes, primary-media placement and versioned theme-template selection, publisher
+image deduplication, and assessment of iPhone/iPad-specific changes. The bundled
+`template7.3.html` files are shipped but are not yet selected by the theme loader.
 
 Attribution correction: Windows commit `dd3c573` records an erroneous source
 trailer, `9b103e929b3580ed0f9fef2de4a9d7303992ebfa`. The correct FreshRSS source is
 `9b103e929c2aae6dbb8b2601bd72036d3981cefe`, as recorded in the inventory.
 The historical Windows commit has not been rewritten. The implementation also
 covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df`.
+
+## Verification at this checkpoint
+
+The x64 Windows application builds with zero warnings/errors. Affected remote
+account and OPML paths pass 216 tests; the remote-account compatibility suite
+passes 47, article storage passes 100, RSS/Atom parsing passes 93, and NewsBlur
+models pass 11. New regressions were checked against pre-port behavior, including
+an exact restoration of the original shared remote adapter that loses thumbnails
+and media types; the new synchronization assertions fail without those edits.
+
+The broader backend run has one existing failure:
+`AccountManagerTests.UnsupportedAccountFilesAreKept` throws
+`InvalidDataException` because an existing default-account profile is not local.
+The implementation and test files for that failure are unchanged from Windows
+baseline `106603d`. Do not interpret that run as a completely passing full suite,
+or fix the unrelated account-profile behavior as part of this synchronization.
 
 ## What changed upstream
 
