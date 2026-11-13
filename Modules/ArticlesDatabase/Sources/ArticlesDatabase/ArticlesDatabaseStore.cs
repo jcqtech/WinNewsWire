@@ -28,10 +28,25 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
                 cmd.CommandText = Constants.CreateStatements;
                 cmd.ExecuteNonQuery();
                 MigrateAttachmentStorage(c);
+                MigrateThumbnailStorage(c);
                 EnsureSearchIndex(c);
             });
         }
         catch { Queue.Dispose(); throw; }
+    }
+
+    private static void MigrateThumbnailStorage(SqliteConnection connection)
+    {
+        using (var columns = connection.CreateCommand())
+        {
+            columns.CommandText = "PRAGMA table_info(articles);";
+            using var reader = columns.ExecuteReader();
+            while (reader.Read())
+                if (reader.GetString(1) == "thumbnailURL") return;
+        }
+        using var migrate = connection.CreateCommand();
+        migrate.CommandText = "ALTER TABLE articles ADD COLUMN thumbnailURL TEXT;";
+        migrate.ExecuteNonQuery();
     }
 
     private void EnsureSearchIndex(SqliteConnection connection)
@@ -256,11 +271,11 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
         }
 
         Dictionary<string, HashSet<Author>>? authorsByArticle = null;
-        Dictionary<string, IReadOnlyList<Attachment>?>? attachmentsByArticle = null;
+        Dictionary<string, (IReadOnlyList<Attachment>? Attachments, string? ThumbnailUrl)>? mediaByArticle = null;
         if (staged.Count > 0 && cmd.Connection is { } conn)
         {
             authorsByArticle = new Dictionary<string, HashSet<Author>>();
-            attachmentsByArticle = new Dictionary<string, IReadOnlyList<Attachment>?>();
+            mediaByArticle = new Dictionary<string, (IReadOnlyList<Attachment>?, string?)>();
             foreach (var batch in staged.Chunk(500))
             {
                 var placeholders = string.Join(",", batch.Select((_, i) => $"@a{i}"));
@@ -288,13 +303,14 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
                     }
                 }
                 using var attCmd = conn.CreateCommand();
-                attCmd.CommandText = $"SELECT articleID, attachments FROM articles WHERE articleID IN ({placeholders});";
+                attCmd.CommandText = $"SELECT articleID, attachments, thumbnailURL FROM articles WHERE articleID IN ({placeholders});";
                 for (int i = 0; i < batch.Length; i++)
                     attCmd.Parameters.AddWithValue($"@a{i}", batch[i].articleID);
                 using var attR = attCmd.ExecuteReader();
                 while (attR.Read())
                 {
-                    attachmentsByArticle[attR.GetString(0)] = Attachment.FromJson(attR.IsDBNull(1) ? null : attR.GetString(1));
+                    mediaByArticle[attR.GetString(0)] = (Attachment.FromJson(attR.IsDBNull(1) ? null : attR.GetString(1)),
+                        attR.IsDBNull(2) ? null : attR.GetString(2));
                 }
             }
         }
@@ -303,14 +319,14 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
         {
             HashSet<Author>? authors = null;
             authorsByArticle?.TryGetValue(s.articleID, out authors);
-            IReadOnlyList<Attachment>? attachments = null;
-            attachmentsByArticle?.TryGetValue(s.articleID, out attachments);
+            (IReadOnlyList<Attachment>? Attachments, string? ThumbnailUrl) media = default;
+            mediaByArticle?.TryGetValue(s.articleID, out media);
             var article = new Article(
                 AccountID, s.articleID, s.feedID, s.uniqueID,
                 s.title, s.contentHtml, s.contentText, s.markdown,
                 s.url, s.externalURL, s.summary, s.imageURL,
                 s.datePublished, s.dateModified,
-                authors, attachments, s.status);
+                authors, media.Attachments, s.status, media.ThumbnailUrl);
             _articlesCache[s.articleID] = article;
             set.Add(article);
         }
@@ -353,13 +369,14 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
                 using (var cmd = c.CreateCommand())
                 {
                     cmd.CommandText = @"INSERT INTO articles
-                        (articleID, feedID, uniqueID, title, contentHTML, contentText, markdown, url, externalURL, summary, imageURL, bannerImageURL, datePublished, dateModified, searchRowID, attachments)
-                        VALUES (@articleID, @feedID, @uniqueID, @title, @contentHTML, @contentText, @markdown, @url, @externalURL, @summary, @imageURL, NULL, @datePublished, @dateModified, NULL, @attachments)
+                        (articleID, feedID, uniqueID, title, contentHTML, contentText, markdown, url, externalURL, summary, imageURL, bannerImageURL, datePublished, dateModified, searchRowID, attachments, thumbnailURL)
+                        VALUES (@articleID, @feedID, @uniqueID, @title, @contentHTML, @contentText, @markdown, @url, @externalURL, @summary, @imageURL, NULL, @datePublished, @dateModified, NULL, @attachments, @thumbnailURL)
                         ON CONFLICT(articleID) DO UPDATE SET
                             feedID = excluded.feedID, uniqueID = excluded.uniqueID, title = excluded.title,
                             contentHTML = excluded.contentHTML, contentText = excluded.contentText, markdown = excluded.markdown,
                             url = excluded.url, externalURL = excluded.externalURL, summary = excluded.summary,
                             imageURL = excluded.imageURL,
+                            thumbnailURL = excluded.thumbnailURL,
                             attachments = excluded.attachments,
                             datePublished = COALESCE(excluded.datePublished, articles.datePublished),
                             dateModified = COALESCE(excluded.dateModified, articles.dateModified);";
@@ -374,6 +391,7 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
                     cmd.Parameters.AddWithValue("@externalURL", (object?)a.RawExternalLink ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@summary", (object?)a.Summary ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@imageURL", (object?)a.RawImageLink ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@thumbnailURL", (object?)a.RawThumbnailLink ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@attachments", (object?)Attachment.ToJson(a.Attachments) ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@datePublished", (object?)a.DatePublished?.ToUnixTimestamp() ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@dateModified", (object?)a.DateModified?.ToUnixTimestamp() ?? DBNull.Value);
@@ -441,7 +459,7 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
         => new(article.AccountID, article.ArticleID, article.FeedID, article.UniqueID, article.Title,
             article.ContentHtml, article.ContentText, article.Markdown, article.RawLink, article.RawExternalLink,
             article.Summary, article.RawImageLink, article.DatePublished, article.DateModified, article.Authors,
-            article.Attachments, status);
+            article.Attachments, status, article.RawThumbnailLink);
 
     public Task<HashSet<string>> FetchUnreadArticleIDsAsync(IEnumerable<string> feedIDs)
     {

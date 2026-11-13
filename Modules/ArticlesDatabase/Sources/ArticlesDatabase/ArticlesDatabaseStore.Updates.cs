@@ -59,7 +59,7 @@ public sealed partial class ArticlesDatabaseStore
                 incoming.Add(new Article(AccountID, id, feedID, item.UniqueId,
                     item.Title, item.ContentHtml, item.ContentText, item.Markdown, item.Url, item.ExternalUrl,
                     item.Summary, item.ImageUrl, published ?? previous?.DatePublished, modified ?? previous?.DateModified,
-                    authors is { Count: > 0 } ? authors : null, attachments is { Length: > 0 } ? attachments : null, status));
+                    authors is { Count: > 0 } ? authors : null, attachments is { Length: > 0 } ? attachments : null, status, item.ThumbnailUrl));
             }
 
             var added = incoming.Where(a => !existing.ContainsKey(a.ArticleID)).ToHashSet();

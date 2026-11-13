@@ -9,6 +9,57 @@ public class ArticleUpdateTests : IDisposable
 {
     private readonly ArticlesDatabaseStore _database = new(":memory:", "test");
 
+    private static ParsedItem ThumbnailItem(string? thumbnail) => new(null, "thumbnail", "feed1", null, null, "Title", null,
+        "<p>Body</p>", null, null, null, "https://example.test/full.jpg", null, null, null, null, null, null, thumbnailUrl: thumbnail);
+
+    [Fact]
+    public async Task ParsedThumbnailsRoundTripAndThumbnailOnlyChangesAreDetected()
+    {
+        await _database.UpdateAsync([ThumbnailItem("https://example.test/small.jpg")], "feed1");
+        _database.EmptyCaches();
+        var stored = Assert.Single(await _database.FetchArticlesAsync("feed1"));
+        Assert.Equal("https://example.test/small.jpg", stored.RawThumbnailLink);
+        Assert.Equal("https://example.test/full.jpg", stored.RawImageLink);
+        var changed = Assert.Single((await _database.UpdateAsync([ThumbnailItem("https://example.test/new.jpg")], "feed1")).Updated!);
+        Assert.Same(stored.Status, changed.Status);
+        _database.EmptyCaches();
+        Assert.Equal("https://example.test/new.jpg", Assert.Single(await _database.FetchArticlesAsync("feed1")).RawThumbnailLink);
+        Assert.Null((await _database.UpdateAsync([ThumbnailItem("https://example.test/new.jpg")], "feed1")).Updated);
+        Assert.Null(Assert.Single((await _database.UpdateAsync([ThumbnailItem(null)], "feed1")).Updated!).RawThumbnailLink);
+        _database.EmptyCaches();
+        Assert.Null(Assert.Single(await _database.FetchArticlesAsync("feed1")).RawThumbnailLink);
+    }
+
+    [Fact]
+    public async Task ExistingArticleDatabasesGainThumbnailStorageWithoutLosingArticles()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "thumbnail-migration-" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var legacy = new ArticlesDatabaseStore(path, "test"))
+            {
+                await legacy.UpdateAsync([ThumbnailItem(null)], "feed1");
+                legacy.Queue.Run(connection =>
+                {
+                    using var command = connection.CreateCommand();
+                    command.CommandText = "ALTER TABLE articles DROP COLUMN thumbnailURL;";
+                    command.ExecuteNonQuery();
+                });
+            }
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                using var migrated = new ArticlesDatabaseStore(path, "test");
+                var previous = Assert.Single(await migrated.FetchArticlesAsync("feed1"));
+                Assert.Equal("Title", previous.Title);
+                Assert.Equal("https://example.test/full.jpg", previous.RawImageLink);
+                await migrated.UpdateAsync([ThumbnailItem("https://example.test/small.jpg")], "feed1");
+                migrated.EmptyCaches();
+                Assert.Equal("https://example.test/small.jpg", Assert.Single(await migrated.FetchArticlesAsync("feed1")).RawThumbnailLink);
+            }
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public async Task AttachmentFeedOrderRoundTripsAndReorderingReportsAnUpdate()
     {
