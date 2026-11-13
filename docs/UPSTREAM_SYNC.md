@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`9964dab069b67ef9e8f37444d08e5ba850b1866e`**. This synchronization is in progress.
+`edd83c59d0f16a1187fcf86d53d5c2343cf2f90f`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is changed-image cache notification, `fc2e1eb53d1f1baaa4240cbe5dd6213a5f327785`;
+is image-validation scheduling jitter, `264911cabb27bf8d20f8e3a8954cdfe1b82d4111`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -173,6 +173,26 @@ request coalescing. Their responses never replace the ordinary cached body,
 preventing bodyless 304 responses from reaching unrelated image consumers.
 The existing Windows binary cache already performs atomic replacement.
 
+Validated replacements now notify consumers after the new source is saved.
+Feed-icon and favicon representations are rebuilt, including icons already
+evicted from memory, after older pending decodes finish. Refresh work is tracked,
+reported on failure, canceled and drained with the service. Each window dispatches
+updates to matching timeline/sidebar rows; revisioned references bypass native
+image caching only after a replacement. Ready reader-header icons also receive
+new source revisions without changing article HTML or navigating the document.
+Raw filesystem paths remain unchanged. Notifications preceding initial binding
+are remembered so a late-bound row cannot revive cached old pixels. Windows has
+no separate author-avatar cache corresponding to the Apple avatar invalidation
+and cache-precedence changes.
+
+Transient source failures now use one-minute per-URL and per-host retry delays,
+doubling to a one-hour maximum. HTTP 408 and 429 are transient, not five-day
+failures. A longer valid server `Retry-After` in seconds takes precedence, even
+beyond one hour; unrepresentable intervals are reported and ignored.
+Disk hits and unrelated hosts remain usable. Only a real non-transient network
+response clears a host pause, and connectivity changes reset both kinds of
+delay. Admission rechecks cooldowns after waiting for a thumbnail slot.
+
 Image metadata now lives in `Images.db` using opt-in SQLite WAL mode; other
 database queues retain their existing DELETE default. Checked TRUNCATE checkpoints
 replace image VACUUM maintenance and explicitly report busy readers. Migration
@@ -219,8 +239,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **130 Ported, 39 Covered, 74 Skipped, and 262 Pending**
-source commits, backed by **145 source-attributed Windows port commits**.
+The inventory currently has **137 Ported, 39 Covered, 75 Skipped, and 254 Pending**
+source commits, backed by **152 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -252,10 +272,9 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The latest reader/header/sidebar/navigation gate passes **121 image tests and
-33 UI groups** after URL-base and connectivity recovery integration. Subsequent
-active-cache protection brings the image suite to **124 passing tests**;
-conditional-request isolation passes **141 web tests**. Existing equivalent
+The latest reader/header/sidebar/navigation gate passes **145 image tests and
+33 UI groups** after changed-image presentation and host-retry integration.
+Conditional-request isolation and response metadata pass **141 web tests**. Existing equivalent
 behavior passes 28 binary-cache and 46 image-parser tests.
 The focused native thumbnail probe
 also verifies 1600x800 offline reader images, automatic document routing,
@@ -273,6 +292,20 @@ builds. Negative controls also fail for queued-reader admission, excess slot
 handoff, old URL bases, the former cache threshold, missing network recovery,
 first-frame decoding, active-image eviction, and all seven conditional-request
 isolation cases.
+
+Changed-image controls fail without source notifications, representation
+observers, the native UI subscription, and favicon-cache replacement. The native
+probe verifies replacement dimensions in both the already-visible timeline icon
+and already-ready reader header, an unchanged source path, UI-thread delivery,
+matching sidebar revision, untouched unrelated rows, and retained document state.
+One initial native run timed out; its diagnostic and restored runs passed.
+An integrated run passed 32 of 33 groups but timed out opening the unrelated
+responsive overflow menu; the subsequent complete gate passed all 33 groups.
+Retry controls fail on the original fixed half-hour pause, pre-disk rejection,
+permanent 408/429 handling and per-URL-only cooldowns. Coverage includes exact
+retry boundaries, exponential capping, connectivity/permanent/success resets,
+long and malformed `Retry-After`, other hosts, cached sources during cooldown,
+and in-flight successful/permanent responses ending a host pause.
 
 The x64 Windows application builds with zero warnings/errors. The complete parser
 suite passes 535 tests, and the shared application suite passes 508. Earlier
