@@ -122,6 +122,53 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
         Assert.Equal("icon", reopened.IconUrl("feed"));
     }
 
+    [Fact]
+    public async Task ThumbnailResultsSurviveRestartIncludingNegativeResultsAndChunkedQueries()
+    {
+        var records = Enumerable.Range(0, 501)
+            .Select(index => new ArticleThumbnailRecord(index.ToString(), index % 2 == 0 ? $"https://example.com/{index}.jpg" : null))
+            .ToArray();
+        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+            await database.SaveArticleThumbnailsAsync(records);
+        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        var loaded = await reopened.FetchArticleThumbnailsAsync(records.Select(record => record.ArticleId).Append("missing"));
+        Assert.Equal(records.Length, loaded.Count);
+        Assert.True(records.ToHashSet().SetEquals(loaded));
+    }
+
+    [Fact]
+    public async Task StartupExpiresThumbnailResultsOnlyAfterThirtyThreeDays()
+    {
+        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+            await database.SaveArticleThumbnailsAsync([new("article", null)]);
+        _clock.Advance(ImageMetadataDatabase.FailureRetention);
+        using (var database = new ImageMetadataDatabase(DatabasePath, _clock))
+            Assert.Single(await database.FetchArticleThumbnailsAsync(["article"]));
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        Assert.Empty(await reopened.FetchArticleThumbnailsAsync(["article"]));
+    }
+
+    [Fact]
+    public async Task FailedThumbnailBatchRollsBackEarlierRows()
+    {
+        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        await database.SaveArticleThumbnailsAsync([new("existing", "https://example.com/old.jpg")]);
+        using (var connection = Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                CREATE TRIGGER reject_thumbnail BEFORE INSERT ON articleThumbnail
+                WHEN NEW.articleID='rejected' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;
+                """;
+            command.ExecuteNonQuery();
+        }
+        await Assert.ThrowsAsync<SqliteException>(() => database.SaveArticleThumbnailsAsync(
+            [new("existing", "https://example.com/new.jpg"), new("rejected", null)]));
+        var saved = Assert.Single(await database.FetchArticleThumbnailsAsync(["existing", "rejected"]));
+        Assert.Equal("https://example.com/old.jpg", saved.ThumbnailUrl);
+    }
+
     private long FailureCount()
     {
         using var connection = Open();

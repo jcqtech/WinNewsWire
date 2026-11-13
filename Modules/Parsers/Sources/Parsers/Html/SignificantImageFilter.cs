@@ -31,12 +31,12 @@ public static class SignificantImageFilter
         ("x.com", "/intent/"), ("x.com", "/share")
     ];
 
-    public static bool IsSignificant(string url, int? width, int? height,
+    public static bool IsSignificant(string url, long? width, long? height,
         string? htmlClass = null, string? enclosingLinkUrl = null)
         => HasSignificantDimensions(width, height) && !IsBlockedUrl(url)
             && !HasDecorativeClass(htmlClass) && !IsSharingLink(enclosingLinkUrl);
 
-    public static bool HasSignificantDimensions(int? width, int? height)
+    public static bool HasSignificantDimensions(long? width, long? height)
     {
         if (width < MinimumDimension || height < MinimumDimension) return false;
         return width is not { } w || height is not { } h || (double)Math.Max(w, h) / Math.Min(w, h) <= MaximumAspectRatio;

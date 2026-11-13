@@ -13,6 +13,8 @@
     <ProjectReference Include="..\Web\Web.csproj" />
     <ProjectReference Include="..\ActivityLog\ActivityLog.csproj" />
     <ProjectReference Include="..\HTMLMetadata\HTMLMetadata.csproj" />
+    <ProjectReference Include="..\Articles\Articles.csproj" />
+    <ProjectReference Include="..\Parsers\Parsers.csproj" />
   </ItemGroup>
   <ItemGroup><InternalsVisibleTo Include="Images.Tests" /></ItemGroup>
 </Project>

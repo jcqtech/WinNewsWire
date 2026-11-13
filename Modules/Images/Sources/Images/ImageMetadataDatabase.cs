@@ -35,9 +35,11 @@ public sealed class ImageMetadataDatabase : IDisposable
                     CREATE TABLE IF NOT EXISTS downloadFailure (url TEXT PRIMARY KEY NOT NULL, statusCode INTEGER, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS homePageFavicon (homePageURL TEXT PRIMARY KEY NOT NULL, faviconURL TEXT, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL, lastChecked REAL NOT NULL);
+                    CREATE TABLE IF NOT EXISTS articleThumbnail (articleID TEXT PRIMARY KEY NOT NULL, thumbnailURL TEXT, lastChecked REAL NOT NULL);
                     """;
                 command.ExecuteNonQuery();
                 DownloadFailureTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
+                ArticleThumbnailTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
                 foreach (var row in HomePageFaviconTable.FetchAll(connection)) _favicons[row.HomePageUrl] = row;
                 foreach (var pair in FeedIconUrlTable.FetchAll(connection)) _feedIcons[pair.Key] = pair.Value;
                 foreach (var pair in DownloadFailureTable.FetchAll(connection)) _failures[pair.Key] = pair.Value;
@@ -123,6 +125,24 @@ public sealed class ImageMetadataDatabase : IDisposable
             if (pair.Value < cutoff) _failures.TryRemove(pair.Key, out _);
         return Task.CompletedTask;
     });
+
+    public Task<IReadOnlyList<ArticleThumbnailRecord>> FetchArticleThumbnailsAsync(IEnumerable<string> articleIds)
+    {
+        ArgumentNullException.ThrowIfNull(articleIds);
+        var ids = articleIds.Distinct(StringComparer.Ordinal).ToArray();
+        return _queue.RunAsync(connection => Task.FromResult(ArticleThumbnailTable.Fetch(connection, ids)));
+    }
+
+    public Task SaveArticleThumbnailsAsync(IEnumerable<ArticleThumbnailRecord> records)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        var snapshot = records.ToArray();
+        return _queue.RunAsync(connection =>
+        {
+            ArticleThumbnailTable.Save(connection, snapshot, _clock.GetUtcNow());
+            return Task.CompletedTask;
+        });
+    }
 
     public Task VacuumAsync(CancellationToken ct = default) => _queue.VacuumAsync(ct);
     public void Dispose() { _queue.Dispose(); _disposed = true; _favicons.Clear(); _feedIcons.Clear(); _failures.Clear(); }
