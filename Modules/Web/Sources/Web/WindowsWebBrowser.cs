@@ -27,8 +27,8 @@ public sealed record WindowsWebBrowser(string Name, string ExecutablePath, strin
         IEnumerable<WindowsWebBrowser> browsers, bool inBackground)
     {
         var prepared = url.PreparedForOpeningInBrowser()
-            ?? throw new ArgumentException("Only web and email links can be opened.", nameof(url));
-        if (prepared.Scheme == "mailto" || string.IsNullOrEmpty(selectedBrowser))
+            ?? throw new ArgumentException("Only web, email, and magnet links can be opened.", nameof(url));
+        if (prepared.Scheme is not ("http" or "https") || string.IsNullOrEmpty(selectedBrowser))
             return new(prepared, null, inBackground);
         var browser = browsers.FirstOrDefault(candidate =>
             string.Equals(candidate.Identifier, selectedBrowser, StringComparison.OrdinalIgnoreCase)
@@ -93,15 +93,16 @@ public sealed record WindowsWebBrowser(string Name, string ExecutablePath, strin
     public static void Open(BrowserLaunchRequest request, IntPtr owner = default)
     {
         var prepared = request.Url.PreparedForOpeningInBrowser()
-            ?? throw new ArgumentException("Only web and email links can be opened.", nameof(request));
+            ?? throw new ArgumentException("Only web, email, and magnet links can be opened.", nameof(request));
+        bool useBrowser = prepared.Scheme is "http" or "https" && request.BrowserPath is not null;
         var info = new ShellExecuteInfo
         {
             Size = Marshal.SizeOf<ShellExecuteInfo>(),
             Mask = 0x00000400 | 0x00000100,
             Window = owner,
             Verb = "open",
-            File = request.BrowserPath ?? prepared.AbsoluteUri,
-            Parameters = request.BrowserPath is null ? null : QuoteArgument(prepared.AbsoluteUri),
+            File = useBrowser ? request.BrowserPath : prepared.AbsoluteUri,
+            Parameters = useBrowser ? QuoteArgument(prepared.AbsoluteUri) : null,
             Show = request.InBackground ? 4 : 1
         };
         if (!ShellExecuteExW(ref info)) throw new Win32Exception(Marshal.GetLastWin32Error());

@@ -34,4 +34,13 @@ public class UrlPreparedForOpeningTests
     [Fact]
     public void AllowedUrlPassesThroughUnchanged()
         => Assert.Equal("http://example.com/path?q=1", new Uri("http://example.com/path?q=1").PreparedForOpeningInBrowser()?.AbsoluteUri);
+
+    [Theory]
+    [InlineData("magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=example")]
+    [InlineData("Magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a")]
+    public void AllowsDesktopMagnetLinks(string value)
+    {
+        var url = new Uri(value);
+        Assert.Same(url, url.PreparedForOpeningInBrowser());
+    }
 }

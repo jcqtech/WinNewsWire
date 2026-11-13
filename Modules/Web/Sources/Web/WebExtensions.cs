@@ -10,7 +10,7 @@ namespace WinNewsWire.Web;
 public static class WebExtensions
 {
     public static Uri? PreparedForOpeningInBrowser(this Uri url)
-        => url.IsAbsoluteUri && url.Scheme is "http" or "https" or "mailto" ? url : null;
+        => url.IsAbsoluteUri && url.Scheme is "http" or "https" or "mailto" or "magnet" ? url : null;
 
     /// <summary>
     /// Port of <c>Dictionary.urlQueryString</c>. Encodes each key and value

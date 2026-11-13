@@ -73,6 +73,17 @@ public sealed class WindowsWebBrowserTests : IDisposable
         Assert.False(request.SelectedBrowserUnavailable);
     }
 
+    [Fact]
+    public void MagnetUsesTheSystemAssociationEvenWithASelectedBrowser()
+    {
+        var browser = Browser("Selected", "app", "selected");
+        var url = new Uri("magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a");
+        var request = WindowsWebBrowser.CreateLaunchRequest(url, browser.Identifier, [browser], false);
+        Assert.Same(url, request.Url);
+        Assert.Null(request.BrowserPath);
+        Assert.False(request.SelectedBrowserUnavailable);
+    }
+
     [Theory]
     [InlineData("file:///C:/Windows/notepad.exe")]
     [InlineData("javascript:alert(1)")]

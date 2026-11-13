@@ -158,7 +158,7 @@ public sealed partial class MainContent
         if (_shuttingDown) return;
         if (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || !IsWebAddress(uri))
         {
-            if (uri?.Scheme == "mailto") await OpenLinkInBrowserAsync(link);
+            if (uri?.Scheme is "mailto" or "magnet") await OpenLinkInBrowserAsync(link);
             else ViewModel.StatusMessage = "This link cannot be opened in Web View. Only web addresses are supported.";
             return;
         }
