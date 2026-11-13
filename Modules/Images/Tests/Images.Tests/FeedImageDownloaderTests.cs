@@ -180,6 +180,9 @@ public sealed class FeedImageDownloaderTests
         Assert.False(fixture.ImageDatabase.RecentlyFailed(feed.IconUrl!));
         Assert.Single(fixture.Requests);
         fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(await fixture.Images.IconAsync(feed));
+        Assert.Single(fixture.Requests);
+        fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
         Assert.Equal(feed.IconUrl, (await fixture.Images.IconAsync(feed))?.Url);
         Assert.Equal(feed.IconUrl, fixture.ImageDatabase.IconUrl(Feed));
         Assert.Equal(2, requests);
@@ -196,7 +199,7 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task UndecodableSuccessIsLoggedAndRetriedAsATransientCaptivePortalResponse()
+    public async Task UndecodableSuccessIsLoggedAndExcludedUntilNetworkChanges()
     {
         int calls = 0;
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK,
@@ -214,6 +217,12 @@ public sealed class FeedImageDownloaderTests
         Assert.Null(await fixture.Images.FaviconAsync(source));
         Assert.Equal(1, calls);
         fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.Null(await fixture.Images.FaviconAsync(source));
+        Assert.Equal(1, calls);
+        fixture.Clock.Advance(TimeSpan.FromDays(7));
+        Assert.Null(await fixture.Images.FaviconAsync(source));
+        Assert.Equal(1, calls);
+        fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
         Assert.NotNull(await fixture.Images.FaviconAsync(source));
         Assert.Equal(2, calls);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(source.FaviconUrl!));
@@ -806,7 +815,7 @@ public sealed class FeedImageDownloaderTests
         Assert.False(fixture.ImageDatabase.IsUnsuitableForThumbnail(url));
         decodeFailure = null;
         Assert.Null(await fixture.Thumbnails.SourceAsync(url));
-        Assert.Null(decodeFailure);
+        Assert.Equal(url, decodeFailure);
         Assert.Single(fixture.Requests);
     }
 

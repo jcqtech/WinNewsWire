@@ -857,8 +857,10 @@ public sealed class DownloadedImageCacheTests
         Assert.Equal(3, requests);
     }
 
-    [Fact]
-    public async Task CaptivePortalDataContinuesTransientBackoffInsteadOfResettingOrPersistingFailure()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CaptivePortalDataStaysExcludedUntilNetworkNotificationWithoutPersistingFailure(bool available)
     {
         int requests = 0;
         await using var fixture = new Fixture((_, _) =>
@@ -880,6 +882,12 @@ public sealed class DownloadedImageCacheTests
         Assert.Null(await fixture.FetchAsync(cache, "portal"));
         Assert.Equal(2, requests);
         fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(await fixture.FetchAsync(cache, "portal"));
+        Assert.Equal(2, requests);
+        fixture.Clock.Advance(TimeSpan.FromDays(7));
+        Assert.Null(await fixture.FetchAsync(cache, "portal"));
+        Assert.Equal(2, requests);
+        await Task.Run(() => cache.NetworkStatusChanged(null, available));
         Assert.NotNull(await fixture.FetchAsync(cache, "portal"));
         Assert.Equal(3, requests);
     }

@@ -40,6 +40,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly record struct RetryDelay(DateTimeOffset RetryDate, TimeSpan Delay);
     private readonly Dictionary<string, RetryDelay> _retryDelays = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RetryDelay> _hostRetryDelays = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _nonImageUrls = new(StringComparer.Ordinal);
     private readonly Dictionary<string, LinkedListNode<DownloadedImage>> _cache = new(StringComparer.Ordinal);
     private readonly LinkedList<DownloadedImage> _cacheOrder = [];
     private long _cacheBytes;
@@ -167,6 +168,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             }
         }
         finally { _sourceDiskGate?.Release(); }
+        lock (_gate)
+            if (_nonImageUrls.Contains(url)) return new(null, IsTransient: true, DecodingFailed: true);
         bool NetworkAllowsDownload(ThumbnailPriority priority)
             => request.NetworkAllowsDownloads?.Invoke() != false && request.PriorityAllowsDownloads?.Invoke(priority) != false;
         if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
@@ -236,6 +239,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             if (_configuration.StoresSourceData)
             {
+                lock (_gate) _nonImageUrls.Add(url);
                 NoteTransientFailure(url, statusCode: (int)response.StatusCode);
                 return new(null, IsTransient: true, DecodingFailed: true);
             }
@@ -454,6 +458,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             _retryDelays.Clear();
             _hostRetryDelays.Clear();
+            _nonImageUrls.Clear();
         }
     }
 
