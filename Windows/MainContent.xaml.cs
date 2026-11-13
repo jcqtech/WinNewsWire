@@ -313,6 +313,7 @@ public sealed partial class MainContent : UserControl
             _articleScrollViewer = FindDescendantByName(ArticleListView, "ScrollViewer") as ScrollViewer
                 ?? throw new InvalidOperationException("The article list scroll viewer was not created.");
             _articleScrollViewer.IsScrollInertiaEnabled = true;
+            InitializeTimelineThumbnails();
             _articleWheelHandler = ArticleListView_PointerWheelChanged;
             _articleWheelSurface = FindDescendantByName(_articleScrollViewer, "ScrollContentPresenter") as UIElement
                 ?? _articleScrollViewer.Content as UIElement
@@ -457,6 +458,7 @@ public sealed partial class MainContent : UserControl
         try
         {
             _shuttingDown = true;
+            await StopTimelineThumbnailsAsync();
             DisposeStatusBar();
             CancelTimelineReveal();
             ArticleListView.PointerEntered -= ArticleListView_PointerEntered;
@@ -1002,6 +1004,9 @@ public sealed partial class MainContent : UserControl
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (_shuttingDown) return;
+        if (e.PropertyName == nameof(ViewModel.ArticleItems)) ObserveThumbnailItems();
+        if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout))
+            QueueTimelineThumbnailRefresh();
         if (e.PropertyName is nameof(ViewModel.SidebarStatus) or nameof(ViewModel.SelectedArticle)
             or nameof(ViewModel.HoveredLink) or nameof(ViewModel.IsSidebarVisible) or nameof(ViewModel.IsUnifiedLayout))
             QueueStatusBarUpdate();

@@ -104,7 +104,11 @@ public partial class FeedItem : ObservableObject
     {
         if (Id != item.Id || AccountID != item.AccountID)
             throw new ArgumentException("A timeline row cannot change article identity.", nameof(item));
-        _sourceArticle = item.SourceArticle;
+        if (!ReferenceEquals(_sourceArticle, item.SourceArticle))
+        {
+            _sourceArticle = item.SourceArticle;
+            OnPropertyChanged(nameof(SourceArticle));
+        }
         if (_title is not null) Title = item.Title;
         if (_formattedTitle is not null) FormattedTitle = item.FormattedTitle;
         if (_attributedTitle is not null) AttributedTitle = item.AttributedTitle;

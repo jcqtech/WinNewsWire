@@ -12,6 +12,8 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
     private readonly Lazy<ImageResourceDownloader> _large;
     private readonly object _gate = new();
     private Task? _shutdown;
+    /// <summary>Raised on a worker after persisting a non-transient failure; UI subscribers must dispatch.</summary>
+    public event EventHandler<string>? DownloadFailed;
 
     public ThumbnailDownloader(ImageMetadataDatabase database, string cacheFolder, Func<bool> networkAllowsDownloads,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null)
@@ -24,9 +26,18 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
             limiter, networkAllowsDownloads);
         _small = new(database, Path.Combine(cacheFolder, "Thumbnails"), small,
             ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, downloader, clock, activityLog);
-        _large = new(() => new(database, Path.Combine(cacheFolder, "LargeThumbnails"), small with { MaxPixelSize = 1200 },
-            ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, downloader, clock, activityLog));
+        _small.DownloadFailed += ResourceDownloadFailed;
+        _large = new(() =>
+        {
+            var service = new ImageResourceDownloader(database, Path.Combine(cacheFolder, "LargeThumbnails"),
+                small with { MaxPixelSize = 1200 }, ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail,
+                downloader, clock, activityLog);
+            service.DownloadFailed += ResourceDownloadFailed;
+            return service;
+        });
     }
+
+    private void ResourceDownloadFailed(object? sender, string url) => DownloadFailed?.Invoke(this, url);
 
     public async Task<DownloadedImage?> ImageAsync(string url, ThumbnailMode mode,
         CancellationToken ct = default, string? activityDetail = null)

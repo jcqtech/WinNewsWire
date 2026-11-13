@@ -405,6 +405,25 @@ public sealed class FeedImageDownloaderTests
         Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, true)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, false)]
+    [InlineData(HttpStatusCode.OK, true)]
+    public async Task ThumbnailFailureNotificationsFollowPersistedVerdictsAndExcludeTransientErrors(HttpStatusCode status, bool expected)
+    {
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(status, Image)));
+        const string url = Home + "failed.png";
+        string? notified = null;
+        fixture.Thumbnails.DownloadFailed += (_, failedUrl) =>
+        {
+            Assert.True(fixture.ImageDatabase.RecentlyFailed(failedUrl)
+                || fixture.ImageDatabase.RecentlyLackedSignificantDimensions(failedUrl));
+            notified = failedUrl;
+        };
+        Assert.Null(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small));
+        Assert.Equal(expected ? url : null, notified);
+    }
+
     [Fact]
     public async Task ThumbnailNetworkPolicyDoesNotSuppressDiskOrMemoryHitsOrCreateFailureBackoff()
     {

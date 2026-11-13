@@ -35,6 +35,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     private Task? _shutdown;
 
     internal event EventHandler<string>? ThumbnailAvailable;
+    internal event EventHandler<IReadOnlySet<string>>? ThumbnailUrlsAvailable;
+    internal event EventHandler<string>? ThumbnailDownloadFailed;
 #if PARITY_PROBE
     internal int ProbeDecodes;
     internal bool ProbeDecodedOnUIThread;
@@ -50,7 +52,13 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         _dispatcher = dispatcher;
         VerifyAccess();
         _cacheByteLimit = cacheByteLimit;
-        _backend = new(() => Task.Run(createBackend ?? CreateBackend));
+        _backend = new(() => Task.Run(() =>
+        {
+            var backend = (createBackend ?? CreateBackend)();
+            backend.Finder.ThumbnailUrlsAvailable += FinderUrlsAvailable;
+            backend.Downloads.DownloadFailed += BackendDownloadFailed;
+            return backend;
+        }));
     }
 
     private static (ArticleThumbnailFinder, ThumbnailDownloader) CreateBackend()
@@ -73,12 +81,35 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(article);
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
+        return RunOperationAsync(token => FindImageAsync(article, mode, token), ct);
+    }
+
+    internal Task<string?> ThumbnailUrlAsync(Article article, ThumbnailMode mode, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(article);
+        if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
+        return RunOperationAsync(token => ResolveUrlAsync(article, mode, token), ct);
+    }
+
+    internal Task DiscoverAsync(IEnumerable<Article> articles, CancellationToken ct = default)
+    {
+        var snapshot = articles.ToArray();
+        return RunOperationAsync(async token =>
+        {
+            var backend = await _backend.Value.ConfigureAwait(false);
+            await backend.Finder.DiscoverThumbnailUrlsAsync(snapshot, token).ConfigureAwait(false);
+            return true;
+        }, ct);
+    }
+
+    private Task<T> RunOperationAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken ct)
+    {
         VerifyAccess();
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_stopping, this);
             ct.ThrowIfCancellationRequested();
-            var operation = Task.Run(() => FindImageAsync(article, mode, _lifetime.Token));
+            var operation = Task.Run(() => work(_lifetime.Token));
             _operations.Add(operation);
             _ = operation.ContinueWith(completed =>
             {
@@ -88,7 +119,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         }
     }
 
-    private async Task<SoftwareBitmapSource?> FindImageAsync(Article article, ThumbnailMode mode, CancellationToken ct)
+    private async Task<string?> ResolveUrlAsync(Article article, ThumbnailMode mode, CancellationToken ct)
     {
         var backend = await _backend.Value.ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
@@ -99,11 +130,43 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             try { await discovery.Value.ConfigureAwait(false); }
             finally { _discovering.TryRemove(new KeyValuePair<string, Lazy<Task>>(article.ArticleID, discovery)); }
         }
-        if (backend.Finder.ThumbnailUrl(article, mode) is not { } url) return null;
-        var key = (url, mode);
-        var pending = _pending.GetOrAdd(key, _ => new(() => LoadImageAsync(url, mode, article.Title, backend.Downloads, ct)));
-        try { return await pending.Value.ConfigureAwait(false); }
-        finally { _pending.TryRemove(new KeyValuePair<(string, ThumbnailMode), Lazy<Task<SoftwareBitmapSource?>>>(key, pending)); }
+        return backend.Finder.ThumbnailUrl(article, mode);
+    }
+
+    private async Task<SoftwareBitmapSource?> FindImageAsync(Article article, ThumbnailMode mode, CancellationToken ct)
+    {
+        var tried = new HashSet<string>(StringComparer.Ordinal);
+        while (await ResolveUrlAsync(article, mode, ct).ConfigureAwait(false) is { } url && tried.Add(url))
+        {
+            var backend = await _backend.Value.ConfigureAwait(false);
+            var key = (url, mode);
+            var pending = _pending.GetOrAdd(key, _ => new(() => LoadImageAsync(url, mode, article.Title, backend.Downloads, ct)));
+            try
+            {
+                if (await pending.Value.ConfigureAwait(false) is { } image) return image;
+            }
+            finally { _pending.TryRemove(new KeyValuePair<(string, ThumbnailMode), Lazy<Task<SoftwareBitmapSource?>>>(key, pending)); }
+        }
+        return null;
+    }
+
+    private void FinderUrlsAvailable(object? sender, IReadOnlySet<string> ids)
+        => DispatchNotification(() => ThumbnailUrlsAvailable?.Invoke(this, ids));
+
+    private void BackendDownloadFailed(object? sender, string url)
+        => DispatchNotification(() => ThumbnailDownloadFailed?.Invoke(this, url));
+
+    private void DispatchNotification(Action notification)
+    {
+        lock (_gate)
+            if (_stopping) return;
+        if (!_dispatcher.TryEnqueue(() =>
+        {
+            lock (_gate)
+                if (_stopping) return;
+            notification();
+        }))
+            throw new InvalidOperationException("The thumbnail UI dispatcher is unavailable.");
     }
 
     private async Task<SoftwareBitmapSource?> LoadImageAsync(string url, ThumbnailMode mode, string? title,
@@ -214,6 +277,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
                 if (_backend.IsValueCreated)
                 {
                     var backend = await _backend.Value;
+                    backend.Finder.ThumbnailUrlsAvailable -= FinderUrlsAvailable;
+                    backend.Downloads.DownloadFailed -= BackendDownloadFailed;
                     await backend.Downloads.DisposeAsync();
                 }
             }

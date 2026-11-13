@@ -36,6 +36,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private long _cacheBytes;
     private bool _stopping;
     private Task? _shutdown;
+    internal event EventHandler<string>? DownloadFailed;
 
     internal ImageResourceDownloader(ImageMetadataDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
@@ -152,7 +153,11 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             _log.DidFail(activity, new HttpRequestException("Image request returned HTTP " + (int)response.StatusCode
                 + (response.Success ? " with no image bytes." : "."), null, response.StatusCode));
             if (transient) { lock (_gate) _transientAttempts[url] = _clock.GetUtcNow(); }
-            else await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
+            else
+            {
+                await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
+                DownloadFailed?.Invoke(this, url);
+            }
             return new(null, transient);
         }
         byte[] processed;
@@ -166,6 +171,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             _log.DidFail(activity, error);
             ct.ThrowIfCancellationRequested();
             await _database.RecordInsignificantDimensionsAsync(url).ConfigureAwait(false);
+            DownloadFailed?.Invoke(this, url);
             return new(null);
         }
         catch (InvalidDataException error)
@@ -173,6 +179,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             _log.DidFail(activity, new InvalidDataException($"Could not decode image bytes (HTTP {(int)response.StatusCode}).", error));
             ct.ThrowIfCancellationRequested();
             await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
+            DownloadFailed?.Invoke(this, url);
             return new(null);
         }
         catch (OperationCanceledException error) when (ct.IsCancellationRequested)
@@ -216,6 +223,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                 Trace.TraceWarning($"Ignoring an unsuitable cached thumbnail {path}: {error.Message}");
                 if (path == destination) _diskCache.Remove(key);
                 await _database.RecordInsignificantDimensionsAsync(url).ConfigureAwait(false);
+                DownloadFailed?.Invoke(this, url);
                 return null;
             }
             catch (InvalidDataException error)

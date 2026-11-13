@@ -513,6 +513,7 @@
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <Grid Grid.Column="0" Width="12" VerticalAlignment="Top" Margin="0,4,0,0">
                                             <Ellipse Width="8" Height="8"
@@ -551,6 +552,10 @@
                                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                                             </StackPanel>
                                         </StackPanel>
+                                        <helpers:ThumbnailView Grid.Column="3" Width="0" Height="0" CornerRadius="4"
+                                                               VerticalAlignment="Top" Visibility="Collapsed"
+                                                               Tag="{x:Bind SourceArticle, Mode=OneWay}"
+                                                               Loaded="TimelineThumbnail_Loaded" Unloaded="TimelineThumbnail_Unloaded" />
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
