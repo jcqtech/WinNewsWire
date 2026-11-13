@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`07468ada23264d1fc2ca7f29a8997a3985f110be`**. This synchronization is in progress.
+`381c5e4d970b485051e7bbc80abc41def0c4b302`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is configurable SQLite WAL support, `ea3080011e4d1f4a6fef449e7cbf45378e8cea4a`;
+is local image attribute insertion, `92059c4c10bd1fde89bce750473e274e9e0b0c9c`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -148,6 +148,16 @@ validators wait 30 days. Windows reuses its connectivity/connection-cost policy.
 not poison a valid cached copy. Background checks cancel and drain on shutdown.
 Existing metadata databases gain the validation-date column through a migration.
 
+Image metadata now lives in `Images.db` using opt-in SQLite WAL mode; other
+database queues retain their existing DELETE default. Checked TRUNCATE checkpoints
+replace image VACUUM maintenance and explicitly report busy readers. Migration
+imports the original three legacy tables and optional Windows thumbnail/source
+records in one transaction, preserves destination overrides and recovers legacy
+WAL snapshots. The destination is checkpointed before removing `ImageMetadata.db`
+and its sidecars. Unlike upstream's discard-on-error policy, import failures roll
+back, retain the legacy database and propagate for retry. Account statistics now
+include each account database's WAL/shared-memory sidecars.
+
 The WinUI thumbnail service initializes and decodes on workers, creates native
 presentation sources and availability notifications on the UI dispatcher, and
 bounds decoded images by URL/mode to 128 MiB, accounting actual bitmap stride.
@@ -180,8 +190,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **110 Ported, 31 Covered, 72 Skipped, and 292 Pending**
-source commits, backed by **127 source-attributed Windows port commits**. Two
+The inventory currently has **114 Ported, 32 Covered, 72 Skipped, and 287 Pending**
+source commits, backed by **131 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -200,7 +210,7 @@ probe verifies both directions. Search results reuse the same timeline and read
 current shared display settings, avoiding the separate AppKit search controller's
 stale pre-view-load snapshot.
 
-Still pending are configurable SQLite WAL support and later image-cache rewrites,
+Still pending are later image-cache rewrites,
 finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
