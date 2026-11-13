@@ -11,6 +11,131 @@ public sealed class DownloadedImageCacheTests
     private static readonly DateTimeOffset Now = new(2026, 10, 27, 0, 0, 0, TimeSpan.Zero);
     private static string Url(string name) => "https://images.test/" + name + ".png";
 
+    [Theory]
+    [InlineData(null, true, 8)]
+    [InlineData(60, true, 3)]
+    [InlineData(0, true, 3)]
+    [InlineData(604800, true, 7)]
+    [InlineData(3456000, true, 30)]
+    [InlineData(60, false, 30)]
+    public void RecheckDatesRespectValidatorsAndClampServerFreshness(int? maxAgeSeconds, bool validators, int days)
+        => Assert.Equal(Now.AddDays(days), DownloadedImageCache.CalculateNextCheck(
+            maxAgeSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null, validators, Now));
+
+    [Fact]
+    public async Task CachedIconsReturnImmediatelyAndA304KeepsTheSourceAndItsValidators()
+    {
+        int requests = 0;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (Interlocked.Increment(ref requests) == 1) return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
+            Assert.Equal("\"v1\"", request.Headers.IfNoneMatch.ToString());
+            started.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            var response = new HttpResponseMessage(HttpStatusCode.NotModified);
+            response.Headers.TryAddWithoutValidation("Cache-Control", "max-age=60");
+            return response;
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
+        var modified = File.GetLastWriteTimeUtc(fixture.PathFor("icon"));
+        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(release.Task.IsCompleted);
+        Assert.Equal(Fixture.Image, File.ReadAllBytes(fixture.PathFor("icon")));
+        release.TrySetResult();
+        await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(modified, File.GetLastWriteTimeUtc(fixture.PathFor("icon")));
+        var validation = Assert.IsType<DownloadedImageValidation>(await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")));
+        Assert.Equal(fixture.Clock.GetUtcNow().AddDays(3), validation.NextCheck);
+        Assert.Equal("\"v1\"", validation.ConditionalGet?.ETag);
+        Assert.Equal(2, requests);
+    }
+
+    [Theory]
+    [InlineData(200, false)]
+    [InlineData(200, true)]
+    [InlineData(404, false)]
+    [InlineData(503, false)]
+    [InlineData(0, false)]
+    public async Task ChangedSourcesAreReplacedButRevalidationFailuresDoNotPoisonTheCachedCopy(int status, bool corrupt)
+    {
+        int requests = 0;
+        var replacement = Fixture.Image.Concat(new byte[] { 0 }).ToArray();
+        await using var fixture = new Fixture((_, _) =>
+        {
+            if (Interlocked.Increment(ref requests) == 1)
+                return Task.FromResult(ValidatedResponse(HttpStatusCode.OK, Fixture.Image));
+            if (status == 0) throw new HttpRequestException("Fixture offline.");
+            return Task.FromResult(ValidatedResponse((HttpStatusCode)status, corrupt ? "invalid image"u8.ToArray() : replacement));
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
+        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        var cached = Assert.IsType<DownloadedImage>(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
+        Assert.Equal(Fixture.Image, cached.Data);
+        await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        var expected = status == 200 && !corrupt ? replacement : Fixture.Image;
+        Assert.Equal(expected, File.ReadAllBytes(fixture.PathFor("icon")));
+        Assert.False(fixture.Database.RecentlyFailed(Url("icon")));
+        Assert.Equal(expected, (await fixture.FetchAsync(cache, "icon"))?.Data);
+        var validation = Assert.IsType<DownloadedImageValidation>(await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")));
+        Assert.Equal(status == 0 || corrupt ? fixture.Clock.GetUtcNow() : fixture.Clock.GetUtcNow().AddDays(8), validation.NextCheck);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task ThumbnailReadsAndBlockedNetworksDoNotRevalidate(bool checksForUpdates, bool networkAllowed)
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            return Task.FromResult(ValidatedResponse(HttpStatusCode.OK, Fixture.Image));
+        });
+        fixture.UpdatesAllowed = networkAllowed;
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.NotNull(await fixture.FetchAsync(cache, "a"));
+        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        Assert.NotNull(await fixture.FetchAsync(cache, "a", checksForUpdates));
+        await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, requests);
+    }
+
+    [Fact]
+    public async Task ShutdownCancelsAndDrainsBackgroundRevalidationWithoutPoisoningTheCopy()
+    {
+        int requests = 0;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (_, ct) =>
+        {
+            if (Interlocked.Increment(ref requests) == 1) return ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
+            started.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+            throw new InvalidOperationException("Unreachable");
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.NotNull(await fixture.FetchAsync(cache, "a"));
+        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        Assert.NotNull(await fixture.FetchAsync(cache, "a", checksForUpdates: true));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await cache.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(Fixture.Image, File.ReadAllBytes(fixture.PathFor("a")));
+        Assert.False(fixture.Database.RecentlyFailed(Url("a")));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => fixture.FetchAsync(cache, "a"));
+    }
+
+    private static HttpResponseMessage ValidatedResponse(HttpStatusCode status, byte[] data)
+    {
+        var response = new HttpResponseMessage(status) { Content = new ByteArrayContent(data) };
+        response.Headers.TryAddWithoutValidation("ETag", "\"v1\"");
+        return response;
+    }
+
     [Fact]
     public void LeastRecentImagesAndOrphansAreRemovedDownToTheTarget()
     {
@@ -123,16 +248,19 @@ public sealed class DownloadedImageCacheTests
     {
         internal static readonly byte[] Image = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZssAAAAASUVORK5CYII=");
         private readonly string _directory = Path.Combine(Path.GetTempPath(), "downloaded-image-cache-" + Guid.NewGuid().ToString("N"));
-        private readonly HttpClient _http = new(new Handler());
+        private readonly HttpClient _http;
         private readonly Downloader _downloader;
         internal TestClock Clock { get; } = new();
         internal ImageMetadataDatabase Database { get; }
+        internal bool UpdatesAllowed { get; set; } = true;
         internal string SourceDirectory => Path.Combine(_directory, "DownloadedImages");
         internal string PathFor(string name) => Path.Combine(SourceDirectory, Url(name).Md5Hex());
-        internal Fixture()
+        internal Fixture(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>? respond = null)
         {
             Directory.CreateDirectory(SourceDirectory);
             Database = new(":memory:", Clock);
+            _http = new(new Handler(respond ?? ((_, _) => Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Image) }))));
             _downloader = new(_http, Clock);
         }
         internal async Task SeedAsync(string name)
@@ -142,10 +270,11 @@ public sealed class DownloadedImageCacheTests
             await Database.SaveDownloadedImageAsync(new(Url(name), Image.LongLength, (1, 1), null));
         }
         internal DownloadedImageCache CreateCache(int limitImages, int hardLimitImages)
-            => new(Database, _directory, Image.LongLength * limitImages, Image.LongLength * hardLimitImages, _downloader, Clock);
-        internal async Task<DownloadedImage?> FetchAsync(DownloadedImageCache cache, string name)
+            => new(Database, _directory, Image.LongLength * limitImages, Image.LongLength * hardLimitImages,
+                _downloader, Clock, networkAllowsUpdates: () => UpdatesAllowed);
+        internal async Task<DownloadedImage?> FetchAsync(DownloadedImageCache cache, string name, bool checksForUpdates = false)
             => (await cache.FetchAsync(Url(name), new(ActivityOwner.FeedImageDownloader,
-                ActivityKind.DownloadFeedImage(Url(name)), null, null), default)).Image;
+                ActivityKind.DownloadFeedImage(Url(name)), null, null, checksForUpdates), default)).Image;
         public ValueTask DisposeAsync()
         {
             Database.Dispose();
@@ -153,10 +282,10 @@ public sealed class DownloadedImageCacheTests
             Directory.Delete(_directory, recursive: true);
             return ValueTask.CompletedTask;
         }
-        private sealed class Handler : HttpMessageHandler
+        private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
         {
             protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-                => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Image) });
+                => respond(request, ct);
         }
     }
 

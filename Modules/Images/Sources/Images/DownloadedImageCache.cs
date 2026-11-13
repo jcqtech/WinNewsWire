@@ -17,6 +17,14 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private readonly TimeProvider _clock;
     private readonly ByteLimit _limit;
     private readonly ByteLimit _hardLimit;
+    private readonly Downloader _downloader;
+    private readonly DownloadLimiter _downloadLimiter = new(4);
+    private readonly Func<bool> _networkAllowsUpdates;
+    private readonly object _backgroundGate = new();
+    private readonly HashSet<Task> _backgroundTasks = [];
+    private readonly CancellationTokenSource _lifetime = new();
+    private bool _stopping;
+    private Task? _shutdown;
     // Pruning and source read/save callbacks hold this gate; network requests stay concurrent.
     private readonly SemaphoreSlim _diskGate = new(1, 1);
     private readonly Dictionary<string, DateTimeOffset> _accessDatesSaved = new(StringComparer.Ordinal);
@@ -31,14 +39,17 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     }
 
     public DownloadedImageCache(ImageMetadataDatabase database, string cacheFolder,
-        Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null)
-        : this(database, cacheFolder, 300L * 1024 * 1024, 1024L * 1024 * 1024, downloader, clock, activityLog)
+        Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null,
+        Func<bool>? networkAllowsUpdates = null)
+        : this(database, cacheFolder, 300L * 1024 * 1024, 1024L * 1024 * 1024,
+            downloader, clock, activityLog, networkAllowsUpdates)
     {
     }
 
     internal DownloadedImageCache(ImageMetadataDatabase database, string cacheFolder,
         long maximumByteCount, long hardMaximumByteCount,
-        Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null)
+        Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null,
+        Func<bool>? networkAllowsUpdates = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFolder);
@@ -46,29 +57,92 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         if (hardMaximumByteCount < maximumByteCount) throw new ArgumentOutOfRangeException(nameof(hardMaximumByteCount));
         _database = database;
         _clock = clock ?? TimeProvider.System;
+        _downloader = downloader ?? Downloader.Shared;
+        _networkAllowsUpdates = networkAllowsUpdates ?? (() => NetworkMonitor.IsAvailable);
         _limit = new(maximumByteCount);
         _hardLimit = new(hardMaximumByteCount);
         _removalByteCount = maximumByteCount;
         _diskCache = new(Path.Combine(cacheFolder, "DownloadedImages"));
         _downloads = new(database, _diskCache.Folder,
-            new(MaxPixelSize, ScaledImageFormat.Jpeg, DownloadLimiter: new DownloadLimiter(4), StoresSourceData: true),
-            ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, downloader, clock, activityLog,
+            new(MaxPixelSize, ScaledImageFormat.Jpeg, DownloadLimiter: _downloadLimiter, StoresSourceData: true),
+            ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, _downloader, clock, activityLog,
             sourceDiskGate: _diskGate, sourceWasRead: SaveAccessDateIfNeededAsync, sourceWasSaved: ImageWasSavedAsync);
         _initialCleanup = Task.Run(RemoveImagesOverSizeLimitAsync);
     }
 
     internal async Task<ImageResourceResult> FetchAsync(string url, ImageResourceRequest request, CancellationToken ct)
     {
+        lock (_backgroundGate) ObjectDisposedException.ThrowIf(_stopping, this);
         await _initialCleanup.WaitAsync(ct).ConfigureAwait(false);
         return await _downloads.FetchAsync(url, ct, request: request).ConfigureAwait(false);
     }
 
-    private async Task SaveAccessDateIfNeededAsync(string url)
+    private async Task SaveAccessDateIfNeededAsync(string url, ImageResourceRequest request)
     {
         var now = _clock.GetUtcNow();
         if (_accessDatesSaved.TryGetValue(url, out var saved) && now - saved < TimeSpan.FromDays(1)) return;
         await _database.SaveDownloadedImageAccessDateAsync(url).ConfigureAwait(false);
         _accessDatesSaved[url] = now;
+        if (request.ChecksForUpdates) ScheduleRevalidation(url);
+    }
+
+    private void ScheduleRevalidation(string url)
+    {
+        lock (_backgroundGate)
+        {
+            if (_stopping) return;
+            var task = Task.Run(() => RevalidateIfDueAsync(url, _lifetime.Token));
+            _backgroundTasks.Add(task);
+            _ = task.ContinueWith(completed =>
+            {
+                if (completed.IsFaulted) Trace.TraceError($"Image revalidation failed: {completed.Exception}");
+                lock (_backgroundGate) _backgroundTasks.Remove(completed);
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+    }
+
+    internal Task WaitForRevalidationsAsync()
+    {
+        lock (_backgroundGate) return Task.WhenAll(_backgroundTasks.ToArray());
+    }
+
+    private async Task RevalidateIfDueAsync(string url, CancellationToken ct)
+    {
+        try
+        {
+            var validation = await _database.FetchDownloadedImageValidationAsync(url).ConfigureAwait(false);
+            if (validation is null || validation.NextCheck > _clock.GetUtcNow() || !_networkAllowsUpdates()) return;
+            using var lease = await _downloadLimiter.AcquireAsync(ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            if (!_networkAllowsUpdates()) return;
+            var response = await _downloader.DownloadAsync(url, validation.ConditionalGet, ct,
+                UserAgentStyle.Browser, cachesResponse: false).ConfigureAwait(false);
+            if (response.Success && response.Data is { Length: > 0 } data)
+            {
+                await _downloads.StoreUpdatedSourceAsync(url, data, response, ct).ConfigureAwait(false);
+                Trace.TraceInformation($"Replaced changed downloaded image at {url}.");
+                return;
+            }
+            if (!response.NotModified)
+                Trace.TraceWarning($"Image revalidation for {url} returned HTTP {(int)response.StatusCode}; keeping the cached image.");
+            await _database.SaveDownloadedImageNextCheckAsync(url,
+                CalculateNextCheck(response.CacheMaxAge, validation.ConditionalGet is not null, _clock.GetUtcNow()))
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException
+            or Microsoft.Data.Sqlite.SqliteException or OperationCanceledException)
+        {
+            Trace.TraceWarning($"Image revalidation for {url} failed; keeping the cached image: {error}");
+        }
+    }
+
+    internal static DateTimeOffset CalculateNextCheck(TimeSpan? maxAge, bool hasValidators, DateTimeOffset now)
+    {
+        var interval = !hasValidators ? TimeSpan.FromDays(30) : maxAge is { } age
+            ? TimeSpan.FromTicks(Math.Clamp(age.Ticks, TimeSpan.FromDays(3).Ticks, TimeSpan.FromDays(30).Ticks))
+            : TimeSpan.FromDays(8);
+        return now + interval;
     }
 
     private Task ImageWasSavedAsync(string url, long byteCount)
@@ -161,9 +235,24 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         return new(urls, keys, bytes);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_backgroundGate)
+        {
+            if (_shutdown is not null) return new(_shutdown);
+            _stopping = true;
+            _lifetime.Cancel();
+            return new(_shutdown = DrainAsync(_backgroundTasks.ToArray()));
+        }
+    }
+
+    private async Task DrainAsync(Task[] backgroundTasks)
     {
         try { await _downloads.DisposeAsync().ConfigureAwait(false); }
-        finally { await _initialCleanup.ConfigureAwait(false); }
+        finally
+        {
+            try { await Task.WhenAll(backgroundTasks.Append(_initialCleanup)).ConfigureAwait(false); }
+            finally { _lifetime.Dispose(); }
+        }
     }
 }

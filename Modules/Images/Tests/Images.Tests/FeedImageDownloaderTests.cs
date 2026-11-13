@@ -410,6 +410,7 @@ public sealed class FeedImageDownloaderTests
         {
             var response = Response(HttpStatusCode.OK, Bitmap(1600, 800));
             response.Headers.TryAddWithoutValidation("ETag", etag);
+            response.Headers.TryAddWithoutValidation("Cache-Control", "max-age=60");
             response.Content.Headers.TryAddWithoutValidation("Last-Modified", modified);
             return Task.FromResult(response);
         }, persistentMetadata: true);
@@ -420,7 +421,7 @@ public sealed class FeedImageDownloaderTests
         }.ToString());
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified FROM downloadedImage;";
+        command.CommandText = "SELECT url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck FROM downloadedImage;";
         using var rows = command.ExecuteReader();
         Assert.True(rows.Read());
         Assert.Equal(url, rows.GetString(0));
@@ -430,7 +431,35 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal((fixture.Clock.GetUtcNow() - DateTimeOffset.UnixEpoch).TotalSeconds, rows.GetDouble(4));
         Assert.Equal(etag, rows.GetString(5));
         Assert.Equal(modified, rows.GetString(6));
+        Assert.Equal((fixture.Clock.GetUtcNow().AddDays(3) - DateTimeOffset.UnixEpoch).TotalSeconds, rows.GetDouble(7));
         Assert.False(rows.Read());
+    }
+
+    [Fact]
+    public async Task GenericIconReadsScheduleConditionalValidationAfterTheirMemoryCacheIsCleared()
+    {
+        int requests = 0;
+        string? conditionalTag = null;
+        await using var fixture = new Fixture((request, _) =>
+        {
+            if (Interlocked.Increment(ref requests) > 1)
+            {
+                conditionalTag = request.Headers.IfNoneMatch.ToString();
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotModified));
+            }
+            var response = Response(HttpStatusCode.OK, Bitmap(128, 128));
+            response.Headers.TryAddWithoutValidation("ETag", "\"icon-v1\"");
+            return Task.FromResult(response);
+        });
+        var feed = new FeedImageSource(Feed, Home, IconUrl: Home + "icon.bmp");
+        Assert.NotNull(await fixture.Images.IconAsync(feed));
+        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        fixture.Images.EmptyCache();
+        Assert.NotNull(await fixture.Images.IconAsync(feed));
+        await fixture.Images.DownloadedImages.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, requests);
+        Assert.Equal("\"icon-v1\"", conditionalTag);
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(feed.IconUrl!));
     }
 
     [Theory]
@@ -698,7 +727,8 @@ public sealed class FeedImageDownloaderTests
             _maxPixelSize = maxPixelSize;
             Activity = new ActivityLogger(Clock);
             Metadata = new(HtmlDatabase, _downloader, Clock, Activity);
-            _downloadedImages = new(ImageDatabase, CacheDirectory, _downloader, Clock, Activity);
+            _downloadedImages = new(ImageDatabase, CacheDirectory, _downloader, Clock, Activity,
+                networkAllowsUpdates: () => NetworkPolicy?.Invoke() ?? NetworkAllowed);
             Images = CreateImages();
             Thumbnails = new(ImageDatabase, CacheDirectory, () => NetworkPolicy?.Invoke() ?? NetworkAllowed,
                 _downloader, Clock, Activity, _downloadedImages);

@@ -15,7 +15,7 @@ internal sealed record ImageResourceConfiguration(int MaxPixelSize, ScaledImageF
     Func<bool>? NetworkAllowsDownloads = null,
     bool StoresSourceData = false, bool KeepsDiskCache = false);
 internal sealed record ImageResourceRequest(ActivityOwner Owner, ActivityKind Kind, string? Detail,
-    Func<bool>? NetworkAllowsDownloads);
+    Func<bool>? NetworkAllowsDownloads, bool ChecksForUpdates = false);
 
 internal sealed class ImageResourceDownloader : IAsyncDisposable
 {
@@ -30,7 +30,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly ActivityOwner _owner;
     private readonly Func<string, ActivityKind> _kind;
     private readonly SemaphoreSlim? _sourceDiskGate;
-    private readonly Func<string, Task>? _sourceWasRead;
+    private readonly Func<string, ImageResourceRequest, Task>? _sourceWasRead;
     private readonly Func<string, long, Task>? _sourceWasSaved;
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -48,7 +48,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
         TimeProvider? clock = null, ActivityLogger? activityLog = null, string? legacyCacheFolder = null,
         DownloadedImageCache? sourceCache = null, SemaphoreSlim? sourceDiskGate = null,
-        Func<string, Task>? sourceWasRead = null, Func<string, long, Task>? sourceWasSaved = null)
+        Func<string, ImageResourceRequest, Task>? sourceWasRead = null, Func<string, long, Task>? sourceWasSaved = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFolder);
@@ -142,7 +142,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             if (await ReadFromDiskAsync(url, key, ct).ConfigureAwait(false) is { } cached)
             {
-                if (_sourceWasRead is not null) await _sourceWasRead(url).ConfigureAwait(false);
+                if (_sourceWasRead is not null) await _sourceWasRead(url, request).ConfigureAwait(false);
                 return Cache(cached);
             }
         }
@@ -210,17 +210,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         try
         {
             ct.ThrowIfCancellationRequested();
-            if (_sourceDiskGate is not null) await _sourceDiskGate.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                await _diskCache.SetAsync(key, processed, ct).ConfigureAwait(false);
-                if (_configuration.StoresSourceData && OperatingSystem.IsWindows())
-                    await _database.SaveDownloadedImageAsync(new(url, processed.LongLength,
-                        WindowsImage.LargestFramePixelSize(processed), response.ConditionalGet)).ConfigureAwait(false);
-                await _database.ClearFailureAsync(url).ConfigureAwait(false);
-                if (_sourceWasSaved is not null) await _sourceWasSaved(url, processed.LongLength).ConfigureAwait(false);
-            }
-            finally { _sourceDiskGate?.Release(); }
+            await StoreImageAsync(url, processed, response, ct).ConfigureAwait(false);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or OperationCanceledException)
         {
@@ -231,9 +221,32 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         return Cache(new(url, path, processed));
     }
 
+    internal Task StoreUpdatedSourceAsync(string url, byte[] data, DownloadResult response, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        return StoreImageAsync(url, ProcessImage(data), response, ct);
+    }
+
+    private async Task StoreImageAsync(string url, byte[] processed, DownloadResult response, CancellationToken ct)
+    {
+        if (_sourceDiskGate is not null) await _sourceDiskGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await _diskCache.SetAsync(url.Md5Hex(), processed, ct).ConfigureAwait(false);
+            if (_configuration.StoresSourceData && OperatingSystem.IsWindows())
+                await _database.SaveDownloadedImageAsync(new(url, processed.LongLength,
+                    WindowsImage.LargestFramePixelSize(processed), response.ConditionalGet,
+                    DownloadedImageCache.CalculateNextCheck(response.CacheMaxAge,
+                        response.ConditionalGet is not null, _clock.GetUtcNow()))).ConfigureAwait(false);
+            await _database.ClearFailureAsync(url).ConfigureAwait(false);
+            if (_sourceWasSaved is not null) await _sourceWasSaved(url, processed.LongLength).ConfigureAwait(false);
+        }
+        finally { _sourceDiskGate?.Release(); }
+    }
+
     private async Task<ImageResourceResult> ImageFromSourceAsync(string url, ImageResourceRequest request, CancellationToken ct)
     {
-        var result = await _sourceCache!.FetchAsync(url, request, ct).ConfigureAwait(false);
+        var result = await _sourceCache!.FetchAsync(url, request with { ChecksForUpdates = true }, ct).ConfigureAwait(false);
         if (result.Image is not { } source) return result;
         try
         {

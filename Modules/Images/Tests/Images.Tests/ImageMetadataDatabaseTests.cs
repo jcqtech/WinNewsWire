@@ -151,6 +151,30 @@ public sealed class ImageMetadataDatabaseTests : IDisposable
     }
 
     [Fact]
+    public async Task ExistingDownloadedImageTablesGainValidationDatesWithoutLosingSourcesOrValidators()
+    {
+        using (var connection = Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                CREATE TABLE downloadedImage (url TEXT PRIMARY KEY NOT NULL,byteCount INTEGER NOT NULL,
+                    pixelWidth INTEGER,pixelHeight INTEGER,lastAccessed REAL NOT NULL,etag TEXT,lastModified TEXT);
+                INSERT INTO downloadedImage VALUES ('https://site.test/icon',100,48,48,0,'"old"',NULL);
+                """;
+            command.ExecuteNonQuery();
+        }
+        using var database = new ImageMetadataDatabase(DatabasePath, _clock);
+        var old = Assert.IsType<DownloadedImageValidation>(await database.FetchDownloadedImageValidationAsync("https://site.test/icon"));
+        Assert.Equal(DateTimeOffset.UnixEpoch, old.NextCheck);
+        Assert.Equal("\"old\"", old.ConditionalGet?.ETag);
+        Assert.True(database.IsUnsuitableForThumbnail("https://site.test/icon"));
+        await database.SaveDownloadedImageNextCheckAsync("https://site.test/icon", _clock.GetUtcNow().AddDays(3));
+        using var reopened = new ImageMetadataDatabase(DatabasePath, _clock);
+        Assert.Equal(_clock.GetUtcNow().AddDays(3),
+            (await reopened.FetchDownloadedImageValidationAsync("https://site.test/icon"))?.NextCheck);
+    }
+
+    [Fact]
     public async Task StartupDeletesFailuresOnlyAfterThirtyThreeDays()
     {
         using (var database = new ImageMetadataDatabase(DatabasePath, _clock)) await database.RecordFailureAsync("https://site.test/icon", 404);

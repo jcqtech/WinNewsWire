@@ -10,7 +10,8 @@ public sealed record DownloadResult(
     byte[]? Data,
     string? ContentType,
     ConditionalGetInfo? ConditionalGet,
-    bool ReturnedFromCache = false)
+    bool ReturnedFromCache = false,
+    TimeSpan? CacheMaxAge = null)
 {
     public bool NotModified => StatusCode == HttpStatusCode.NotModified;
     public bool Success => (int)StatusCode is >= 200 and < 300;
@@ -109,7 +110,8 @@ public sealed class Downloader
         var contentType = resp.Content.Headers.ContentType?.MediaType;
         var data = resp.StatusCode == HttpStatusCode.NotModified ? null : await HttpContentReader.ReadAsync(resp.Content, ct).ConfigureAwait(false);
         var conditionalGet = ConditionalGetInfo.FromResponse(resp.Headers, resp.Content.Headers);
-        var result = new DownloadResult(resp.RequestMessage?.RequestUri?.AbsoluteUri ?? url, resp.StatusCode, data, contentType, conditionalGet);
+        var result = new DownloadResult(resp.RequestMessage?.RequestUri?.AbsoluteUri ?? url, resp.StatusCode, data,
+            contentType, conditionalGet, CacheMaxAge: resp.Headers.CacheControl?.MaxAge);
         ct.ThrowIfCancellationRequested();
         if (cachesResponse) _cache.Add(key, result);
         return result;

@@ -14,14 +14,22 @@ public sealed record DownloadedImage(string Url, string Path, byte[] Data);
 
 public sealed class FeedImageDownloader : IAsyncDisposable
 {
+    private static Func<bool> _sharedBackgroundNetworkPolicy = () => NetworkMonitor.IsAvailable;
     private static readonly Lazy<FeedImageDownloader> SharedDownloader = new(() =>
         new(ImageMetadataDatabase.Shared, HtmlMetadataDownloader.Shared, AppConfig.CachesDirectory,
-            legacyCacheFolder: Path.Combine(AppConfig.DataDirectory, "Favicons")));
+            legacyCacheFolder: Path.Combine(AppConfig.DataDirectory, "Favicons"),
+            networkAllowsUpdates: () => Volatile.Read(ref _sharedBackgroundNetworkPolicy)()));
     // Opening and maintaining the metadata databases must not happen on a UI caller's first image request.
     private static readonly Lazy<Task<FeedImageDownloader>> SharedInitialization = new(() => Task.Run(() => Shared));
     public static FeedImageDownloader Shared => SharedDownloader.Value;
     public static bool IsSharedCreated => SharedDownloader.IsValueCreated;
     public static Task<FeedImageDownloader> GetSharedAsync() => SharedInitialization.Value;
+
+    public static void ConfigureSharedBackgroundNetworkPolicy(Func<bool> policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        Volatile.Write(ref _sharedBackgroundNetworkPolicy, policy);
+    }
 
     public static async ValueTask DisposeSharedAsync()
     {
@@ -57,7 +65,8 @@ public sealed class FeedImageDownloader : IAsyncDisposable
 
     public FeedImageDownloader(ImageMetadataDatabase database, HtmlMetadataDownloader metadata, string cacheFolder,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null, int? maxPixelSize = null,
-        string? legacyCacheFolder = null, DownloadedImageCache? downloadedImages = null)
+        string? legacyCacheFolder = null, DownloadedImageCache? downloadedImages = null,
+        Func<bool>? networkAllowsUpdates = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(metadata);
@@ -66,7 +75,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         _metadata = metadata;
         int pixelSize = maxPixelSize ?? DefaultMaxPixelSize();
         string legacyFolder = Path.GetFullPath(legacyCacheFolder ?? cacheFolder);
-        DownloadedImages = downloadedImages ?? new(database, cacheFolder, downloader, clock, activityLog);
+        DownloadedImages = downloadedImages ?? new(database, cacheFolder, downloader, clock, activityLog, networkAllowsUpdates);
         _ownsDownloadedImages = downloadedImages is null;
         _favicons = new(database, Path.Combine(cacheFolder, "Favicons"), new(pixelSize, KeepsDiskCache: true),
             ActivityOwner.FaviconDownloader, ActivityKind.DownloadFavicon, downloader, clock, activityLog, legacyFolder,

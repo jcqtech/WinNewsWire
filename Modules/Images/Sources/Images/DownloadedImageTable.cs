@@ -4,12 +4,52 @@ using WinNewsWire.Web;
 namespace WinNewsWire.Images;
 
 public sealed record DownloadedImageRecord(string Url, long ByteCount,
-    (uint Width, uint Height)? PixelSize, ConditionalGetInfo? ConditionalGet);
+    (uint Width, uint Height)? PixelSize, ConditionalGetInfo? ConditionalGet, DateTimeOffset? NextCheck = null);
+
+public sealed record DownloadedImageValidation(DateTimeOffset NextCheck, ConditionalGetInfo? ConditionalGet);
 
 public sealed record DownloadedImageUsage(string Url, long ByteCount, DateTimeOffset LastAccessed);
 
 internal static class DownloadedImageTable
 {
+    internal static void EnsureValidationColumn(SqliteConnection connection)
+    {
+        bool exists = false;
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA table_info(downloadedImage);";
+            using var rows = command.ExecuteReader();
+            while (rows.Read())
+                if (rows.GetString(1) == "nextCheck") exists = true;
+        }
+        if (exists) return;
+        using var migration = connection.CreateCommand();
+        migration.CommandText = "ALTER TABLE downloadedImage ADD COLUMN nextCheck REAL NOT NULL DEFAULT 0;";
+        migration.ExecuteNonQuery();
+    }
+
+    internal static DownloadedImageValidation? FetchValidation(SqliteConnection connection, string url)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT nextCheck,lastModified,etag FROM downloadedImage WHERE url=$url;";
+        command.Parameters.AddWithValue("$url", url);
+        using var rows = command.ExecuteReader();
+        if (!rows.Read()) return null;
+        string? modified = rows.IsDBNull(1) ? null : rows.GetString(1);
+        string? etag = rows.IsDBNull(2) ? null : rows.GetString(2);
+        return new(DateTimeOffset.UnixEpoch.AddSeconds(rows.GetDouble(0)),
+            modified is null && etag is null ? null : new(modified, etag));
+    }
+
+    internal static void SaveNextCheck(SqliteConnection connection, string url, DateTimeOffset nextCheck)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE downloadedImage SET nextCheck=$next WHERE url=$url;";
+        command.Parameters.AddWithValue("$url", url);
+        command.Parameters.AddWithValue("$next", (nextCheck - DateTimeOffset.UnixEpoch).TotalSeconds);
+        command.ExecuteNonQuery();
+    }
+
     internal static IReadOnlyList<DownloadedImageUsage> FetchUsageByLeastRecentAccess(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
@@ -65,8 +105,8 @@ internal static class DownloadedImageTable
     {
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT OR REPLACE INTO downloadedImage (url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified)
-            VALUES ($url,$bytes,$width,$height,$accessed,$etag,$modified);
+            INSERT OR REPLACE INTO downloadedImage (url,byteCount,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck)
+            VALUES ($url,$bytes,$width,$height,$accessed,$etag,$modified,$next);
             """;
         command.Parameters.AddWithValue("$url", row.Url);
         command.Parameters.AddWithValue("$bytes", row.ByteCount);
@@ -75,6 +115,8 @@ internal static class DownloadedImageTable
         command.Parameters.AddWithValue("$accessed", (now - DateTimeOffset.UnixEpoch).TotalSeconds);
         command.Parameters.AddWithValue("$etag", (object?)row.ConditionalGet?.ETag ?? DBNull.Value);
         command.Parameters.AddWithValue("$modified", (object?)row.ConditionalGet?.LastModified ?? DBNull.Value);
+        var next = row.NextCheck ?? DownloadedImageCache.CalculateNextCheck(null, row.ConditionalGet is not null, now);
+        command.Parameters.AddWithValue("$next", (next - DateTimeOffset.UnixEpoch).TotalSeconds);
         command.ExecuteNonQuery();
     }
 }

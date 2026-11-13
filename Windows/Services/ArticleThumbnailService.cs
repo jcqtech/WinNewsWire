@@ -75,7 +75,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             downloadedImages: FeedImageDownloader.Shared.DownloadedImages));
     }
 
-    private static bool NetworkAllowsDownloads()
+    internal static bool NetworkAllowsDownloads()
     {
         if (!NetworkMonitor.IsAvailable) return false;
         var profile = NetworkInformation.GetInternetConnectionProfile();

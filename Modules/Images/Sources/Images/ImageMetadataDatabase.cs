@@ -38,9 +38,10 @@ public sealed class ImageMetadataDatabase : IDisposable
                     CREATE TABLE IF NOT EXISTS homePageFavicon (homePageURL TEXT PRIMARY KEY NOT NULL, faviconURL TEXT, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS articleThumbnailURLs (articleID TEXT PRIMARY KEY NOT NULL, thumbnailURLs TEXT, lastChecked REAL NOT NULL);
-                    CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, byteCount INTEGER NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT);
+                    CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, byteCount INTEGER NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT, nextCheck REAL NOT NULL DEFAULT 0);
                     """;
                 command.ExecuteNonQuery();
+                DownloadedImageTable.EnsureValidationColumn(connection);
                 DownloadFailureTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
                 ArticleThumbnailTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetention);
                 foreach (var row in HomePageFaviconTable.FetchAll(connection)) _favicons[row.HomePageUrl] = row;
@@ -107,6 +108,22 @@ public sealed class ImageMetadataDatabase : IDisposable
         return _queue.RunAsync(connection =>
         {
             DownloadedImageTable.SaveAccessDate(connection, url, _clock.GetUtcNow());
+            return Task.CompletedTask;
+        });
+    }
+
+    public Task<DownloadedImageValidation?> FetchDownloadedImageValidationAsync(string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        return _queue.RunAsync(connection => Task.FromResult(DownloadedImageTable.FetchValidation(connection, url)));
+    }
+
+    public Task SaveDownloadedImageNextCheckAsync(string url, DateTimeOffset nextCheck)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        return _queue.RunAsync(connection =>
+        {
+            DownloadedImageTable.SaveNextCheck(connection, url, nextCheck);
             return Task.CompletedTask;
         });
     }
