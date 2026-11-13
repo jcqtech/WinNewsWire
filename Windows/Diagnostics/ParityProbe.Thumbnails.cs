@@ -175,7 +175,8 @@ internal static partial class ParityProbe
         Require(await service.ThumbnailAsync(article, ThumbnailMode.Small) is not null && requests == downloaded,
             "Offline thumbnail display did not reuse disk data.");
         networkAllowed = true;
-        await CheckTimelineThumbnailsAsync(window, service, requested, heldStarted, releaseHeld, releaseMissing);
+        await CheckTimelineThumbnailsAsync(window, service, requested, heldStarted, releaseHeld, releaseMissing,
+            allowed => networkAllowed = allowed);
         Require(failureOnUI && failures == 1, "Permanent thumbnail failures were not dispatched once to the UI.");
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
@@ -195,6 +196,7 @@ internal static partial class ParityProbe
             WholeImageFit = true, CustomLetterboxFill = true, TopAlignedPortraitCrop = true,
             CenteredWideCrop = true, CropUpdatesOnResize = true, LargeImageAlignsWithIconOrText = true,
             HiddenModeStopsNewRequests = true, MenuAndPreferencesShareMode = true,
+            SharedAvailabilityFillsOfflinePlaceholder = true,
             FailedPreferenceWritesRestoreSelectionAndReport = true,
             FeedIconsAlwaysNeverAutomatic = true, FeedIconsColumnException = true,
             FeedIconsSharedSettingsOnUI = true, FeedIconsFailedWriteRecovery = true };
@@ -202,7 +204,7 @@ internal static partial class ParityProbe
 
     private static async Task CheckTimelineThumbnailsAsync(MainWindow window, ArticleThumbnailService service,
         ConcurrentQueue<string> requests, TaskCompletionSource heldStarted, TaskCompletionSource releaseHeld,
-        TaskCompletionSource releaseMissing)
+        TaskCompletionSource releaseMissing, Action<bool> setNetworkAllowed)
     {
         var content = window.ProbeContent;
         var model = content.ViewModel;
@@ -442,9 +444,43 @@ internal static partial class ParityProbe
                 preferences.Close();
                 window.Activate();
             }
+
+            setNetworkAllowed(false);
+            var recoveryArticle = ArticleFor(0, "https://thumbnail.test/availability-only.bmp");
+            rows[0].UpdateFrom(Row(recoveryArticle));
+            try
+            {
+                await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>().Any(view =>
+                    ReferenceEquals(view.Tag, recoveryArticle) && view.Visibility == Visibility.Visible
+                    && view.ImageSource is null && !content.ProbeThumbnailRequestIsLoading(view))),
+                    "Offline row settles with a thumbnail placeholder");
+                await Task.Delay(250);
+                // Finish phased bindings before an unrelated rebind can mask a missing availability update.
+                await new RenderTargetBitmap().RenderAsync(list);
+                await WaitFor(() => Task.FromResult(content.ProbeThumbnailWorkIsIdle
+                    && ((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex == 0),
+                    "Offline layout and thumbnail admission drain before external availability");
+                Require(!requests.Contains("/availability-only.bmp"), "An offline row admitted a network download.");
+                setNetworkAllowed(true);
+                Require(await service.ThumbnailAsync(recoveryArticle, ThumbnailMode.Large) is not null,
+                    "Another consumer did not make the thumbnail available.");
+                await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>().Any(view =>
+                    ReferenceEquals(view.Tag, recoveryArticle) && view.ImageSource is not null)),
+                    "Shared thumbnail availability fills the settled placeholder without scrolling");
+            }
+            catch
+            {
+                File.WriteAllText(Path.Combine(OutputDirectory, "thumbnail-availability-state.json"),
+                    System.Text.Json.JsonSerializer.Serialize(content.ProbeTimelineThumbnailState,
+                        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                throw;
+            }
+            Require(ReferenceEquals(model.SelectedArticle, rows[0]),
+                "Shared thumbnail availability changed the selected article.");
         }
         finally
         {
+            setNetworkAllowed(true);
             releaseHeld.TrySetResult();
             releaseMissing.TrySetResult();
             model.ArticleItems = previousItems;

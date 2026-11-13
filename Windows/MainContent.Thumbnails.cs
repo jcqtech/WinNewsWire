@@ -48,6 +48,12 @@ public sealed partial class MainContent
         => _timelineThumbnails[view].Request?.Token
             ?? throw new InvalidOperationException("The thumbnail view has no active request.");
 
+    internal bool ProbeThumbnailRequestIsLoading(ThumbnailView view)
+        => _timelineThumbnails.TryGetValue(view, out var binding) && binding.Loading;
+
+    internal bool ProbeThumbnailWorkIsIdle
+        => _thumbnailTasks.Count == 0 && !_thumbnailRefreshQueued && !_visibleThumbnailRefreshQueued;
+
     internal object ProbeTimelineThumbnailState => new
     {
         ShowsTimelineThumbnails,
@@ -58,10 +64,11 @@ public sealed partial class MainContent
         {
             Article = (pair.Key.Tag as Article)?.ArticleID,
             BoundArticle = pair.Value.Article?.ArticleID,
-            pair.Value.Loading, pair.Value.HasThumbnail,
+            pair.Value.Loading, pair.Value.HasThumbnail, pair.Value.ImageRequested,
             HasImage = pair.Key.ImageSource is not null,
             Visibility = pair.Key.Visibility.ToString(),
-            pair.Key.Width, pair.Key.Height,
+            Width = double.IsFinite(pair.Key.Width) ? (double?)pair.Key.Width : null,
+            Height = double.IsFinite(pair.Key.Height) ? (double?)pair.Key.Height : null,
             Visible = IsVisibleTimelineThumbnail(pair.Key)
         }).ToArray()
     };
@@ -70,10 +77,12 @@ public sealed partial class MainContent
     {
         if (_thumbnailService is not null)
         {
+            _thumbnailService.ThumbnailAvailable -= TimelineThumbnailAvailable;
             _thumbnailService.ThumbnailUrlsAvailable -= TimelineThumbnailUrlsAvailable;
             _thumbnailService.ThumbnailDownloadFailed -= TimelineThumbnailDownloadFailed;
         }
         _thumbnailService = service;
+        _thumbnailService.ThumbnailAvailable += TimelineThumbnailAvailable;
         _thumbnailService.ThumbnailUrlsAvailable += TimelineThumbnailUrlsAvailable;
         _thumbnailService.ThumbnailDownloadFailed += TimelineThumbnailDownloadFailed;
         QueueTimelineThumbnailRefresh();
@@ -84,6 +93,7 @@ public sealed partial class MainContent
     {
         ViewModel.TimelineArticlesChanged += TimelineFeedIconArticlesChanged;
         _thumbnailService = AppRuntime.AppService.Shared.ThumbnailImages;
+        _thumbnailService.ThumbnailAvailable += TimelineThumbnailAvailable;
         _thumbnailService.ThumbnailUrlsAvailable += TimelineThumbnailUrlsAvailable;
         _thumbnailService.ThumbnailDownloadFailed += TimelineThumbnailDownloadFailed;
         _articleScrollViewer!.ViewChanged += TimelineThumbnailsViewChanged;
@@ -266,6 +276,16 @@ public sealed partial class MainContent
             foreach (var view in grid.Children.OfType<ThumbnailView>()) UpdateThumbnailSize(view);
     }
 
+    private void TimelineThumbnailAvailable(object? sender, string url)
+    {
+        if (!ShowsTimelineThumbnails) return;
+        foreach (var pair in _timelineThumbnails.ToArray())
+            if (!pair.Value.Loading && pair.Key.ImageSource is null
+                && string.Equals(pair.Value.Url, url, StringComparison.Ordinal)
+                && IsVisibleTimelineThumbnail(pair.Key))
+                RefreshTimelineThumbnail(pair.Key);
+    }
+
     private void TimelineThumbnailUrlsAvailable(object? sender, IReadOnlySet<string> ids)
     {
         if (!ShowsTimelineThumbnails) return;
@@ -364,6 +384,7 @@ public sealed partial class MainContent
         if (_thumbnailItems is not null) _thumbnailItems.CollectionChanged -= ThumbnailItemsChanged;
         if (_thumbnailService is not null)
         {
+            _thumbnailService.ThumbnailAvailable -= TimelineThumbnailAvailable;
             _thumbnailService.ThumbnailUrlsAvailable -= TimelineThumbnailUrlsAvailable;
             _thumbnailService.ThumbnailDownloadFailed -= TimelineThumbnailDownloadFailed;
         }
