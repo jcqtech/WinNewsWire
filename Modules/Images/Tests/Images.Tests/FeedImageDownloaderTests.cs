@@ -639,6 +639,8 @@ public sealed class FeedImageDownloaderTests
     [Theory]
     [InlineData(HttpStatusCode.NotFound, true)]
     [InlineData(HttpStatusCode.ServiceUnavailable, false)]
+    [InlineData(HttpStatusCode.RequestTimeout, false)]
+    [InlineData(HttpStatusCode.TooManyRequests, false)]
     public async Task ThumbnailFailureNotificationsFollowPersistedVerdictsAndExcludeTransientErrors(HttpStatusCode status, bool expected)
     {
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(status, Image)));
@@ -651,6 +653,16 @@ public sealed class FeedImageDownloaderTests
         };
         Assert.Null(await fixture.Thumbnails.SourceAsync(url));
         Assert.Equal(expected ? url : null, notified);
+        Assert.Equal(expected, fixture.ImageDatabase.RecentlyFailed(url));
+        if (!expected)
+        {
+            Assert.Null(await fixture.Thumbnails.SourceAsync(url));
+            Assert.Single(fixture.Requests);
+            fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+            Assert.Null(await fixture.Thumbnails.SourceAsync(url));
+            Assert.Equal(2, fixture.Requests.Count);
+            Assert.Null(notified);
+        }
     }
 
     [Fact]

@@ -180,7 +180,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         if (!response.Success || response.Data is not { Length: > 0 } bytes)
         {
-            bool transient = (int)response.StatusCode is >= 500 and <= 599;
+            bool transient = (int)response.StatusCode is >= 500 and <= 599 or 408 or 429;
             _log.DidFail(activity, new HttpRequestException("Image request returned HTTP " + (int)response.StatusCode
                 + (response.Success ? " with no image bytes." : "."), null, response.StatusCode));
             if (transient) NoteTransientFailure(url);
