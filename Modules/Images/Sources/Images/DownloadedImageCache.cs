@@ -168,6 +168,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         var now = _clock.GetUtcNow();
         if (_accessDatesSaved.TryGetValue(url, out var saved) && now - saved < TimeSpan.FromDays(1)) return;
         await _database.SaveDownloadedImageAccessDateAsync(url).ConfigureAwait(false);
+        if (_accessDatesSaved.Count >= 10_000) _accessDatesSaved.Clear();
         _accessDatesSaved[url] = now;
         if (checksForUpdates) ScheduleRevalidation(url);
     }
@@ -244,6 +245,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
 
     private Task ImageWasSavedAsync(string url, long byteCount)
     {
+        if (_accessDatesSaved.Count >= 10_000) _accessDatesSaved.Clear();
         _accessDatesSaved[url] = _clock.GetUtcNow();
         if (_totalByteCount is { } total) _totalByteCount = checked(total + byteCount);
         return _totalByteCount is null || _totalByteCount > _removalByteCount

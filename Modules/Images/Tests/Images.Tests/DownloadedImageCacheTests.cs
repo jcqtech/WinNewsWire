@@ -490,6 +490,24 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
+    public async Task AccessDateThrottleIsBoundedWithoutLosingPersistentUsage()
+    {
+        await using var fixture = new Fixture();
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.NotNull(await fixture.FetchAsync(cache, "a"));
+        var saved = fixture.Clock.GetUtcNow();
+        fixture.Clock.Advance(TimeSpan.FromHours(23));
+        await cache.ImageWasUsedAsync(Url("a"), false, default);
+        Assert.Equal(saved, Assert.Single(await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).LastAccessed);
+        for (int index = 0; index < 10_000; index++)
+            await cache.ImageWasUsedAsync(Url("other-" + index), false, default);
+        await cache.ImageWasUsedAsync(Url("a"), false, default);
+        Assert.Equal(fixture.Clock.GetUtcNow(),
+            Assert.Single(await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).LastAccessed);
+        Assert.True(File.Exists(fixture.PathFor("a")));
+    }
+
+    [Fact]
     public async Task DiskHitsSaveAccessDatesAtMostOnceADayIncludingTheBoundary()
     {
         await using var fixture = new Fixture();
