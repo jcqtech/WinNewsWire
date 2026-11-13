@@ -69,6 +69,17 @@ public class HtmlImageTests
         Assert.True(SignificantImageFilter.IsSignificant("https://gravatar.com.example.net/avatar/photo.jpg", null, null));
     }
 
+    [Theory]
+    [InlineData("https://example.com/1x1.gif")]
+    [InlineData("https://example.com/PIXEL.png")]
+    [InlineData("https://example.com/blank.gif")]
+    [InlineData("https://example.com/spacer.gif")]
+    [InlineData("https://example.com/transparent.png")]
+    [InlineData("https://example.com/open/123")]
+    [InlineData("https://example.com/track/event.gif")]
+    public void TrackingNamesAreRejectedWithoutDeclaredDimensions(string url)
+        => Assert.Null(First($"""<img src="{url}">"""));
+
     [Fact]
     public void UndeclaredDimensionsAreAccepted()
         => Assert.Equal(new HtmlImage("https://example.com/photo.jpg", null, null), First("""<img src="/photo.jpg">"""));

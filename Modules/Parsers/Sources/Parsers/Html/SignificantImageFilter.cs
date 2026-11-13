@@ -5,6 +5,11 @@ public static class SignificantImageFilter
     public const int MinimumDimension = 64;
     public const double MaximumAspectRatio = 4;
 
+    private static readonly HashSet<string> BlockedFileNames = new(StringComparer.OrdinalIgnoreCase)
+        { "1x1", "blank", "pixel", "spacer", "transparent" };
+    private static readonly HashSet<string> BlockedPathComponents = new(StringComparer.OrdinalIgnoreCase)
+        { "open", "track" };
+
     private static readonly (string Host, string Path)[] BlockedImagePrefixes =
     [
         ("addtoany.com", "/"), ("feedburner.com", "/"), ("feeds.wordpress.com", "/"),
@@ -39,7 +44,10 @@ public static class SignificantImageFilter
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https")
             || string.IsNullOrEmpty(url.Host)) return true;
-        return Path.GetExtension(url.AbsolutePath).Equals(".svg", StringComparison.OrdinalIgnoreCase)
+        var path = Uri.UnescapeDataString(url.AbsolutePath);
+        return Path.GetExtension(path).Equals(".svg", StringComparison.OrdinalIgnoreCase)
+            || BlockedFileNames.Contains(Path.GetFileNameWithoutExtension(path))
+            || path.Split('/').Any(BlockedPathComponents.Contains)
             || Matches(url, BlockedImagePrefixes) || MediaRss.IsGravatar(url);
     }
 
