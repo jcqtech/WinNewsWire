@@ -312,6 +312,31 @@ public sealed class ArticleRendererTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ThemeLoaderPrefersModernTemplateAndRetainsLegacyFallback(bool includeModern)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "WinNewsWire.VersionedTheme." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            File.WriteAllText(Path.Combine(root, "Info.json"), "{}");
+            File.WriteAllText(Path.Combine(root, "template.html"), "<legacy>[[body]]</legacy>");
+            if (includeModern)
+                File.WriteAllText(Path.Combine(root, "template7.3.html"), "<modern>[[primary_media]][[body]][[enclosures]]</modern>");
+            var theme = Assert.IsType<ArticleTheme>(ArticleTheme.LoadFromFolder(root, isAppTheme: false));
+            var html = ArticleRenderer.Render(Article(image: "https://example.com/photo.jpg"), theme: theme).Html;
+            Assert.StartsWith(includeModern ? "<modern><div class=\"nnw-primary-media\">" : "<legacy>", html);
+            Assert.Contains("<p>Body</p>", html);
+            Assert.Contains("src=\"https://example.com/photo.jpg\"", html);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
     [InlineData(ArticleTextSize.Small, "smallText")]
     [InlineData(ArticleTextSize.Medium, "mediumText")]
     [InlineData(ArticleTextSize.Large, "largeText")]

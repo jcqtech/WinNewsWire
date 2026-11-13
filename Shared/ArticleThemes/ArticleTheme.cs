@@ -12,6 +12,7 @@ namespace WinNewsWire.AppShared.ArticleThemes;
 public sealed class ArticleTheme
 {
     public const string TemplateFilename = "template.html";
+    private const string VersionedTemplateFilename = "template7.3.html";
     public const string StylesheetFilename = "stylesheet.css";
     public const string InfoFilenamePlist = "Info.plist";
     public const string InfoFilenameJson = "Info.json";
@@ -43,7 +44,8 @@ public sealed class ArticleTheme
     {
         try
         {
-            var template = System.IO.Path.Combine(folder, TemplateFilename);
+            var template = System.IO.Path.Combine(folder, VersionedTemplateFilename);
+            if (!File.Exists(template)) template = System.IO.Path.Combine(folder, TemplateFilename);
             var stylesheet = System.IO.Path.Combine(folder, StylesheetFilename);
             var info = TryReadInfo(folder);
             return new ArticleTheme(folder, isAppTheme)
