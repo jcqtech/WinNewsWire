@@ -448,6 +448,119 @@ public sealed class DownloadedImageCacheTests
             Assert.Single(await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).LastAccessed);
     }
 
+    [Fact]
+    public async Task TransientRetriesDoubleFromOneMinuteToOneHourAndSuccessResetsTheDelay()
+    {
+        int requests = 0;
+        bool succeeds = false;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(new HttpResponseMessage(succeeds ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable)
+            {
+                Content = new ByteArrayContent(Fixture.Image)
+            });
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        int expected = 0;
+        foreach (int minutes in new[] { 1, 2, 4, 8, 16, 32, 60, 60 })
+        {
+            Assert.Null(await fixture.FetchAsync(cache, "retry"));
+            Assert.Equal(++expected, requests);
+            fixture.Clock.Advance(TimeSpan.FromMinutes(minutes) - TimeSpan.FromSeconds(1));
+            Assert.Null(await fixture.FetchAsync(cache, "retry"));
+            Assert.Equal(expected, requests);
+            fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        }
+        succeeds = true;
+        Assert.NotNull(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(++expected, requests);
+        File.Delete(fixture.PathFor("retry"));
+        succeeds = false;
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(++expected, requests);
+        fixture.Clock.Advance(TimeSpan.FromSeconds(59));
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(expected, requests);
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        succeeds = true;
+        Assert.NotNull(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(++expected, requests);
+        Assert.False(fixture.Database.RecentlyFailed(Url("retry")));
+    }
+
+    [Fact]
+    public async Task ASourceWrittenDuringRetryBackoffIsStillAvailableImmediately()
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        await fixture.SeedAsync("retry");
+        Assert.NotNull(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(1, requests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NetworkChangesClearTransientDelaysAndRestartAtOneMinute(bool available)
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(1, requests);
+        await Task.Run(() => cache.NetworkStatusChanged(null, available));
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(2, requests);
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(3, requests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PermanentFailuresClearTheEarlierTransientDelay(bool corrupt)
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(new HttpResponseMessage(requests switch
+            {
+                2 => corrupt ? HttpStatusCode.OK : HttpStatusCode.NotFound,
+                4 => HttpStatusCode.OK,
+                _ => HttpStatusCode.ServiceUnavailable
+            })
+            {
+                Content = new ByteArrayContent(requests == 2 && corrupt ? "invalid image"u8.ToArray() : Fixture.Image)
+            });
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(2, requests);
+        Assert.True(fixture.Database.RecentlyFailed(Url("retry")));
+        fixture.Clock.Advance(ImageDatabase.FailureRetry);
+        Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(3, requests);
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.NotNull(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(4, requests);
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         internal static readonly byte[] Image = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZssAAAAASUVORK5CYII=");

@@ -33,7 +33,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, Task<ImageResourceResult>> _pending = new(StringComparer.Ordinal);
     private readonly HashSet<Task> _operations = [];
-    private readonly Dictionary<string, DateTimeOffset> _transientAttempts = new(StringComparer.Ordinal);
+    private readonly record struct RetryDelay(DateTimeOffset RetryDate, TimeSpan Delay);
+    private readonly Dictionary<string, RetryDelay> _retryDelays = new(StringComparer.Ordinal);
     private readonly Dictionary<string, LinkedListNode<DownloadedImage>> _cache = new(StringComparer.Ordinal);
     private readonly LinkedList<DownloadedImage> _cacheOrder = [];
     private long _cacheBytes;
@@ -113,8 +114,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ObjectDisposedException.ThrowIf(_stopping, this);
             if (!_pending.TryGetValue(url, out pending!))
             {
-                if (_transientAttempts.TryGetValue(url, out var attempted) && _clock.GetUtcNow() - attempted < TimeSpan.FromMinutes(30))
-                    return new(null, IsTransient: true);
                 pending = Task.Run(async () =>
                 {
                     try { return await DownloadImageAsync(url, _lifetime.Token, request).ConfigureAwait(false); }
@@ -153,6 +152,9 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             }
         }
         finally { _sourceDiskGate?.Release(); }
+        lock (_gate)
+            if (_retryDelays.TryGetValue(url, out var retry) && retry.RetryDate > _clock.GetUtcNow())
+                return new(null, IsTransient: true);
         if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
         var limiter = !_configuration.StoresSourceData || request.DownloadPriority is not null
             ? _configuration.DownloadLimiter : null;
@@ -173,7 +175,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException)
         {
             _log.DidFail(activity, error);
-            lock (_gate) _transientAttempts[url] = _clock.GetUtcNow();
+            NoteTransientFailure(url);
             return new(null, IsTransient: true);
         }
         if (!response.Success || response.Data is not { Length: > 0 } bytes)
@@ -181,9 +183,10 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             bool transient = (int)response.StatusCode is >= 500 and <= 599;
             _log.DidFail(activity, new HttpRequestException("Image request returned HTTP " + (int)response.StatusCode
                 + (response.Success ? " with no image bytes." : "."), null, response.StatusCode));
-            if (transient) { lock (_gate) _transientAttempts[url] = _clock.GetUtcNow(); }
+            if (transient) NoteTransientFailure(url);
             else
             {
+                lock (_gate) _retryDelays.Remove(url);
                 await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
                 DownloadFailed?.Invoke(this, url);
             }
@@ -199,6 +202,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             _log.DidFail(activity, new InvalidDataException($"Could not decode image bytes (HTTP {(int)response.StatusCode}).", error));
             ct.ThrowIfCancellationRequested();
+            lock (_gate) _retryDelays.Remove(url);
             await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
             DownloadFailed?.Invoke(this, url);
             return new(null);
@@ -302,7 +306,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     {
         lock (_gate)
         {
-            _transientAttempts.Remove(image.Url);
+            _retryDelays.Remove(image.Url);
             if (_configuration.StoresSourceData) return new(image);
             if (_cache.Remove(image.Url, out var previous))
             {
@@ -332,6 +336,22 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             _cacheOrder.AddLast(node);
             return node.Value;
         }
+    }
+
+    private void NoteTransientFailure(string url)
+    {
+        lock (_gate)
+        {
+            var delay = _retryDelays.TryGetValue(url, out var previous)
+                ? TimeSpan.FromSeconds(Math.Min(previous.Delay.TotalSeconds * 2, 3600))
+                : TimeSpan.FromMinutes(1);
+            _retryDelays[url] = new(_clock.GetUtcNow() + delay, delay);
+        }
+    }
+
+    internal void ResetRetryDelays()
+    {
+        lock (_gate) _retryDelays.Clear();
     }
 
     internal void EmptyCache()

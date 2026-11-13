@@ -71,8 +71,11 @@ public sealed class DownloadedImageCache : IAsyncDisposable
             new(int.MaxValue, DownloadLimiter: _downloadLimiter, StoresSourceData: true),
             ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, _downloader, clock, activityLog,
             sourceDiskGate: _diskGate, sourceWasRead: SaveAccessDateIfNeededAsync, sourceWasSaved: ImageWasSavedAsync);
+        NetworkMonitor.ConnectivityChanged += NetworkStatusChanged;
         _initialCleanup = Task.Run(RemoveImagesOverSizeLimitAsync);
     }
+
+    internal void NetworkStatusChanged(object? sender, bool available) => _downloads.ResetRetryDelays();
 
     internal async Task<ImageResourceResult> FetchAsync(string url, ImageResourceRequest request, CancellationToken ct)
     {
@@ -266,6 +269,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         {
             if (_shutdown is not null) return new(_shutdown);
             _stopping = true;
+            NetworkMonitor.ConnectivityChanged -= NetworkStatusChanged;
             _lifetime.Cancel();
             return new(_shutdown = DrainAsync(_backgroundTasks.ToArray()));
         }
