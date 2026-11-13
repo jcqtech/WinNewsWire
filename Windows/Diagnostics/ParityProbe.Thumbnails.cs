@@ -397,6 +397,34 @@ internal static partial class ParityProbe
                         + "original:image.getAttribute('data-nnw-src'),width:image.naturalWidth,complete:image.complete}))"));
                 throw;
             }
+            Require(await ScriptBool(content, """
+                (() => {
+                    const source = document.querySelector("img[data-nnw-src]");
+                    const fixture = document.createElement("div");
+                    fixture.innerHTML = "<p>Selected <a href='copy-probe'>link</a></p>";
+                    fixture.firstChild.append(source.cloneNode());
+                    document.body.append(fixture);
+                    const selection = window.getSelection();
+                    const range = document.createRange();
+                    range.selectNodeContents(fixture);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    try {
+                        const html = window.selectedHTML();
+                        const copy = document.createElement("template");
+                        copy.innerHTML = html;
+                        const image = copy.content.querySelector("img");
+                        return image?.getAttribute("src") === source.getAttribute("data-nnw-src")
+                            && !image.hasAttribute("data-nnw-src")
+                            && copy.content.querySelector("a")?.getAttribute("href") === new URL("copy-probe", document.baseURI).href
+                            && !html.includes("<p>")
+                            && source.hasAttribute("data-nnw-src");
+                    } finally {
+                        selection.removeAllRanges();
+                        fixture.remove();
+                    }
+                })()
+                """), "Copied reader HTML must contain portable original images and absolute links without changing the displayed image.");
             string readerImageUrl = AppShared.ArticleRendering.ArticleImageResource.Url("https://thumbnail.test/photo.bmp");
             int previousImageRequests = requests.Count(path => path == "/photo.bmp");
             setNetworkAllowed(false);
