@@ -440,9 +440,11 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ChangedSourcesRebuildAndAnnounceIconsEvenAfterMemoryEviction(bool evict)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ChangedSourcesRebuildAndAnnounceFeedImagesEvenAfterMemoryEviction(bool evict, bool favicon)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native icon decoding requires Windows.");
         int requests = 0;
@@ -454,8 +456,8 @@ public sealed class FeedImageDownloaderTests
             return Task.FromResult(response);
         }, maxPixelSize: 48);
         const string url = Home + "changed-icon.bmp";
-        var feed = new FeedImageSource(Feed, Home, IconUrl: url);
-        var old = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(feed));
+        var feed = new FeedImageSource(Feed, Home, IconUrl: url, FaviconUrl: url);
+        var old = Assert.IsType<DownloadedImage>(await (favicon ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed)));
         Assert.Equal((48u, 48u), WindowsImage.LargestFramePixelSize(old.Data));
         if (evict) fixture.Images.EmptyCache();
         var available = new TaskCompletionSource<DownloadedImage>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -464,11 +466,11 @@ public sealed class FeedImageDownloaderTests
             if (image.Url == url) available.TrySetResult(image);
         };
         fixture.Clock.Advance(TimeSpan.FromDays(8));
-        Assert.NotNull(await fixture.Images.FaviconAsync(feed with { FaviconUrl = url }));
+        Assert.NotNull(await (favicon ? fixture.Images.IconAsync(feed) : fixture.Images.FaviconAsync(feed)));
         var fresh = await available.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal((48u, 24u), WindowsImage.LargestFramePixelSize(fresh.Data));
         Assert.Equal(old.Path, fresh.Path);
-        Assert.Equal(fresh.Data, (await fixture.Images.IconAsync(feed))?.Data);
+        Assert.Equal(fresh.Data, (await (favicon ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed)))?.Data);
         Assert.Equal((1600u, 800u), WindowsImage.LargestFramePixelSize(await File.ReadAllBytesAsync(fresh.Path)));
         Assert.Equal(2, requests);
     }

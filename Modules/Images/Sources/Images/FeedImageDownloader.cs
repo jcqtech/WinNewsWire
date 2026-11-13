@@ -93,6 +93,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             if (_stopping) return;
             var task = RunOperationAsync(async ct =>
             {
+                await _favicons.RefreshAsync(url, ct).ConfigureAwait(false);
                 var result = await _images.RefreshAsync(url, ct).ConfigureAwait(false);
                 if (result.Image is { } image) ImageDidBecomeAvailable?.Invoke(this, image);
                 return result.Image;
