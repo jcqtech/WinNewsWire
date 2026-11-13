@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`a99fd2e5df5c7b3974a55c22dfaece790056ecaf`**. This synchronization is in progress.
+`3da931b8568093cb3f819ba2e8d992b5c9c6d544`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is preloading saved URLs before large-row layout, `b17bb24a671a14512cad1178139bf95c9cabd5ec`;
+is directional thumbnail prefetch, `559ac33a17a49ab142116efbd945a0380b591ba6`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -83,8 +83,10 @@ so cached selections cannot accidentally prevent a persistent-record reload.
 The finder can now preload saved positive/negative URLs without parsing HTML or
 publishing availability events. Windows exposes an awaited database operation
 rather than blocking WinUI. Missing records remain eligible for later discovery.
-Integration before initial large-row layout is the next pending source change;
-the new preload API alone is not claimed to eliminate cold-layout movement.
+Windows awaits this preload before applying initial Large rows and before
+mode/layout geometry changes. Generation checks reject superseded loads, and
+selection reconciliation happens after the await to preserve intervening user
+changes. Small rows do not have a variable-height thumbnail decision.
 Standard timeline rows now display
 small thumbnails with local HTML discovery, persisted-failure notifications,
 automatic candidate fallback, and a one-screen download lookahead. Recycled
@@ -287,8 +289,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **152 Ported, 42 Covered, 79 Skipped, and 232 Pending**
-source commits, backed by **167 source-attributed Windows port commits**.
+The inventory currently has **155 Ported, 48 Covered, 79 Skipped, and 223 Pending**
+source commits, backed by **170 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -400,6 +402,23 @@ Chosen-cache controls fail without snapshot reuse and pre-notification
 invalidation. Regressions cover mode isolation/capacity, same-ID article
 replacement, HTML-cache reload dependency, saved-only preloading, missing and
 negative records, no preload notification, and cancellation followed by retry.
+An actual held-worker preload check proves Large geometry waits while the UI
+dispatcher remains responsive; the original no-preload layout path fails.
+
+Native thumbnail decoding now has an independent four-active/sixty-waiting
+queue. URL/mode requests coalesce; visible work precedes prefetches, newest first,
+and visible joins promote already queued work as well as work still downloading.
+Overflow is not an image failure and can retry from the saved original.
+The focused `--thumbnail-decodes` probe passes real native decoding, independent
+modes, admission/order, overflow/retry, and cancellation/draining at shutdown.
+Restoring unbounded admission and removing decode promotion separately fail the
+new checks; the restored implementation passes. Regular/probe builds and all
+164 image tests pass. Three full-thumbnail attempts terminated in the previously
+observed early XAML `0xc000027b` before reaching the new queue checks; they are not
+counted as passes. UIKit snapshot reload/reconfigure and AppKit image-only update
+changes are covered by existing in-place WinUI view updates, not by reloading
+the bound article collection. Failed-candidate resolution already awaits HTML
+discovery while retaining same-article geometry until its result is known.
 
 The x64 Windows application builds with zero warnings/errors. The earlier complete parser
 suite passed 535 tests. Earlier
