@@ -67,3 +67,12 @@ test("footnotes stay within the article column rather than the whole web view", 
     assert.equal(fixture.popover.style.width, "600px");
     assert.equal(fixture.popover.style.left, "-280px");
 });
+
+test("footnotes center on their reference and clamp the popover and arrow at column edges", () => {
+    for (const [referenceLeft, left, arrowLeft] of [[100, "0px", "8px"], [1080, "-684px", "680px"], [600, "-342px", "344px"]]) {
+        const fixture = openFootnote({ articleWidth: 1000, referenceLeft });
+        assert.equal(fixture.popover.style.width, "704px");
+        assert.equal(fixture.popover.style.left, left);
+        assert.equal(fixture.popover.children[1].style.left, arrowLeft);
+    }
+});
