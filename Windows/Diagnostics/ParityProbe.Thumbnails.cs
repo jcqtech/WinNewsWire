@@ -18,6 +18,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using WinNewsWire.Articles;
 using WinNewsWire.AppShared;
+using WinNewsWire.Core;
 using WinNewsWire.Images;
 using WinNewsWire.Helpers;
 using WinNewsWire.Services;
@@ -29,6 +30,8 @@ internal static partial class ParityProbe
 {
     private static async Task<object?> CheckThumbnailsAsync(MainWindow window)
     {
+        int largeHeight = Math.Min(600, (int)Math.Ceiling(180 * WindowsScreen.MaxScreenScale()));
+        long largeByteCount = 2L * largeHeight * largeHeight * 4;
         var imageData = ThumbnailBitmap();
         var orientedData = OrientedThumbnailTiff();
         var smallData = ThumbnailBitmap(48, 48);
@@ -75,7 +78,7 @@ internal static partial class ParityProbe
             return (new ArticleThumbnailFinder(database),
                 new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "thumbnail-cache"),
                     () => networkAllowed, downloader, clock));
-        }, cacheByteLimit: 3_000_000, networkAllowsDownloads: () => networkAllowed,
+        }, cacheByteLimit: largeByteCount, networkAllowsDownloads: () => networkAllowed,
             networkAllowsPrefetch: () => networkAllowed && prefetchAllowed);
         service.ThumbnailAvailable += (_, _) =>
         {
@@ -115,10 +118,10 @@ internal static partial class ParityProbe
             "A warm decoded thumbnail did not refresh its source access date.");
 
         var large = await service.ThumbnailAsync(article, ThumbnailMode.Large);
-        Require(service.ProbeLastDecodedSize == (1200, 600), "Large thumbnails were not decoded at display size.");
+        Require(service.ProbeLastDecodedSize == (largeHeight * 2, largeHeight), "Large thumbnails were not decoded at display size.");
         Require(large is not null && !ReferenceEquals(small, large) && service.ProbeDecodes == 2,
             "Small and large decoded thumbnails shared a cache entry.");
-        Require(service.ProbeCacheBytes == 1200L * 600 * 4,
+        Require(service.ProbeCacheBytes == largeByteCount,
             "The decoded-image budget did not evict the older small thumbnail.");
         var reloaded = await service.ThumbnailAsync(article, ThumbnailMode.Small);
         Require(reloaded is not null && !ReferenceEquals(small, reloaded) && service.ProbeDecodes == 3
@@ -268,6 +271,7 @@ internal static partial class ParityProbe
         }
         finally { account.RemoveFeed(baseFeed); }
         Require(failureOnUI && failures == 4, "Permanent thumbnail failures were not dispatched once to the UI.");
+        await CheckThumbnailDisplaySizesAsync(window);
         await CheckThumbnailDecodeQueueAsync(window);
         await CheckDirectionalThumbnailPrefetchAsync(window);
         await CheckChangedFeedIconsAsync(window);
@@ -305,6 +309,54 @@ internal static partial class ParityProbe
             FailedPreferenceWritesRestoreSelectionAndReport = true,
             FeedIconsAlwaysNeverAutomatic = true, FeedIconsColumnException = true,
             FeedIconsSharedSettingsOnUI = true, FeedIconsFailedWriteRecovery = true };
+    }
+
+    private static async Task CheckThumbnailDisplaySizesAsync(MainWindow window)
+    {
+        var fixtures = new[]
+        {
+            (Name: "landscape", Width: 1600, Height: 800, Rotated: false),
+            (Name: "rotated", Width: 800, Height: 1600, Rotated: true),
+            (Name: "wide", Width: 3000, Height: 500, Rotated: false),
+            (Name: "portrait", Width: 800, Height: 1600, Rotated: false)
+        };
+        int requests = 0;
+        using var http = new HttpClient(new ThumbnailHandler((request, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            var fixture = fixtures.Single(item => request.RequestUri!.AbsolutePath == "/" + item.Name);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(fixture.Rotated
+                    ? OrientedThumbnailTiff(fixture.Width, fixture.Height)
+                    : ThumbnailBitmap(fixture.Width, fixture.Height))
+            });
+        }));
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "thumbnail-sizes.db"));
+        await using var service = new ArticleThumbnailService(window.DispatcherQueue, () =>
+            (new ArticleThumbnailFinder(database), new ThumbnailDownloader(database,
+                Path.Combine(OutputDirectory, "thumbnail-size-cache"), () => true, new Downloader(http))),
+            networkAllowsDownloads: () => true);
+        foreach (var fixture in fixtures)
+        {
+            string url = "https://thumbnail.test/" + fixture.Name;
+            var article = new Article("account", fixture.Name, "feed", fixture.Name, fixture.Name,
+                null, null, null, url, null, null, url, null, null, null, null,
+                new ArticleStatus(fixture.Name, false, false, DateTime.UnixEpoch));
+            double width = fixture.Rotated ? fixture.Height : fixture.Width;
+            double height = fixture.Rotated ? fixture.Width : fixture.Height;
+            double scale = Math.Min(1, Math.Min(1200 / Math.Max(width, height),
+                180 * WindowsScreen.MaxScreenScale() / height));
+            var image = await service.ThumbnailAsync(article, ThumbnailMode.Large);
+            var size = service.ProbeLastDecodedSize;
+            Require(image is not null && Math.Abs(size.Width - width * scale) <= 1
+                && Math.Abs(size.Height - height * scale) <= 1,
+                $"Large {fixture.Name} decoded to {size} rather than its oriented displayed height.");
+            Require(ReferenceEquals(image, await service.ThumbnailAsync(article, ThumbnailMode.Large)),
+                "A display-sized image was not reused from the decoded cache.");
+        }
+        Require(requests == fixtures.Length && !service.ProbeDecodedOnUIThread,
+            "Display-size decoding redownloaded sources or ran on the UI thread.");
     }
 
     private static async Task CheckThumbnailDecodeQueueAsync(MainWindow window)
@@ -1172,9 +1224,9 @@ internal static partial class ParityProbe
         return output.ToArray();
     }
 
-    private static byte[] OrientedThumbnailTiff()
+    private static byte[] OrientedThumbnailTiff(int width = 400, int height = 200)
     {
-        const int width = 400, height = 200, entries = 11;
+        const int entries = 11;
         const int bitsOffset = 8 + 2 + entries * 12 + 4;
         const int pixelsOffset = bitsOffset + 6;
         using var output = new MemoryStream();

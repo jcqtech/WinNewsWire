@@ -421,6 +421,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             throw new InsignificantThumbnailDimensionsException(frame.PixelWidth, frame.PixelHeight);
         int maxPixelSize = mode == ThumbnailMode.Small ? SmallThumbnailMaxPixelSize : LargeThumbnailMaxPixelSize;
         double scale = Math.Min(1, (double)maxPixelSize / Math.Max(frame.PixelWidth, frame.PixelHeight));
+        if (mode == ThumbnailMode.Large)
+            scale = Math.Min(scale, 180 * WindowsScreen.MaxScreenScale() / frame.OrientedPixelHeight);
         var transform = new BitmapTransform
         {
             ScaledWidth = (uint)Math.Max(1, Math.Round(frame.PixelWidth * scale)),

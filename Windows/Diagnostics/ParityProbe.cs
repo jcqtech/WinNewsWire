@@ -125,6 +125,15 @@ internal static partial class ParityProbe
                 });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-sizes"))
+            {
+                await CheckAsync("DPI-aware oriented thumbnail display-size decoding", async () =>
+                {
+                    await CheckThumbnailDisplaySizesAsync(window);
+                    return new { Landscape = true, Rotated = true, Wide = true, Portrait = true, Cached = true };
+                });
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-decodes"))
             {
                 await CheckAsync("Bounded native thumbnail decoding, promotion, overflow and shutdown", async () =>
