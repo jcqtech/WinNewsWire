@@ -11,6 +11,7 @@ using Microsoft.Web.WebView2.Core;
 using WinNewsWire.AppShared.Timeline;
 using WinNewsWire.Models;
 using WinNewsWire.ViewModels;
+using WinNewsWire.Web;
 
 namespace WinNewsWire;
 
@@ -158,7 +159,7 @@ public sealed partial class MainContent
         if (_shuttingDown) return;
         if (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || !IsWebAddress(uri))
         {
-            if (uri?.Scheme is "mailto" or "magnet") await OpenLinkInBrowserAsync(link);
+            if (uri?.PreparedForOpeningInBrowser() is not null) await OpenLinkInBrowserAsync(link);
             else ViewModel.StatusMessage = "This link cannot be opened in Web View. Only web addresses are supported.";
             return;
         }
