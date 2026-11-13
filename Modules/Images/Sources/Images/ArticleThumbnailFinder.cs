@@ -7,7 +7,7 @@ public enum ThumbnailMode { Small, Large }
 
 public sealed class ArticleThumbnailFinder(ImageDatabase database)
 {
-    private const int MaximumCachedArticleCount = 20_000;
+    private const int MaximumCachedArticleCount = 50_000;
     private readonly ImageDatabase _database = database ?? throw new ArgumentNullException(nameof(database));
     private readonly object _gate = new();
     private readonly Dictionary<string, IReadOnlyList<string>> _htmlUrls = new(StringComparer.Ordinal);
