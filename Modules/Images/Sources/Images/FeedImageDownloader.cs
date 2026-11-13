@@ -69,6 +69,9 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private readonly Dictionary<FeedImageSource, OwnIconWait> _waitingForOwnIcons = [];
     private readonly HashSet<FeedImageSource> _homePageIconFeeds = [];
     private readonly HashSet<FeedImageSource> _checkingHomePageIcons = [];
+    private readonly HashSet<string> _faviconHomePages = [];
+    private readonly HashSet<string> _checkedFaviconHomePages = [];
+    private readonly HashSet<string> _checkingFaviconHomePages = [];
     private readonly CancellationTokenSource _lifetime = new();
     private readonly HashSet<Task> _operations = [];
     private bool _stopping;
@@ -168,7 +171,11 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         if (_database.FaviconUrl(homePage) is { } known)
         {
             var previous = await FetchImageAsync(known, favicon: true, ct, homePage).ConfigureAwait(false);
-            if (previous.Image is not null) return previous.Image;
+            if (previous.Image is not null)
+            {
+                CheckForNewFavicon(homePage, known);
+                return previous.Image;
+            }
             if (previous.IsTransient && !previous.DecodingFailed) return null;
             transient = previous.IsTransient;
         }
@@ -241,14 +248,54 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private void MetadataAvailable(object? sender, HtmlMetadataRecord metadata)
     {
         FeedImageSource[] feeds;
+        bool checkFavicon;
         lock (_gate)
         {
             if (_stopping) return;
             feeds = _homePageIconFeeds.Where(feed => HomePage(feed) == metadata.Url).ToArray();
+            checkFavicon = _faviconHomePages.Contains(metadata.Url);
+            if (checkFavicon) _checkedFaviconHomePages.Remove(metadata.Url);
         }
         foreach (var feed in feeds)
             if (_database.IconUrl(feed.FeedUrl) is { } saved)
                 CheckForNewHomePageIcon(feed, saved, metadata);
+        if (checkFavicon && _database.FaviconUrl(metadata.Url) is { } favicon)
+            CheckForNewFavicon(metadata.Url, favicon, metadata);
+    }
+
+    private void CheckForNewFavicon(string homePage, string saved, HtmlMetadataRecord? metadata = null)
+    {
+        lock (_gate)
+        {
+            if (_stopping) return;
+            _faviconHomePages.Add(homePage);
+            if (_checkingFaviconHomePages.Contains(homePage) || !_checkedFaviconHomePages.Add(homePage)) return;
+            _checkingFaviconHomePages.Add(homePage);
+            var task = RunOperationAsync(async ct =>
+            {
+                try
+                {
+                    var current = metadata ?? await _metadata.GetMetadataAsync(homePage, ct).ConfigureAwait(false);
+                    if (current is null) return null;
+                    var root = new Uri(new Uri(homePage), "/favicon.ico").AbsoluteUri;
+                    foreach (var candidate in current.UsableFaviconUrls().Append(root).TakeWhile(url => url != saved))
+                    {
+                        var result = await FetchImageAsync(candidate, favicon: true, ct, homePage).ConfigureAwait(false);
+                        if (result.Image is not { } image) continue;
+                        if (_database.FaviconUrl(homePage) == saved)
+                            await _database.SaveHomePageFaviconAsync(homePage, candidate).ConfigureAwait(false);
+                        return image;
+                    }
+                    return null;
+                }
+                finally { lock (_gate) _checkingFaviconHomePages.Remove(homePage); }
+            }, CancellationToken.None);
+            _ = task.ContinueWith(completed =>
+            {
+                if (completed.IsFaulted)
+                    Trace.TraceError($"Could not check for a new favicon at {homePage}: {completed.Exception}");
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 
     private void CheckForNewHomePageIcon(FeedImageSource feed, string saved, HtmlMetadataRecord? metadata = null)
@@ -354,6 +401,8 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             NetworkMonitor.ConnectivityChanged -= NetworkStatusChanged;
             _waitingForOwnIcons.Clear();
             _homePageIconFeeds.Clear();
+            _faviconHomePages.Clear();
+            _checkedFaviconHomePages.Clear();
             _lifetime.Cancel();
             return new(_shutdown = DrainAsync(_operations.ToArray()));
         }

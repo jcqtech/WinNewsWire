@@ -106,6 +106,63 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
+    public async Task SavedFaviconsAreReplacedOnTheNextLookupWithoutBlockingTheCurrentImage()
+    {
+        var metadataStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseMetadata = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/")
+            {
+                metadataStarted.TrySetResult();
+                await releaseMetadata.Task.WaitAsync(ct);
+                return HtmlResponse("<link rel='icon' href='/new.png'><link rel='icon' href='/saved.png'>");
+            }
+            return Response(HttpStatusCode.OK, Image);
+        });
+        await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, Home + "saved.png");
+        try
+        {
+            Assert.Equal(Home + "saved.png", (await fixture.Images.FaviconAsync(new(Feed, Home))
+                .WaitAsync(TimeSpan.FromSeconds(10)))?.Url);
+            await metadataStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            releaseMetadata.TrySetResult();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (fixture.ImageDatabase.FaviconUrl(Home) != Home + "new.png")
+                await Task.Delay(10, timeout.Token);
+            Assert.Equal(Home + "new.png", (await fixture.Images.FaviconAsync(new(Feed, Home)))?.Url);
+            Assert.Equal([Home + "saved.png", Home, Home + "new.png"], fixture.Requests);
+        }
+        finally { releaseMetadata.TrySetResult(); }
+    }
+
+    [Fact]
+    public async Task FailedBetterFaviconCandidatesKeepTheSavedFaviconAndDoNotTryWorseCandidates()
+    {
+        var metadataStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture((request, _) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/")
+            {
+                metadataStarted.TrySetResult();
+                return Task.FromResult(HtmlResponse("<link rel='icon' href='/missing.png'><link rel='icon' href='/saved.png'><link rel='icon' href='/worse.png'>"));
+            }
+            return Task.FromResult(request.RequestUri.AbsolutePath == "/saved.png"
+                ? Response(HttpStatusCode.OK, Image) : Response(HttpStatusCode.NotFound));
+        });
+        await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, Home + "saved.png");
+        Assert.Equal(Home + "saved.png", (await fixture.Images.FaviconAsync(new(Feed, Home)))?.Url);
+        await metadataStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (!fixture.ImageDatabase.RecentlyFailed(Home + "missing.png"))
+            await Task.Delay(10, timeout.Token);
+        await fixture.Images.DisposeAsync();
+        Assert.Equal(Home + "saved.png", fixture.ImageDatabase.FaviconUrl(Home));
+        Assert.False(fixture.ImageDatabase.HomePageHasNoFavicon(Home));
+        Assert.Equal([Home + "saved.png", Home, Home + "missing.png"], fixture.Requests);
+    }
+
+    [Fact]
     public async Task CachedHomepageFailureDoesNotPreventRootFaviconFallback()
     {
         await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath == "/"
