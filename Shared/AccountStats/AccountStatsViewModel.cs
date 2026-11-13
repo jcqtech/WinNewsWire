@@ -34,7 +34,7 @@ public sealed class AccountStatsViewModel(AccountManager manager)
             var counts = await account.FetchArticleCountsAsync(ct);
             rows.Add(new(account.AccountID, account.NameForDisplay, account.Type.DisplayName(), account.IsActive,
                 account.FlattenedFeeds().LongCount(), account.Folders.Count, counts.TotalCount, counts.StatusesCount,
-                counts.UnreadCount, counts.StarredCount, DatabaseSize(account)));
+                counts.UnreadCount, counts.StarredCount, DatabaseSize(account.AccountDirectory)));
         }
         _rows = rows;
         Totals = AccountStatsTotals.FromRows(rows);
@@ -64,14 +64,18 @@ public sealed class AccountStatsViewModel(AccountManager manager)
         SortedAccountStats = (Descending ? _rows.OrderByDescending(key) : _rows.OrderBy(key)).ToArray();
     }
 
-    private static long DatabaseSize(Account.Account account)
+    internal static long DatabaseSize(string accountDirectory)
     {
         long size = 0;
         foreach (var name in new[] { "DB.sqlite3", "FeedSettings.db", "Sync.sqlite3" })
         {
-            try { size += new FileInfo(Path.Combine(account.AccountDirectory, name)).Length; }
-            catch (FileNotFoundException) { }
-            catch (DirectoryNotFoundException) { }
+            string path = Path.Combine(accountDirectory, name);
+            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            {
+                try { size += new FileInfo(path + suffix).Length; }
+                catch (FileNotFoundException) { }
+                catch (DirectoryNotFoundException) { }
+            }
         }
         return size;
     }
