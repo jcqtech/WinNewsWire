@@ -50,8 +50,9 @@ public static class HtmlImageParser
 
         private string? ResolveUrl(string? value)
         {
-            value = value?.Trim();
-            if (string.IsNullOrEmpty(value) || value.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return null;
+            if (value is null || value.AsSpan().TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return null;
+            value = value.Trim();
+            if (string.IsNullOrEmpty(value)) return null;
             if (baseUrl is not null && Uri.TryCreate(baseUrl, value, out var resolved)) return resolved.AbsoluteUri;
             if (Uri.TryCreate(value, UriKind.Absolute, out var absolute)) return absolute.AbsoluteUri;
             return null;
