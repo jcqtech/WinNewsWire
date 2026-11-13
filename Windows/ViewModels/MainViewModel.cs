@@ -407,6 +407,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnSelectedArticleChanged(FeedItem? value)
     {
         if (_rebindingSelection) { RefreshArticleHtml(); return; }
+        HoveredLink = null;
         _readerModeCancellation?.Cancel();
         if (!_changingSelection)
         {
@@ -1563,9 +1564,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void SetHoveredLink(string? link)
     {
+        HoveredLink = string.IsNullOrEmpty(link) ? null : link;
         if (string.IsNullOrEmpty(link)) UpdateDetailStatus();
         else DetailStatus = link;
     }
+
+    [ObservableProperty]
+    private string? _hoveredLink;
 
     private string BuildArticleHtml(FeedItem item, ExtractedArticle? extracted = null)
     {

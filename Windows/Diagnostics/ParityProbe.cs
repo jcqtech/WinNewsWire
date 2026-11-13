@@ -115,6 +115,12 @@ internal static partial class ParityProbe
                         "The probe did not load the installed Windows App Runtime used by normal Debug.");
             }
 
+            if (Environment.GetCommandLineArgs().Contains("--status-bar"))
+            {
+                await CheckAsync("Desktop status bar commands, links, progress and shared visibility",
+                    () => CheckStatusBarAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--timeline-visibility"))
             {
                 await CheckAsync("Timeline navigation respects pinned headers in both layouts",

@@ -89,6 +89,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- The command host is attached to the article or combined pane header during initialization. -->
@@ -354,7 +355,7 @@
                         Background="Transparent"
                         Visibility="Collapsed" IsHitTestVisible="False" />
                 <!-- Sidebar status (accounts · feeds · unread) -->
-                <Border Grid.Row="2" Padding="12,4"
+                <Border x:Name="SidebarFooter" Grid.Row="2" Padding="12,4"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="0,1,0,0">
                     <TextBlock Text="{x:Bind ViewModel.SidebarStatus, Mode=OneWay}"
@@ -742,6 +743,57 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <Border x:Name="StatusBarSurface" Grid.Row="3" Height="32" Visibility="Collapsed"
+                BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <Border.ContextFlyout><MenuFlyout Opening="StatusBarContextMenu_Opening" /></Border.ContextFlyout>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="StatusBarSidebarColumn" Width="260" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid Margin="8,0,12,0" ColumnSpacing="6">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Button x:Name="StatusBarGearButton" Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="0"
+                            Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE713;" FontSize="14" />
+                        <Button.Flyout><MenuFlyout Opening="StatusBarGearMenu_Opening" /></Button.Flyout>
+                    </Button>
+                    <ProgressBar x:Name="StatusBarProgress" Grid.Column="1" Width="40" Height="4"
+                                 IsIndeterminate="False" VerticalAlignment="Center" Visibility="Collapsed" />
+                    <Button x:Name="StatusBarCountButton" Grid.Column="2" MinWidth="0" MinHeight="0" Height="28" Padding="0"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Click="StatusBarCount_Click" Style="{StaticResource SubtleButtonStyle}">
+                        <TextBlock x:Name="StatusBarCountText" FontSize="12" TextTrimming="CharacterEllipsis"
+                                   Typography.NumeralAlignment="Tabular" />
+                    </Button>
+                </Grid>
+                <ContentControl x:Name="StatusBarSplitter" Grid.Column="1" Width="12" IsTabStop="True"
+                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                PointerPressed="SidebarSplitter_PointerPressed" PointerMoved="SidebarSplitter_PointerMoved"
+                                PointerReleased="Splitter_PointerReleased" PointerEntered="Splitter_PointerEntered"
+                                PointerExited="Splitter_PointerExited" KeyDown="SidebarSplitter_KeyDown"
+                                AutomationProperties.Name="Resize sidebar">
+                    <Grid Background="Transparent">
+                        <Border Width="1" HorizontalAlignment="Center" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <FontIcon Glyph="&#xE784;" FontSize="10" VerticalAlignment="Center" Margin="-12,0,0,0"
+                                  AutomationProperties.AccessibilityView="Raw" />
+                    </Grid>
+                </ContentControl>
+                <TextBlock x:Name="StatusBarLink" Grid.Column="2" Margin="12,0,8,0" VerticalAlignment="Center"
+                           FontSize="12" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                    <TextBlock.ContextFlyout><MenuFlyout Opening="StatusBarLinkMenu_Opening" /></TextBlock.ContextFlyout>
+                </TextBlock>
+                <DropDownButton x:Name="StatusBarThemeButton" Grid.Column="3" Height="28" MinHeight="0"
+                                Margin="0,0,12,0" Padding="4,0" FontSize="12" VerticalAlignment="Center"
+                                Style="{StaticResource SubtleButtonStyle}">
+                    <DropDownButton.Flyout><MenuFlyout Opening="ToolbarThemes_Opening" /></DropDownButton.Flyout>
+                </DropDownButton>
+            </Grid>
+        </Border>
 
         <Border x:Name="FloatingToolbarSurface" Grid.Row="2" Canvas.ZIndex="3"
                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,32,0"

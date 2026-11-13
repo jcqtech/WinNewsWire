@@ -104,6 +104,7 @@ public sealed partial class MainContent : UserControl
             InitializeArticleFindControls();
             InitializeToolbar();
             InitializeColumnLayout();
+            InitializeStatusBar();
         }
         catch (Exception error)
         {
@@ -117,6 +118,7 @@ public sealed partial class MainContent : UserControl
         ViewModel.SidebarRebuilt += () =>
         {
             if (_shuttingDown) return;
+            QueueStatusBarUpdate();
             if (DispatcherQueue.HasThreadAccess) { BuildSidebarUI(); QueueToolbarUpdate(); }
             else DispatcherQueue.TryEnqueue(() => { if (!_shuttingDown) { BuildSidebarUI(); QueueToolbarUpdate(); } });
         };
@@ -455,6 +457,7 @@ public sealed partial class MainContent : UserControl
         try
         {
             _shuttingDown = true;
+            DisposeStatusBar();
             CancelTimelineReveal();
             ArticleListView.PointerEntered -= ArticleListView_PointerEntered;
             if (_articleWheelHandler is { } wheel)
@@ -999,6 +1002,9 @@ public sealed partial class MainContent : UserControl
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (_shuttingDown) return;
+        if (e.PropertyName is nameof(ViewModel.SidebarStatus) or nameof(ViewModel.SelectedArticle)
+            or nameof(ViewModel.HoveredLink) or nameof(ViewModel.IsSidebarVisible) or nameof(ViewModel.IsUnifiedLayout))
+            QueueStatusBarUpdate();
         if (e.PropertyName is nameof(ViewModel.SelectedArticles) or nameof(ViewModel.SelectedArticle)
             or nameof(ViewModel.CanToggleSelectedRead) or nameof(ViewModel.IsReaderMode) or nameof(ViewModel.IsLoading)
             or nameof(ViewModel.IsReadFiltered) or nameof(ViewModel.CanToggleReadFilter)
@@ -1238,6 +1244,7 @@ public sealed partial class MainContent : UserControl
         SidebarColumn.Width = new GridLength(show ? _lastSidebarWidth : 0);
         SidebarPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         SidebarSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        QueueStatusBarUpdate();
         ContentContainer.Margin = new Thickness(show ? 0 : ContentPaneMargin, ContentPaneMargin, ContentPaneMargin, 0);
     }
 
@@ -1717,6 +1724,11 @@ public sealed partial class MainContent : UserControl
         // show the no-selection menu (New Feed / New Folder), regardless of
         // which sidebar item happens to be selected.
         var item = _sidebarRightClickedItem;
+        PopulateSidebarSelectionMenu(menu, item);
+    }
+
+    private void PopulateSidebarSelectionMenu(MenuFlyout menu, SidebarItem? item)
+    {
         if (item is null)
         {
             BuildSidebarMenuForNoSelection(menu);

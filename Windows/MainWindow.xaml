@@ -210,6 +210,8 @@
                 </MenuFlyoutSubItem>
                 <MenuFlyoutSeparator />
                 <ToggleMenuFlyoutItem x:Name="MenuColumnLayout" Text="Use Column Layout" Click="Menu_ToggleColumnLayout" />
+                <ToggleMenuFlyoutItem x:Name="MenuShowStatusBar" Click="Menu_ToggleStatusBar" />
+                <ToggleMenuFlyoutItem x:Name="MenuShowStatusBarThemes" Click="Menu_ToggleStatusBarThemes" />
                 <ToggleMenuFlyoutItem x:Name="MenuUnifiedLayout" Text="Reading Only"
                                       AccessKey="U" Click="Menu_ToggleUnified" />
                 <ToggleMenuFlyoutItem x:Name="MenuFullScreen" Text="Full Screen" KeyboardAcceleratorTextOverride="F11"

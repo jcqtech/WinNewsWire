@@ -1,5 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="StatusBar" xml:space="preserve"><value>Status Bar</value></data>
+  <data name="StatusBarGear" xml:space="preserve"><value>Subscription commands</value></data>
+  <data name="StatusBarUnread" xml:space="preserve"><value>{0:N0} unread</value></data>
+  <data name="StatusBarFolder" xml:space="preserve"><value>{0:N0} folder</value></data>
+  <data name="StatusBarFolders" xml:space="preserve"><value>{0:N0} folders</value></data>
+  <data name="StatusBarFeed" xml:space="preserve"><value>{0:N0} feed</value></data>
+  <data name="StatusBarFeeds" xml:space="preserve"><value>{0:N0} feeds</value></data>
+  <data name="StatusBarSubscriptions" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="StatusBarProgress" xml:space="preserve"><value>{0:N0} of {1:N0}</value></data>
+  <data name="StatusBarCountHelp" xml:space="preserve"><value>Click to switch the status-bar count</value></data>
+  <data name="StatusBarSaveError" xml:space="preserve"><value>Could not save the status-bar setting: {0}</value></data>
+  <data name="StatusBarShow" xml:space="preserve"><value>Show Status Bar</value></data>
+  <data name="StatusBarHide" xml:space="preserve"><value>Hide Status Bar</value></data>
+  <data name="StatusBarShowThemes" xml:space="preserve"><value>Show Status Bar Theme Menu</value></data>
+  <data name="StatusBarCopyLink" xml:space="preserve"><value>Copy</value></data>
+  <data name="StatusBarMultipleFeeds" xml:space="preserve"><value>Multiple feeds</value></data>
+  <data name="StatusBarMultipleFolders" xml:space="preserve"><value>Multiple folders</value></data>
+  <data name="StatusBarMultipleSmartFeeds" xml:space="preserve"><value>Multiple smart feeds</value></data>
+  <data name="StatusBarMultipleSelection" xml:space="preserve"><value>Multiple selection</value></data>
   <resheader name="resmimetype">
     <value>text/microsoft-resx</value>
   </resheader>

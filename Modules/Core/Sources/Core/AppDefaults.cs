@@ -25,6 +25,9 @@ public sealed class AppDefaults
         public const string TimelineSortKey = "timelineSortKey";
         public const string TimelineGroupByFeed = "timelineGroupByFeed";
         public const string UseColumnLayout = "useColumnLayout";
+        public const string ShowStatusBar = "showStatusBar";
+        public const string ShowStatusBarThemeMenu = "showStatusBarThemeMenu";
+        public const string StatusBarCountMode = "statusBarCountMode";
         public const string ReadFilters = "readFilters";
         public const string SearchAllAccounts = "searchAllAccounts";
         public const string DetailFontSize = "detailFontSize";
@@ -376,6 +379,18 @@ public sealed class AppDefaults
     {
         get => Get(Key.UseColumnLayout, false);
         set => Set(Key.UseColumnLayout, value);
+    }
+
+    public bool ShowStatusBar
+    {
+        get => Get(Key.ShowStatusBar, true);
+        set => Set(Key.ShowStatusBar, value);
+    }
+
+    public bool ShowStatusBarThemeMenu
+    {
+        get => Get(Key.ShowStatusBarThemeMenu, true);
+        set => Set(Key.ShowStatusBarThemeMenu, value);
     }
 
     public bool ShowDebugMenu

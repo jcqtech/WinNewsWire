@@ -325,7 +325,8 @@ public sealed partial class MainWindow : Window
             if (DispatcherQueue.HasThreadAccess) ApplyRequestedTheme();
             else DispatcherQueue.TryEnqueue(ApplyRequestedTheme);
         }
-        else if (key == Core.AppDefaults.Key.OpenInBrowserInBackground)
+        else if (key is Core.AppDefaults.Key.OpenInBrowserInBackground or Core.AppDefaults.Key.ShowStatusBar
+            or Core.AppDefaults.Key.ShowStatusBarThemeMenu)
         {
             if (DispatcherQueue.HasThreadAccess) SyncMenuToggles();
             else DispatcherQueue.TryEnqueue(SyncMenuToggles);
@@ -462,6 +463,18 @@ public sealed partial class MainWindow : Window
     }
     private void Menu_ToggleSidebar(object sender, RoutedEventArgs e)
         => MainContentControl.ViewModel.IsSidebarVisible = MenuShowSidebar.IsChecked;
+
+    private void Menu_ToggleStatusBar(object sender, RoutedEventArgs e)
+    {
+        MainContentControl.SetStatusBarVisible(MenuShowStatusBar.IsChecked);
+        SyncMenuToggles();
+    }
+
+    private void Menu_ToggleStatusBarThemes(object sender, RoutedEventArgs e)
+    {
+        MainContentControl.SetStatusBarThemeMenuVisible(MenuShowStatusBarThemes.IsChecked);
+        SyncMenuToggles();
+    }
     private void Menu_ToggleReaderMode(object sender, RoutedEventArgs e)
         => MainContentControl.ViewModel.IsReaderMode = MenuReaderMode.IsChecked;
     private async void Menu_Refresh(object sender, RoutedEventArgs e)
@@ -821,6 +834,10 @@ public sealed partial class MainWindow : Window
     private void SyncMenuToggles()
     {
         var vm = MainContentControl.ViewModel;
+        MenuShowStatusBar.Text = AppStrings.Get("StatusBarShow");
+        MenuShowStatusBar.IsChecked = Core.AppDefaults.Shared.ShowStatusBar;
+        MenuShowStatusBarThemes.Text = AppStrings.Get("StatusBarShowThemes");
+        MenuShowStatusBarThemes.IsChecked = Core.AppDefaults.Shared.ShowStatusBarThemeMenu;
         if (MenuUnifiedLayout is not null) MenuUnifiedLayout.IsChecked = vm.IsUnifiedLayout;
         MenuFullScreen.IsChecked = IsFullScreen;
         MenuColumnLayout.IsChecked = vm.UseColumnLayout;
