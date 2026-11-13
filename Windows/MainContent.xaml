@@ -491,6 +491,7 @@
                                   ItemsSource="{x:Bind ViewModel.ArticleItems, Mode=OneWay}"
                                   SelectionMode="Extended"
                                   SelectionChanged="ArticleListView_SelectionChanged"
+                                  DoubleTapped="ArticleListView_DoubleTapped"
                                   PointerEntered="ArticleListView_PointerEntered"
                                   Padding="0,0,0,4">
                             <ListView.ContextFlyout>

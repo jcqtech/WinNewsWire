@@ -1666,6 +1666,16 @@ public sealed partial class MainContent : UserControl
             e.OriginalSource as Microsoft.UI.Xaml.DependencyObject);
     }
 
+    private async void ArticleListView_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (_shuttingDown || FindAncestorDataContext<WinNewsWire.Models.FeedItem>(e.OriginalSource as DependencyObject) is not { } article
+            || !ViewModel.ArticleItems.Contains(article) || article.Link.Length == 0) return;
+        bool invertPreference = (InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
+            & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+        e.Handled = true;
+        await OpenLinkInBrowserAsync(article.Link, invertPreference);
+    }
+
     private void SidebarContextMenu_Closed(object? sender, object e)
     {
         // Clear the captured target after the flyout closes so the next right-click
