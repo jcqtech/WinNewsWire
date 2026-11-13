@@ -7,35 +7,6 @@ namespace WinNewsWire.Images.Tests;
 public sealed class ArticleThumbnailFinderTests
 {
     [Fact]
-    public async Task SavedUrlsLoadBeforeDiscoveryWithoutParsingMissingArticlesOrNotifying()
-    {
-        using var database = new ImageDatabase(":memory:");
-        await database.SaveArticleThumbnailsAsync([
-            new("saved", ["https://example.com/saved.jpg"]), new("negative", []),
-            new("empty", ["https://example.com/stale.jpg"])
-        ]);
-        var finder = new ArticleThumbnailFinder(database);
-        var saved = Article("saved", html: "<img src='/changed.jpg'>");
-        var negative = Article("negative", html: "<img src='/not-parsed.jpg'>");
-        var missing = Article("missing", html: "<img src='/not-discovered.jpg'>");
-        var empty = Article("empty");
-        int notifications = 0;
-        finder.ThumbnailUrlsAvailable += (_, _) => notifications++;
-        Assert.Null(finder.ThumbnailUrl(saved, ThumbnailMode.Large));
-        await finder.LoadSavedThumbnailUrlsAsync([saved, negative, missing, empty]);
-        Assert.Equal("https://example.com/saved.jpg", finder.ThumbnailUrl(saved, ThumbnailMode.Large));
-        Assert.Null(finder.ThumbnailUrl(negative, ThumbnailMode.Small));
-        Assert.Null(finder.ThumbnailUrl(missing, ThumbnailMode.Small));
-        Assert.Null(finder.ThumbnailUrl(empty, ThumbnailMode.Small));
-        Assert.Empty(await database.FetchArticleThumbnailsAsync(["missing"]));
-        Assert.Equal(0, notifications);
-        await finder.DiscoverThumbnailUrlsAsync([saved, negative, missing]);
-        Assert.Equal("https://example.com/not-discovered.jpg", finder.ThumbnailUrl(missing, ThumbnailMode.Small));
-        Assert.Null(finder.ThumbnailUrl(negative, ThumbnailMode.Small));
-        Assert.Equal(1, notifications);
-    }
-
-    [Fact]
     public async Task CombinedDiscoveryMakesSavedUrlsReadyBeforeParsingOnlyTheRemainingArticles()
     {
         using var database = new ImageDatabase(":memory:");
@@ -68,7 +39,7 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
-    public async Task CanceledSavedUrlLoadingDoesNotConsumeLaterPreload()
+    public async Task CanceledFindingDoesNotConsumeLaterSavedUrlLoading()
     {
         using var database = new ImageDatabase(":memory:");
         await database.SaveArticleThumbnailsAsync([new("1", ["https://example.com/saved.jpg"])]);
@@ -76,9 +47,9 @@ public sealed class ArticleThumbnailFinderTests
         var article = Article(html: "<img src='/changed.jpg'>");
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finder.LoadSavedThumbnailUrlsAsync([article], canceled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finder.FindThumbnailUrlsAsync([article], canceled.Token));
         Assert.Null(finder.ThumbnailUrl(article, ThumbnailMode.Small));
-        await finder.LoadSavedThumbnailUrlsAsync([article]);
+        await finder.FindThumbnailUrlsAsync([article]);
         Assert.Equal("https://example.com/saved.jpg", finder.ThumbnailUrl(article, ThumbnailMode.Small));
     }
 
@@ -203,10 +174,10 @@ public sealed class ArticleThumbnailFinderTests
         using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var article = Article(html: "<img src='photo.jpg'>", link: link, external: "https://external.test/unrelated");
-        await finder.DiscoverThumbnailUrlsAsync([article], baseUrlResolver: item => item.BaseUrl(homePage, feed));
+        await finder.FindThumbnailUrlsAsync([article], baseUrlResolver: item => item.BaseUrl(homePage, feed));
         Assert.Equal(expected, finder.ThumbnailUrl(article, ThumbnailMode.Small));
         var reopened = new ArticleThumbnailFinder(database);
-        await reopened.DiscoverThumbnailUrlsAsync([article]);
+        await reopened.FindThumbnailUrlsAsync([article]);
         Assert.Equal(expected, reopened.ThumbnailUrl(article, ThumbnailMode.Small));
     }
 
@@ -289,13 +260,13 @@ public sealed class ArticleThumbnailFinderTests
         var finder = new ArticleThumbnailFinder(database);
         const string provided = "https://example.com/thumbnail.jpg";
         var article = Article(thumbnail: provided, html: "<img src='/photo.jpg' width='640' height='480'>");
-        await finder.DiscoverThumbnailUrlsAsync([article]);
+        await finder.FindThumbnailUrlsAsync([article]);
         Assert.Equal(provided, finder.ThumbnailUrl(article, ThumbnailMode.Small));
         Assert.Empty(await database.FetchArticleThumbnailsAsync(["1"]));
         await database.RecordFailureAsync(provided, 404);
         finder.ThumbnailUrlDidFail(provided);
         Assert.Null(finder.ThumbnailUrl(article, ThumbnailMode.Small));
-        await finder.DiscoverThumbnailUrlsAsync([article]);
+        await finder.FindThumbnailUrlsAsync([article]);
         Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(article, ThumbnailMode.Small));
     }
 
@@ -313,7 +284,7 @@ public sealed class ArticleThumbnailFinderTests
         IReadOnlySet<string>? notified = null;
         finder.ThumbnailUrlsAvailable += (_, ids) => notified = ids;
         Assert.Null(finder.ThumbnailUrl(photo, ThumbnailMode.Small));
-        await finder.DiscoverThumbnailUrlsAsync([photo, noPhoto]);
+        await finder.FindThumbnailUrlsAsync([photo, noPhoto]);
         Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(photo, ThumbnailMode.Small));
         Assert.Null(finder.ThumbnailUrl(noPhoto, ThumbnailMode.Small));
         Assert.Equal(["1"], notified);
@@ -327,7 +298,7 @@ public sealed class ArticleThumbnailFinderTests
         Assert.Equal("https://example.com/second-photo.jpg", finder.ThumbnailUrl(photo, ThumbnailMode.Small));
 
         var reopenedFinder = new ArticleThumbnailFinder(database);
-        await reopenedFinder.DiscoverThumbnailUrlsAsync([Article(html: "<img src='/different.jpg'>")]);
+        await reopenedFinder.FindThumbnailUrlsAsync([Article(html: "<img src='/different.jpg'>")]);
         Assert.Equal("https://example.com/second-photo.jpg", reopenedFinder.ThumbnailUrl(photo, ThumbnailMode.Small));
     }
 
@@ -337,7 +308,7 @@ public sealed class ArticleThumbnailFinderTests
         using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
         var article = Article(html: string.Concat(Enumerable.Range(1, 4).Select(index => $"<img src='/photo{index}.jpg'>")));
-        await finder.DiscoverThumbnailUrlsAsync([article]);
+        await finder.FindThumbnailUrlsAsync([article]);
         var saved = Assert.Single(await database.FetchArticleThumbnailsAsync(["1"]));
         Assert.Equal(3, saved.ThumbnailUrls.Count);
         foreach (var url in saved.ThumbnailUrls)
@@ -358,11 +329,11 @@ public sealed class ArticleThumbnailFinderTests
         foreach (var html in new string?[] { null, "" })
         {
             var empty = Article(html: html);
-            await finder.DiscoverThumbnailUrlsAsync([empty]);
+            await finder.FindThumbnailUrlsAsync([empty]);
             Assert.Null(finder.ThumbnailUrl(empty, ThumbnailMode.Small));
         }
         var populated = Article(html: "<img src='/photo.jpg'>");
-        await finder.DiscoverThumbnailUrlsAsync([populated]);
+        await finder.FindThumbnailUrlsAsync([populated]);
         Assert.Equal("https://example.com/previous.jpg", finder.ThumbnailUrl(populated, ThumbnailMode.Small));
     }
 
@@ -373,18 +344,18 @@ public sealed class ArticleThumbnailFinderTests
         var finder = new ArticleThumbnailFinder(database);
         var articles = Enumerable.Range(0, 50_001).Select(index => Article(index.ToString(),
             html: index == 0 ? "<img src='/original.jpg'>" : "<p>No photo.</p>")).ToArray();
-        await finder.DiscoverThumbnailUrlsAsync(articles.Take(20_001));
+        await finder.FindThumbnailUrlsAsync(articles.Take(20_001));
         await database.SaveArticleThumbnailsAsync([
             new("0", ["https://example.com/reloaded.jpg"]),
             new("1", ["https://example.com/new-photo.jpg"])
         ]);
         Assert.Equal("https://example.com/original.jpg", finder.ThumbnailUrl(articles[0], ThumbnailMode.Small));
         Assert.Null(finder.ThumbnailUrl(articles[1], ThumbnailMode.Small));
-        await finder.DiscoverThumbnailUrlsAsync(articles.Take(2));
+        await finder.FindThumbnailUrlsAsync(articles.Take(2));
         Assert.Equal("https://example.com/original.jpg", finder.ThumbnailUrl(articles[0], ThumbnailMode.Small));
         Assert.Null(finder.ThumbnailUrl(articles[1], ThumbnailMode.Small));
-        await finder.DiscoverThumbnailUrlsAsync(articles.Skip(20_001));
-        await finder.DiscoverThumbnailUrlsAsync(articles.Take(2));
+        await finder.FindThumbnailUrlsAsync(articles.Skip(20_001));
+        await finder.FindThumbnailUrlsAsync(articles.Take(2));
         Assert.Equal("https://example.com/reloaded.jpg", finder.ThumbnailUrl(articles[0], ThumbnailMode.Small));
         Assert.Equal("https://example.com/new-photo.jpg", finder.ThumbnailUrl(articles[1], ThumbnailMode.Small));
     }
@@ -396,7 +367,7 @@ public sealed class ArticleThumbnailFinderTests
         var finder = new ArticleThumbnailFinder(database);
         var provided = Article(image: "https://example.com/provided.jpg");
         var html = Article("html", html: "<img src='/original.jpg'>");
-        await finder.DiscoverThumbnailUrlsAsync([html]);
+        await finder.FindThumbnailUrlsAsync([html]);
         foreach (var mode in new[] { ThumbnailMode.Small, ThumbnailMode.Large })
         {
             Assert.Equal(provided.RawImageLink, finder.ThumbnailUrl(provided, mode));
@@ -410,7 +381,7 @@ public sealed class ArticleThumbnailFinderTests
             Assert.Null(finder.ThumbnailUrl(provided, mode));
             Assert.Null(finder.ThumbnailUrl(html, mode));
         }
-        await finder.LoadSavedThumbnailUrlsAsync([html]);
+        await finder.FindThumbnailUrlsAsync([html]);
         foreach (var mode in new[] { ThumbnailMode.Small, ThumbnailMode.Large })
             Assert.Equal("https://example.com/reloaded.jpg", finder.ThumbnailUrl(html, mode));
     }
@@ -424,8 +395,8 @@ public sealed class ArticleThumbnailFinderTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            finder.DiscoverThumbnailUrlsAsync([article], cancellation.Token));
-        await finder.DiscoverThumbnailUrlsAsync([article]);
+            finder.FindThumbnailUrlsAsync([article], cancellation.Token));
+        await finder.FindThumbnailUrlsAsync([article]);
         Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(article, ThumbnailMode.Small));
     }
 

@@ -49,33 +49,8 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
         }
     }
 
-    public async Task LoadSavedThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(articles);
-        ct.ThrowIfCancellationRequested();
-        string[] ids;
-        lock (_gate)
-            ids = articles.DistinctBy(article => article.ArticleID).Where(NeedsHtmlDiscovery)
-                .Select(article => article.ArticleID).ToArray();
-        if (ids.Length == 0) return;
-        var records = await _database.FetchArticleThumbnailsAsync(ids).WaitAsync(ct).ConfigureAwait(false);
-        ct.ThrowIfCancellationRequested();
-        CacheRecords(records);
-    }
-
     public async Task FindThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default,
         Func<Article, Uri?>? baseUrlResolver = null, Action? savedUrlsLoaded = null)
-    {
-        ArgumentNullException.ThrowIfNull(articles);
-        var snapshot = articles.ToArray();
-        await LoadSavedThumbnailUrlsAsync(snapshot, ct).ConfigureAwait(false);
-        ct.ThrowIfCancellationRequested();
-        savedUrlsLoaded?.Invoke();
-        await DiscoverThumbnailUrlsAsync(snapshot, ct, baseUrlResolver).ConfigureAwait(false);
-    }
-
-    public async Task DiscoverThumbnailUrlsAsync(IEnumerable<Article> articles, CancellationToken ct = default,
-        Func<Article, Uri?>? baseUrlResolver = null)
     {
         ArgumentNullException.ThrowIfNull(articles);
         ct.ThrowIfCancellationRequested();
@@ -90,17 +65,27 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             pending = articles.DistinctBy(article => article.ArticleID).Where(NeedsHtmlDiscovery).ToArray();
             foreach (var article in pending) _discovering.Add(article.ArticleID);
         }
-        if (pending.Length == 0) return;
+        if (pending.Length == 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            savedUrlsLoaded?.Invoke();
+            return;
+        }
         try
         {
-            var baseUrls = pending.ToDictionary(article => article.ArticleID,
-                article => baseUrlResolver is null ? article.BaseUrl() : baseUrlResolver(article), StringComparer.Ordinal);
             var saved = await _database.FetchArticleThumbnailsAsync(pending.Select(article => article.ArticleID)).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            CacheRecords(saved);
+            savedUrlsLoaded?.Invoke();
             var savedIds = saved.Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
+            var toParse = pending.Where(article => !savedIds.Contains(article.ArticleID)).ToArray();
+            if (toParse.Length == 0) return;
+            var baseUrls = toParse.ToDictionary(article => article.ArticleID,
+                article => baseUrlResolver is null ? article.BaseUrl() : baseUrlResolver(article), StringComparer.Ordinal);
             var parsed = await Task.Run(() =>
             {
                 var records = new List<ArticleThumbnailRecord>();
-                foreach (var article in pending.Where(article => !savedIds.Contains(article.ArticleID)))
+                foreach (var article in toParse)
                 {
                     ct.ThrowIfCancellationRequested();
                     var html = article.ContentHtml ?? article.Summary;
@@ -111,9 +96,8 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             }, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             if (parsed.Count > 0) await _database.SaveArticleThumbnailsAsync(parsed).ConfigureAwait(false);
-            var records = saved.Concat(parsed).ToArray();
-            CacheRecords(records);
-            var found = records.Where(record => record.ThumbnailUrls.Count > 0)
+            CacheRecords(parsed);
+            var found = parsed.Where(record => record.ThumbnailUrls.Count > 0)
                 .Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
             if (found.Count > 0) ThumbnailUrlsAvailable?.Invoke(this, found);
         }
