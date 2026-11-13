@@ -145,7 +145,15 @@ public sealed class DownloadedImageCache : IAsyncDisposable
                 UserAgentStyle.Browser, cachesResponse: false).ConfigureAwait(false);
             if (response.Success && response.Data is { Length: > 0 } data)
             {
-                await _downloads.StoreUpdatedSourceAsync(url, data, response, ct).ConfigureAwait(false);
+                try { await _downloads.StoreUpdatedSourceAsync(url, data, response, ct).ConfigureAwait(false); }
+                catch (InvalidDataException error)
+                {
+                    Trace.TraceWarning($"Image revalidation for {url} returned unreadable data; keeping the cached image: {error}");
+                    await _database.SaveDownloadedImageNextCheckAsync(url,
+                        CalculateNextCheck(response.CacheMaxAge, validation.ConditionalGet is not null, _clock.GetUtcNow()))
+                        .ConfigureAwait(false);
+                    return;
+                }
                 Trace.TraceInformation($"Replaced changed downloaded image at {url}.");
                 DownloadedImageChanged?.Invoke(this, url);
                 return;

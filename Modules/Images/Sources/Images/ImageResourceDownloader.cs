@@ -223,6 +223,11 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         {
             _log.DidFail(activity, new InvalidDataException($"Could not decode image bytes (HTTP {(int)response.StatusCode}).", error));
             ct.ThrowIfCancellationRequested();
+            if (_configuration.StoresSourceData)
+            {
+                NoteTransientFailure(url);
+                return new(null, IsTransient: true);
+            }
             ClearRetryDelay(url);
             await _database.RecordFailureAsync(url, (int)response.StatusCode).ConfigureAwait(false);
             DownloadFailed?.Invoke(this, url);

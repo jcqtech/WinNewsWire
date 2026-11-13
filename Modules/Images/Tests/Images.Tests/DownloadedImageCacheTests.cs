@@ -101,7 +101,7 @@ public sealed class DownloadedImageCacheTests
         Assert.False(fixture.Database.RecentlyFailed(Url("icon")));
         Assert.Equal(expected, (await fixture.FetchAsync(cache, "icon"))?.Data);
         var validation = Assert.IsType<DownloadedImageValidation>(await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")));
-        if (status == 0 || corrupt) Assert.Equal(originalCheck, validation.NextCheck);
+        if (status == 0) Assert.Equal(originalCheck, validation.NextCheck);
         else Assert.InRange(validation.NextCheck, fixture.Clock.GetUtcNow().AddDays(6.4), fixture.Clock.GetUtcNow().AddDays(9.6));
     }
 
@@ -535,10 +535,8 @@ public sealed class DownloadedImageCacheTests
         Assert.Equal(3, requests);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task PermanentFailuresClearTheEarlierTransientDelay(bool corrupt)
+    [Fact]
+    public async Task PermanentFailuresClearTheEarlierTransientDelay()
     {
         int requests = 0;
         await using var fixture = new Fixture((_, _) =>
@@ -546,12 +544,12 @@ public sealed class DownloadedImageCacheTests
             requests++;
             return Task.FromResult(new HttpResponseMessage(requests switch
             {
-                2 => corrupt ? HttpStatusCode.OK : HttpStatusCode.NotFound,
+                2 => HttpStatusCode.NotFound,
                 4 => HttpStatusCode.OK,
                 _ => HttpStatusCode.ServiceUnavailable
             })
             {
-                Content = new ByteArrayContent(requests == 2 && corrupt ? "invalid image"u8.ToArray() : Fixture.Image)
+                Content = new ByteArrayContent(Fixture.Image)
             });
         });
         await using var cache = fixture.CreateCache(10, 20);
@@ -658,6 +656,33 @@ public sealed class DownloadedImageCacheTests
         await healthy;
         Assert.NotNull(await fixture.FetchAsync(cache, "peer"));
         Assert.Null(await fixture.FetchAsync(cache, "retry"));
+        Assert.Equal(3, requests);
+    }
+
+    [Fact]
+    public async Task CaptivePortalDataContinuesTransientBackoffInsteadOfResettingOrPersistingFailure()
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(new HttpResponseMessage(requests == 1 ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(requests == 2 ? "<html>Login</html>"u8.ToArray() : Fixture.Image)
+            });
+        });
+        await using var cache = fixture.CreateCache(10, 20);
+        Assert.Null(await fixture.FetchAsync(cache, "portal"));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(await fixture.FetchAsync(cache, "portal"));
+        Assert.Equal(2, requests);
+        Assert.False(fixture.Database.RecentlyFailed(Url("portal")));
+        Assert.False(File.Exists(fixture.PathFor("portal")));
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(await fixture.FetchAsync(cache, "portal"));
+        Assert.Equal(2, requests);
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.NotNull(await fixture.FetchAsync(cache, "portal"));
         Assert.Equal(3, requests);
     }
 

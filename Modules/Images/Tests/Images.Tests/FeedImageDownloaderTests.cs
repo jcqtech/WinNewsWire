@@ -156,7 +156,7 @@ public sealed class FeedImageDownloaderTests
     {
         await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
         {
-            "/declared.png" => Response(failure, "not an image"u8.ToArray()),
+            "/declared.png" => Response(failure),
             "/" => HtmlResponse("<link rel='apple-touch-icon' sizes='180x180' href='/touch.png'>"),
             "/touch.png" => Response(HttpStatusCode.OK, Image),
             _ => throw new InvalidOperationException("Unexpected URL.")
@@ -164,6 +164,25 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal(Home + "touch.png", (await fixture.Images.IconAsync(new(Feed, Home, IconUrl: Home + "declared.png")))?.Url);
         Assert.Equal(Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
         Assert.True(fixture.ImageDatabase.RecentlyFailed(Home + "declared.png"));
+    }
+
+    [Fact]
+    public async Task UnreadableDeclaredIconsDoNotTriggerHomepageFallbackOrFiveDayFailures()
+    {
+        int requests = 0;
+        await using var fixture = new Fixture((request, _) =>
+        {
+            Assert.Equal("/declared.png", request.RequestUri!.AbsolutePath);
+            return Task.FromResult(Response(HttpStatusCode.OK, ++requests == 1 ? "<html>Login</html>"u8.ToArray() : Image));
+        });
+        var feed = new FeedImageSource(Feed, Home, IconUrl: Home + "declared.png");
+        Assert.Null(await fixture.Images.IconAsync(feed));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(feed.IconUrl!));
+        Assert.Single(fixture.Requests);
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Equal(feed.IconUrl, (await fixture.Images.IconAsync(feed))?.Url);
+        Assert.Equal(feed.IconUrl, fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(2, requests);
     }
 
     [Fact]
@@ -177,21 +196,24 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task UndecodableSuccessIsLoggedAndRetriedAfterThePersistentFailureInterval()
+    public async Task UndecodableSuccessIsLoggedAndRetriedAsATransientCaptivePortalResponse()
     {
         int calls = 0;
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK,
             ++calls == 1 ? "<html>not an image</html>"u8.ToArray() : Image)));
         var source = new FeedImageSource(Feed, Home, Home + "bad.png");
         Assert.Null(await fixture.Images.FaviconAsync(source));
-        Assert.True(fixture.ImageDatabase.RecentlyFailed(source.FaviconUrl!));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(source.FaviconUrl!));
         Assert.False(Directory.Exists(fixture.CacheDirectory));
         var failure = Assert.Single(fixture.Activity.CompletedActivities);
         Assert.Equal(ActivityState.Failed, failure.State);
         Assert.Contains("HTTP 200", Assert.IsType<InvalidDataException>(failure.Error).Message);
         Assert.Null(await fixture.Images.FaviconAsync(source));
         Assert.Equal(1, calls);
-        fixture.Clock.Advance(ImageDatabase.FailureRetry);
+        fixture.Clock.Advance(TimeSpan.FromSeconds(59));
+        Assert.Null(await fixture.Images.FaviconAsync(source));
+        Assert.Equal(1, calls);
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
         Assert.NotNull(await fixture.Images.FaviconAsync(source));
         Assert.Equal(2, calls);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(source.FaviconUrl!));
