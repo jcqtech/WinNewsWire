@@ -27,11 +27,15 @@ public static class AppDefaultsSharedExtensions
     {
         int? raw = defaults.GetValue<int?>(TimelineThumbnailsDisplayKey);
         if (raw is null)
-            return defaults.GetValue("timelineShowsLargeThumbnails", false)
-                ? TimelineThumbnailsDisplay.Large : TimelineThumbnailsDisplay.Small;
+            return defaults.GetValue<bool?>("timelineShowsLargeThumbnails") switch
+            {
+                true => TimelineThumbnailsDisplay.Large,
+                false => TimelineThumbnailsDisplay.Small,
+                null => TimelineThumbnailsDisplay.None
+            };
         if (Enum.IsDefined((TimelineThumbnailsDisplay)raw.Value)) return (TimelineThumbnailsDisplay)raw.Value;
-        Trace.TraceWarning($"Unknown timeline thumbnail display value {raw}; showing small thumbnails.");
-        return TimelineThumbnailsDisplay.Small;
+        Trace.TraceWarning($"Unknown timeline thumbnail display value {raw}; hiding thumbnails.");
+        return TimelineThumbnailsDisplay.None;
     }
 
     public static void SetTimelineThumbnailsDisplay(this AppDefaults defaults, TimelineThumbnailsDisplay display)

@@ -14,7 +14,7 @@ public sealed class TimelineThumbnailsDisplayTests : IDisposable
     public void TheLegacyModeSurvivesUntilAnExplicitDisplayChoice(bool legacyLarge, TimelineThumbnailsDisplay expected)
     {
         var defaults = new AppDefaults(PreferencesPath);
-        Assert.Equal(TimelineThumbnailsDisplay.Small, defaults.GetTimelineThumbnailsDisplay());
+        Assert.Equal(TimelineThumbnailsDisplay.None, defaults.GetTimelineThumbnailsDisplay());
         defaults.SetValue("timelineShowsLargeThumbnails", legacyLarge);
         Assert.Equal(expected, new AppDefaults(PreferencesPath).GetTimelineThumbnailsDisplay());
         Assert.Null(defaults.GetValue<int?>(AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey));
@@ -34,12 +34,12 @@ public sealed class TimelineThumbnailsDisplayTests : IDisposable
     [Theory]
     [InlineData(-1)]
     [InlineData(3)]
-    public void AnUnknownDisplayUsesSmallRatherThanTheLegacyLargePreference(int raw)
+    public void AnUnknownDisplayUsesNoneRatherThanTheLegacyLargePreference(int raw)
     {
         var defaults = new AppDefaults(PreferencesPath);
         defaults.SetValue("timelineShowsLargeThumbnails", true);
         defaults.SetValue(AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey, raw);
-        Assert.Equal(TimelineThumbnailsDisplay.Small, defaults.GetTimelineThumbnailsDisplay());
+        Assert.Equal(TimelineThumbnailsDisplay.None, defaults.GetTimelineThumbnailsDisplay());
         Assert.Equal(raw, defaults.GetValue<int>(AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey));
     }
 
