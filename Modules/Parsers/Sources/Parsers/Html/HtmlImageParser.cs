@@ -44,8 +44,9 @@ public static class HtmlImageParser
         private string? ResolveUrl(string? value)
         {
             if (value is null) return null;
+            if (baseUrl is not null && Uri.TryCreate(baseUrl, value, out var resolved)) return resolved.AbsoluteUri;
             if (Uri.TryCreate(value, UriKind.Absolute, out var absolute)) return absolute.AbsoluteUri;
-            return baseUrl is not null && Uri.TryCreate(baseUrl, value, out var resolved) ? resolved.AbsoluteUri : null;
+            return null;
         }
 
         private static string? ImageSource(HtmlAttributes attributes)
