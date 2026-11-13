@@ -60,22 +60,24 @@ public static class HtmlImageParser
 
         private static IEnumerable<string?> ImageSources(HtmlAttributes attributes)
         {
-            yield return LargestSrcsetCandidate(attributes["data-lazy-srcset"]);
-            yield return LargestSrcsetCandidate(attributes["data-srcset"]);
+            yield return PreferredSrcsetCandidate(attributes["data-lazy-srcset"]);
+            yield return PreferredSrcsetCandidate(attributes["data-srcset"]);
             yield return attributes["data-lazy-src"];
             yield return attributes["data-src"];
             yield return attributes["data-original"];
-            yield return LargestSrcsetCandidate(attributes["srcset"]);
+            yield return PreferredSrcsetCandidate(attributes["srcset"]);
             yield return attributes["src"];
         }
     }
 
-    private static string? LargestSrcsetCandidate(string? value)
+    private static string? PreferredSrcsetCandidate(string? value)
     {
         if (value is null) return null;
         var remaining = value.AsSpan();
         string? largestUrl = null;
         var largestSize = double.NegativeInfinity;
+        string? preferredUrl = null;
+        var preferredSize = double.PositiveInfinity;
         while (!remaining.IsEmpty)
         {
             var skip = 0;
@@ -97,11 +99,19 @@ public static class HtmlImageParser
             }
             var size = descriptor.Length > 0 && double.TryParse(descriptor[..^1], NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var parsed) ? parsed : 1;
-            if (url.IsEmpty || size <= largestSize) continue;
-            largestUrl = url.ToString();
-            largestSize = size;
+            if (url.IsEmpty) continue;
+            if (descriptor.EndsWith("w") && size >= 1200 && size < preferredSize)
+            {
+                preferredUrl = url.ToString();
+                preferredSize = size;
+            }
+            if (size > largestSize)
+            {
+                largestUrl = url.ToString();
+                largestSize = size;
+            }
         }
-        return largestUrl;
+        return preferredUrl ?? largestUrl;
     }
 
     private static int? PixelDimension(string? value)

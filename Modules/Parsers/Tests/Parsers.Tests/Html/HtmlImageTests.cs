@@ -30,6 +30,11 @@ public class HtmlImageTests
             First("""<img src="/placeholder.jpg" srcset="/small.jpg 300w, /large.jpg 1024w">""")?.Url);
 
     [Fact]
+    public void SrcsetAvoidsUnnecessarilyLargeDownloads()
+        => Assert.Equal("https://example.com/1536.jpg",
+            First("""<img srcset="/2048.jpg 2048w, /640.jpg 640w, /1536.jpg 1536w">""")?.Url);
+
+    [Fact]
     public void SharingButtonsAndGravatarsDoNotDisplaceArticlePhoto()
     {
         var html = """
