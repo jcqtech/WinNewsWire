@@ -108,7 +108,8 @@ public sealed class CurrentActivityViewModelTests
             (ActivityKind.DownloadFeedImage(url), "Downloading image"),
             (ActivityKind.DownloadFavicon(url), "Downloading favicon"),
             (ActivityKind.DownloadAvatar(url), "Downloading avatar"),
-            (ActivityKind.DownloadHtmlMetadata(url), "Downloading metadata")
+            (ActivityKind.DownloadHtmlMetadata(url), "Downloading metadata"),
+            (ActivityKind.DownloadThumbnail(url), "Downloading thumbnail")
         })
             Assert.Equal(new ActivityDisplayText(title, url),
                 CurrentActivityViewModel.DisplayText(new Activity(1, ActivityOwner.App, kind, "not the URL").Snapshot()));

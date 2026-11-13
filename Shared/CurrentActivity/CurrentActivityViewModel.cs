@@ -122,6 +122,7 @@ public sealed class CurrentActivityViewModel : IDisposable
         "downloadFavicon" => new(AppStrings.Get("DownloadingFavicon"), activity.Kind.Url),
         "downloadAvatar" => new(AppStrings.Get("DownloadingAvatar"), activity.Kind.Url),
         "downloadHTMLMetadata" => new(AppStrings.Get("DownloadingMetadata"), activity.Kind.Url),
+        "downloadThumbnail" => new(AppStrings.Get("DownloadingThumbnail"), activity.Kind.Url),
         _ => new(activity.Kind.SimpleDisplayName ?? "", activity.Detail)
     };
 
