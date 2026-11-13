@@ -33,7 +33,14 @@ public sealed class ReaderAPISyncTests : IDisposable
                     : request.Query.ContainsKey("c") ? ["2"] : ["1"],
                     request.Query["s"] == ReadingList && !request.Query.ContainsKey("xt") && !request.Query.ContainsKey("c") ? "next" : null),
                 "token" => Plain("write-token"),
-                "contents" => Json(new ReaderAPIStreamContentsResponse([Entry(1, read: true, starred: true), Entry(2, read: false)], null)),
+                "contents" => Json(new ReaderAPIStreamContentsResponse([Entry(1, read: true, starred: true),
+                    JsonSerializer.Deserialize<ReaderAPIEntry>("""
+                        {"id":"tag:google.com,2005:reader/item/0000000000000002","title":"Title \uFF1C2\uFF1E \uFF06",
+                         "author":"Author \uFF06","origin":{"streamId":"feed/42"},"summary":{"content":"<p>Content</p>"},
+                         "enclosure":[{"href":"https://example.test/z.mp4","type":"video","length":"4294967296"},
+                                      {"href":"https://example.test/a.jpg","type":"image/jpeg","length":128},
+                                      {"type":"audio","length":"invalid"}]}
+                        """)!], null)),
                 _ => throw new InvalidOperationException("Unexpected Reader API endpoint."),
             };
             response.Headers.Date = serverDate;
@@ -54,6 +61,7 @@ public sealed class ReaderAPISyncTests : IDisposable
         Assert.Empty(account.TopLevelFeeds);
         Assert.Equal("News & Things", feed.Name);
         Assert.Equal("Custom", feed.NameForDisplay);
+        account.Database.EmptyCaches();
         var articles = await account.Database.FetchArticlesAsync(feed.FeedID);
         Assert.Equal(2, articles.Count);
         Assert.True(articles.Single(article => article.ArticleID == LegacyID).Status.Read);
@@ -61,6 +69,12 @@ public sealed class ReaderAPISyncTests : IDisposable
         Assert.False(articles.Single(article => article.ArticleID == "2").Status.Read);
         Assert.Equal("Title <2> &", articles.Single(article => article.ArticleID == "2").Title);
         Assert.Equal("Author &", Assert.Single(articles.Single(article => article.ArticleID == "2").Authors!).Name);
+        var media = articles.Single(article => article.ArticleID == "2");
+        var attachments = media.Attachments!;
+        Assert.Equal("https://example.test/a.jpg", media.RawImageLink);
+        Assert.Equal(["https://example.test/z.mp4", "https://example.test/a.jpg"], attachments.Select(attachment => attachment.URL));
+        Assert.Equal(Attachment.AttachmentMedium.Video, attachments[0].Medium);
+        Assert.Equal(4294967296L, attachments[0].SizeInBytes);
         Assert.Equal(serverDate.UtcDateTime, account.Settings.LastArticleFetchStartTime);
         Assert.Equal(4, handler.Requests.Count(request => request.Uri.AbsolutePath.EndsWith("/ids")));
         var bodyRequest = handler.Requests.Single(request => request.Uri.AbsolutePath.EndsWith("/contents"));

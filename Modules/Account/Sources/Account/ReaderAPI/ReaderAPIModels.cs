@@ -1,5 +1,8 @@
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using System.Globalization;
+using WinNewsWire.Parsers;
+using WinNewsWire.Account;
 
 namespace WinNewsWire.ReaderAPI;
 
@@ -43,8 +46,13 @@ public sealed record ReaderAPIEntry(
     [property: JsonPropertyName("content")] ReaderAPIContent? Content,
     [property: JsonPropertyName("alternate")] List<ReaderAPIHref>? Alternate,
     [property: JsonPropertyName("origin")] ReaderAPIOrigin? Origin,
-    [property: JsonPropertyName("categories")] List<string>? Categories)
+    [property: JsonPropertyName("categories")] List<string>? Categories,
+    [property: JsonPropertyName("enclosure")] List<ReaderAPIEnclosure>? Enclosures = null)
 {
+    public IReadOnlyList<ParsedAttachment>? Attachments => Enclosures?.Select(enclosure => enclosure.ParsedAttachment)
+        .OfType<ParsedAttachment>().ToArray() is { Length: > 0 } attachments ? attachments : null;
+    public string? ImageUrl => Enclosures?.FirstOrDefault(enclosure => enclosure.IsImage)?.Url;
+
     public string UniqueID(ReaderAPIVariant variant)
         => UniqueID(Id, variant);
 
@@ -57,6 +65,30 @@ public sealed record ReaderAPIEntry(
     }
 
     public DateTime? ParseDatePublished() => Published is { } value ? DateTime.UnixEpoch.AddSeconds(value) : null;
+}
+
+public sealed record ReaderAPIEnclosure(
+    [property: JsonPropertyName("href"), JsonConverter(typeof(OptionalMediaStringConverter))] string? Url,
+    [property: JsonPropertyName("type"), JsonConverter(typeof(OptionalMediaStringConverter))] string? Type,
+    [property: JsonPropertyName("length")] JsonElement? Length = null)
+{
+    private string? MimeType => Type?.Contains('/') == true ? Type : null;
+    private ParsedAttachment.AttachmentMedium? Medium => MimeType is null ? Parsers.ParsedAttachment.ParseMedium(Type) : null;
+    public bool IsImage => Medium == Parsers.ParsedAttachment.AttachmentMedium.Image
+        || MimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true;
+    private long? SizeInBytes
+    {
+        get
+        {
+            long size;
+            bool parsed = Length is { ValueKind: JsonValueKind.Number } number ? number.TryGetInt64(out size)
+                : long.TryParse(Length is { ValueKind: JsonValueKind.String } text ? text.GetString() : null,
+                    NumberStyles.Integer, CultureInfo.InvariantCulture, out size);
+            return parsed && size > 0 ? size : null;
+        }
+    }
+
+    public ParsedAttachment? ParsedAttachment => Parsers.ParsedAttachment.Create(Url, MimeType, null, SizeInBytes, null, medium: Medium);
 }
 
 public sealed record ReaderAPIContent([property: JsonPropertyName("content")] string? Content);

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Diagnostics;
 using System.Globalization;
 using WinNewsWire.Parsers;
+using WinNewsWire.Account;
 
 namespace WinNewsWire.Feedbin;
 
@@ -66,35 +67,22 @@ public sealed record FeedbinEntry(
 }
 
 public sealed record FeedbinEntryImages(
-    [property: JsonPropertyName("original_url"), JsonConverter(typeof(FeedbinOptionalStringConverter))] string? OriginalUrl,
+    [property: JsonPropertyName("original_url"), JsonConverter(typeof(OptionalMediaStringConverter))] string? OriginalUrl,
     [property: JsonPropertyName("size_1"), JsonConverter(typeof(FeedbinThumbnailConverter))] FeedbinEntryThumbnail? Thumbnail);
 
 public sealed record FeedbinEntryThumbnail(
-    [property: JsonPropertyName("cdn_url"), JsonConverter(typeof(FeedbinOptionalStringConverter))] string? CdnUrl);
+    [property: JsonPropertyName("cdn_url"), JsonConverter(typeof(OptionalMediaStringConverter))] string? CdnUrl);
 
 public sealed record FeedbinEntryEnclosure(
-    [property: JsonPropertyName("enclosure_url"), JsonConverter(typeof(FeedbinOptionalStringConverter))] string? Url,
-    [property: JsonPropertyName("enclosure_type"), JsonConverter(typeof(FeedbinOptionalStringConverter))] string? MimeType,
-    [property: JsonPropertyName("enclosure_length"), JsonConverter(typeof(FeedbinOptionalStringConverter))] string? Length,
-    [property: JsonPropertyName("itunes_duration"), JsonConverter(typeof(FeedbinOptionalStringConverter))] string? ITunesDuration,
-    [property: JsonPropertyName("itunes_image"), JsonConverter(typeof(FeedbinOptionalStringConverter))] string? ITunesImageUrl)
+    [property: JsonPropertyName("enclosure_url"), JsonConverter(typeof(OptionalMediaStringConverter))] string? Url,
+    [property: JsonPropertyName("enclosure_type"), JsonConverter(typeof(OptionalMediaStringConverter))] string? MimeType,
+    [property: JsonPropertyName("enclosure_length"), JsonConverter(typeof(OptionalMediaStringConverter))] string? Length,
+    [property: JsonPropertyName("itunes_duration"), JsonConverter(typeof(OptionalMediaStringConverter))] string? ITunesDuration,
+    [property: JsonPropertyName("itunes_image"), JsonConverter(typeof(OptionalMediaStringConverter))] string? ITunesImageUrl)
 {
     public ParsedAttachment? ParsedAttachment => Parsers.ParsedAttachment.Create(Url, MimeType, null,
         long.TryParse(Length, NumberStyles.Integer, CultureInfo.InvariantCulture, out var size) && size > 0 ? size : null,
         Parsers.ParsedAttachment.ParseDurationInSeconds(ITunesDuration));
-}
-
-internal sealed class FeedbinOptionalStringConverter : JsonConverter<string>
-{
-    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        if (reader.TokenType == JsonTokenType.String) return reader.GetString();
-        using var ignored = JsonDocument.ParseValue(ref reader);
-        Trace.TraceWarning("Ignored a non-string optional Feedbin media field.");
-        return null;
-    }
-
-    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) => writer.WriteStringValue(value);
 }
 
 internal sealed class FeedbinThumbnailConverter : JsonConverter<FeedbinEntryThumbnail>

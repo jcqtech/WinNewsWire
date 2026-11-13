@@ -195,9 +195,9 @@ public sealed partial class ReaderAPIAccountDelegate
             var canonical = entry.UniqueID(API.Variant);
             var item = new ParsedItem(mapped[canonical], canonical, stream, null, entry.Alternate?.FirstOrDefault()?.Href,
                 DecodeFullwidth(entry.Title), null, entry.Content?.Content ?? entry.Summary?.Content, null, null,
-                entry.Summary?.Content, null, null, entry.ParseDatePublished(),
+                entry.Summary?.Content, entry.ImageUrl, null, entry.ParseDatePublished(),
                 entry.Updated is > 0 ? DateTime.UnixEpoch.AddSeconds(entry.Updated.Value) : null,
-                entry.Author is null ? null : new HashSet<ParsedAuthor> { new(DecodeFullwidth(entry.Author), null, null, null) }, null, null);
+                entry.Author is null ? null : new HashSet<ParsedAuthor> { new(DecodeFullwidth(entry.Author), null, null, null) }, null, entry.Attachments);
             articles.Add(RemoteSyncHelpers.ArticleFromParsedItem(account, item, feeds.GetValueOrDefault(stream)?.FeedID ?? stream, defaultRead: true));
         }
         var added = await account.Database.UpdateArticlesAsync(articles);
