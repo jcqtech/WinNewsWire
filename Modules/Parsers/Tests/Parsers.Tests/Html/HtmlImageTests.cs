@@ -124,6 +124,10 @@ public class HtmlImageTests
     public void WiderArticlePhotosAreNotMistakenForBanners()
         => Assert.NotNull(First("""<img src="/photo.jpg" width="600" height="100">"""));
 
+    [Fact]
+    public void DecorativeBannerStripIsNotAnArticlePhoto()
+        => Assert.Null(First("""<img src="/banner.jpg" width="1200" height="150">"""));
+
     [Theory]
     [InlineData("""<img data-lazy-src="/photo.jpg" src="/placeholder.svg">""")]
     [InlineData("""<img data-src="/photo.jpg" src="/placeholder.svg">""")]
