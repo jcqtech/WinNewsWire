@@ -10,6 +10,66 @@ public class ArticleUpdateTests : IDisposable
     private readonly ArticlesDatabaseStore _database = new(":memory:", "test");
 
     [Fact]
+    public async Task AttachmentMetadataIsArticleScopedAndUpdatesWithoutChangingArticleBody()
+    {
+        ParsedItem MediaItem(string id, long width) => new(null, id, "feed1", null, null, "Title", null,
+            "<p>Body</p>", null, null, null, null, null, null, null, null, null,
+            new HashSet<ParsedAttachment> { new("https://example.com/image.jpg", "image/jpeg", null, null, null,
+                width, 480, ParsedAttachment.AttachmentMedium.Image) });
+        await _database.UpdateAsync([MediaItem("one", 640), MediaItem("two", 320)], "feed1");
+        _database.EmptyCaches();
+        var stored = (await _database.FetchArticlesAsync("feed1")).ToDictionary(a => a.UniqueID);
+        Assert.Equal(640, Assert.Single(stored["one"].Attachments!).Width);
+        Assert.Equal(320, Assert.Single(stored["two"].Attachments!).Width);
+        var changes = await _database.UpdateAsync([MediaItem("one", 1280)], "feed1");
+        var updated = Assert.Single(changes.Updated!);
+        Assert.Equal(1280, Assert.Single(updated.Attachments!).Width);
+        Assert.Same(stored["one"].Status, updated.Status);
+        _database.EmptyCaches();
+        stored = (await _database.FetchArticlesAsync("feed1")).ToDictionary(a => a.UniqueID);
+        Assert.Equal(1280, Assert.Single(stored["one"].Attachments!).Width);
+        Assert.Equal(Attachment.AttachmentMedium.Image, Assert.Single(stored["one"].Attachments!).Medium);
+        Assert.Equal(320, Assert.Single(stored["two"].Attachments!).Width);
+        Assert.Null((await _database.UpdateAsync([MediaItem("one", 1280)], "feed1")).Updated);
+    }
+
+    [Fact]
+    public async Task LegacyNormalizedAttachmentsMigrateWithoutLosingExistingMetadata()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "attachment-migration-" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var legacy = new ArticlesDatabaseStore(path, "test"))
+            {
+                legacy.Queue.Run(connection =>
+                {
+                    using var command = connection.CreateCommand();
+                    command.CommandText = """
+                        ALTER TABLE articles DROP COLUMN attachments;
+                        INSERT INTO articles(articleID, feedID, uniqueID) VALUES ('article', 'feed1', '1');
+                        INSERT INTO statuses(articleID) VALUES ('article');
+                        INSERT INTO attachments VALUES ('media', 'https://example.com/audio', 'audio/mpeg', 'Episode', 4294967296, 180);
+                        INSERT INTO attachmentsLookup VALUES ('media', 'article');
+                        """;
+                    command.ExecuteNonQuery();
+                });
+            }
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                using var migrated = new ArticlesDatabaseStore(path, "test");
+                var attachment = Assert.Single(Assert.Single(await migrated.FetchArticlesAsync("feed1")).Attachments!);
+                Assert.Equal("media", attachment.AttachmentID);
+                Assert.Equal("Episode", attachment.Title);
+                Assert.Equal(4294967296L, attachment.SizeInBytes);
+                Assert.Equal(180, attachment.DurationInSeconds);
+                Assert.Null(attachment.Width);
+                Assert.Null(attachment.Medium);
+            }
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public async Task IdenticalUpdateReportsNoChanges()
     {
         var item = Item("Title", null);

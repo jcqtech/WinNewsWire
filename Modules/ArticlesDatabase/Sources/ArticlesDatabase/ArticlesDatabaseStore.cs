@@ -27,6 +27,7 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
                 using var cmd = c.CreateCommand();
                 cmd.CommandText = Constants.CreateStatements;
                 cmd.ExecuteNonQuery();
+                MigrateAttachmentStorage(c);
                 EnsureSearchIndex(c);
             });
         }
@@ -255,11 +256,11 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
         }
 
         Dictionary<string, HashSet<Author>>? authorsByArticle = null;
-        Dictionary<string, HashSet<Attachment>>? attachmentsByArticle = null;
+        Dictionary<string, IReadOnlySet<Attachment>?>? attachmentsByArticle = null;
         if (staged.Count > 0 && cmd.Connection is { } conn)
         {
             authorsByArticle = new Dictionary<string, HashSet<Author>>();
-            attachmentsByArticle = new Dictionary<string, HashSet<Attachment>>();
+            attachmentsByArticle = new Dictionary<string, IReadOnlySet<Attachment>?>();
             foreach (var batch in staged.Chunk(500))
             {
                 var placeholders = string.Join(",", batch.Select((_, i) => $"@a{i}"));
@@ -287,26 +288,13 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
                     }
                 }
                 using var attCmd = conn.CreateCommand();
-                attCmd.CommandText = $@"SELECT al.articleID, a.attachmentID, a.url, a.mimeType, a.title, a.sizeInBytes, a.durationInSeconds
-                                        FROM attachmentsLookup al JOIN attachments a ON al.attachmentID = a.attachmentID
-                                        WHERE al.articleID IN ({placeholders});";
+                attCmd.CommandText = $"SELECT articleID, attachments FROM articles WHERE articleID IN ({placeholders});";
                 for (int i = 0; i < batch.Length; i++)
                     attCmd.Parameters.AddWithValue($"@a{i}", batch[i].articleID);
                 using var attR = attCmd.ExecuteReader();
                 while (attR.Read())
                 {
-                    var aid = attR.GetString(0);
-                    var attachment = Attachment.Create(
-                        attR.GetString(1),
-                        attR.IsDBNull(2) ? null : attR.GetString(2),
-                        attR.IsDBNull(3) ? null : attR.GetString(3),
-                        attR.IsDBNull(4) ? null : attR.GetString(4),
-                        attR.IsDBNull(5) ? null : (long?)attR.GetInt64(5),
-                        attR.IsDBNull(6) ? null : (long?)attR.GetInt64(6));
-                    if (attachment is null) continue;
-                    if (!attachmentsByArticle.TryGetValue(aid, out var setForAttachment))
-                        attachmentsByArticle[aid] = setForAttachment = new HashSet<Attachment>();
-                    setForAttachment.Add(attachment);
+                    attachmentsByArticle[attR.GetString(0)] = Attachment.FromJson(attR.IsDBNull(1) ? null : attR.GetString(1));
                 }
             }
         }
@@ -315,7 +303,7 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
         {
             HashSet<Author>? authors = null;
             authorsByArticle?.TryGetValue(s.articleID, out authors);
-            HashSet<Attachment>? attachments = null;
+            IReadOnlySet<Attachment>? attachments = null;
             attachmentsByArticle?.TryGetValue(s.articleID, out attachments);
             var article = new Article(
                 AccountID, s.articleID, s.feedID, s.uniqueID,
@@ -365,13 +353,14 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
                 using (var cmd = c.CreateCommand())
                 {
                     cmd.CommandText = @"INSERT INTO articles
-                        (articleID, feedID, uniqueID, title, contentHTML, contentText, markdown, url, externalURL, summary, imageURL, bannerImageURL, datePublished, dateModified, searchRowID)
-                        VALUES (@articleID, @feedID, @uniqueID, @title, @contentHTML, @contentText, @markdown, @url, @externalURL, @summary, @imageURL, NULL, @datePublished, @dateModified, NULL)
+                        (articleID, feedID, uniqueID, title, contentHTML, contentText, markdown, url, externalURL, summary, imageURL, bannerImageURL, datePublished, dateModified, searchRowID, attachments)
+                        VALUES (@articleID, @feedID, @uniqueID, @title, @contentHTML, @contentText, @markdown, @url, @externalURL, @summary, @imageURL, NULL, @datePublished, @dateModified, NULL, @attachments)
                         ON CONFLICT(articleID) DO UPDATE SET
                             feedID = excluded.feedID, uniqueID = excluded.uniqueID, title = excluded.title,
                             contentHTML = excluded.contentHTML, contentText = excluded.contentText, markdown = excluded.markdown,
                             url = excluded.url, externalURL = excluded.externalURL, summary = excluded.summary,
                             imageURL = excluded.imageURL,
+                            attachments = excluded.attachments,
                             datePublished = COALESCE(excluded.datePublished, articles.datePublished),
                             dateModified = COALESCE(excluded.dateModified, articles.dateModified);";
                     cmd.Parameters.AddWithValue("@articleID", a.ArticleID);
@@ -385,6 +374,7 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
                     cmd.Parameters.AddWithValue("@externalURL", (object?)a.RawExternalLink ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@summary", (object?)a.Summary ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@imageURL", (object?)a.RawImageLink ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@attachments", (object?)Attachment.ToJson(a.Attachments) ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@datePublished", (object?)a.DatePublished?.ToUnixTimestamp() ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@dateModified", (object?)a.DateModified?.ToUnixTimestamp() ?? DBNull.Value);
                     cmd.ExecuteNonQuery();
@@ -411,23 +401,6 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
                         ac.ExecuteNonQuery();
                     }
                 }
-                if (a.Attachments is not null)
-                {
-                    foreach (var att in a.Attachments)
-                    {
-                        using var attc = c.CreateCommand();
-                        attc.CommandText = @"INSERT OR REPLACE INTO attachments (attachmentID, url, mimeType, title, sizeInBytes, durationInSeconds) VALUES (@i,@u,@m,@t,@s,@d);
-                                             INSERT OR IGNORE INTO attachmentsLookup (attachmentID, articleID) VALUES (@i, @aid);";
-                        attc.Parameters.AddWithValue("@i", att.AttachmentID);
-                        attc.Parameters.AddWithValue("@u", (object?)att.URL ?? DBNull.Value);
-                        attc.Parameters.AddWithValue("@m", (object?)att.MimeType ?? DBNull.Value);
-                        attc.Parameters.AddWithValue("@t", (object?)att.Title ?? DBNull.Value);
-                        attc.Parameters.AddWithValue("@s", (object?)att.SizeInBytes ?? DBNull.Value);
-                        attc.Parameters.AddWithValue("@d", (object?)att.DurationInSeconds ?? DBNull.Value);
-                        attc.Parameters.AddWithValue("@aid", a.ArticleID);
-                        attc.ExecuteNonQuery();
-                    }
-                }
                 SearchTable.IndexArticle(c, a);
             }
         return newArticles;
@@ -439,18 +412,12 @@ public sealed partial class ArticlesDatabaseStore : IDisposable
         foreach (var article in articles) _articlesCache.TryRemove(article.ArticleID, out _);
         var authors = articles.SelectMany(article => article.Authors ?? Enumerable.Empty<Author>()).GroupBy(author => author.AuthorID)
             .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
-        var attachments = articles.SelectMany(article => article.Attachments ?? Enumerable.Empty<Attachment>()).GroupBy(attachment => attachment.AttachmentID)
-            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
-        if (authors.Count == 0 && attachments.Count == 0) return;
+        if (authors.Count == 0) return;
         Func<Author, bool> changedAuthor = old => authors.TryGetValue(old.AuthorID, out var next)
             && (old.Name, old.Url, old.AvatarUrl, old.EmailAddress) != (next.Name, next.Url, next.AvatarUrl, next.EmailAddress);
-        Func<Attachment, bool> changedAttachment = old => attachments.TryGetValue(old.AttachmentID, out var next)
-            && (old.URL, old.MimeType, old.Title, old.SizeInBytes, old.DurationInSeconds)
-                != (next.URL, next.MimeType, next.Title, next.SizeInBytes, next.DurationInSeconds);
         foreach (var (id, cached) in _articlesCache)
         {
-            if (authors.Count > 0 && AnyChanged(cached.Authors, changedAuthor)
-                || attachments.Count > 0 && AnyChanged(cached.Attachments, changedAttachment))
+            if (AnyChanged(cached.Authors, changedAuthor))
                 _articlesCache.TryRemove(id, out _);
         }
     }

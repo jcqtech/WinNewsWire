@@ -146,9 +146,9 @@ public sealed class NativeRetentionTests : IDisposable
         Assert.Equal("Shared", Assert.Single(kept.Authors!).Name);
         Assert.Equal("https://example.com/shared.mp3", Assert.Single(kept.Attachments!).URL);
         Assert.Equal(1L, _store.Queue.Run(connection => connection.Scalar<long>("SELECT COUNT(*) FROM authors;")));
-        Assert.Equal(1L, _store.Queue.Run(connection => connection.Scalar<long>("SELECT COUNT(*) FROM attachments;")));
+        Assert.Equal(0L, _store.Queue.Run(connection => connection.Scalar<long>("SELECT COUNT(*) FROM attachments;")));
         Assert.Equal(1L, _store.Queue.Run(connection => connection.Scalar<long>("SELECT COUNT(*) FROM authorsLookup;")));
-        Assert.Equal(1L, _store.Queue.Run(connection => connection.Scalar<long>("SELECT COUNT(*) FROM attachmentsLookup;")));
+        Assert.Equal(0L, _store.Queue.Run(connection => connection.Scalar<long>("SELECT COUNT(*) FROM attachmentsLookup;")));
     }
 
     [Fact]

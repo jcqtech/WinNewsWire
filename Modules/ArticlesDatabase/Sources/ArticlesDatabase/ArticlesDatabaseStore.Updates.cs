@@ -45,7 +45,16 @@ public sealed partial class ArticlesDatabaseStore
                 modified = DatabaseDate(modified);
                 var authors = item.Authors?.Select(a => Author.Create(null, a.Name, a.Url, a.AvatarUrl, a.EmailAddress))
                     .OfType<Author>().ToHashSet();
-                var attachments = item.Attachments?.Select(a => Attachment.Create(null, a.Url, a.MimeType, a.Title, a.SizeInBytes, a.DurationInSeconds))
+                var attachments = item.Attachments?.Select(a => Attachment.Create(null, a.Url, a.MimeType, a.Title, a.SizeInBytes, a.DurationInSeconds,
+                    a.Width, a.Height, a.Medium switch
+                    {
+                        ParsedAttachment.AttachmentMedium.Image => Attachment.AttachmentMedium.Image,
+                        ParsedAttachment.AttachmentMedium.Audio => Attachment.AttachmentMedium.Audio,
+                        ParsedAttachment.AttachmentMedium.Video => Attachment.AttachmentMedium.Video,
+                        ParsedAttachment.AttachmentMedium.Document => Attachment.AttachmentMedium.Document,
+                        ParsedAttachment.AttachmentMedium.Executable => Attachment.AttachmentMedium.Executable,
+                        _ => (Attachment.AttachmentMedium?)null
+                    }))
                     .OfType<Attachment>().ToHashSet();
                 incoming.Add(new Article(AccountID, id, feedID, item.UniqueId,
                     item.Title, item.ContentHtml, item.ContentText, item.Markdown, item.Url, item.ExternalUrl,
