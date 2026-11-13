@@ -195,6 +195,34 @@ public sealed class ArticleThumbnailFinderTests
         Assert.Equal("https://example.com/" + expected, finder.ThumbnailUrl(article, mode));
     }
 
+    [Theory]
+    [InlineData(ThumbnailMode.Small)]
+    [InlineData(ThumbnailMode.Large)]
+    public void UsableEarlierProvidedImagesAvoidAttachmentClassificationAllocations(ThumbnailMode mode)
+    {
+        using var database = new ImageDatabase(":memory:");
+        var finder = new ArticleThumbnailFinder(database);
+        const string image = "https://example.com/photo.jpg";
+        var attachment = Attachment.Create(null, "https://example.com/document.bin", null, null, null, null)!;
+        var withoutAttachments = Article(image: image, thumbnail: image);
+        var withAttachments = Article(image: image, thumbnail: image, attachments: Enumerable.Repeat(attachment, 512));
+        long Allocated(Article article)
+        {
+            finder.EmptyCache();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            var actual = finder.ThumbnailUrl(article, mode);
+            long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.Equal(image, actual);
+            return bytes;
+        }
+        _ = Allocated(withoutAttachments);
+        _ = Allocated(withAttachments);
+        long baseline = Allocated(withoutAttachments);
+        long allocated = Allocated(withAttachments);
+        Assert.True(allocated <= baseline + 16 * 1024,
+            $"An earlier usable image still classified attachments: {allocated} bytes versus {baseline} without attachments.");
+    }
+
     [Fact]
     public async Task FailedProvidedImagesFallThroughToSignificantAttachments()
     {

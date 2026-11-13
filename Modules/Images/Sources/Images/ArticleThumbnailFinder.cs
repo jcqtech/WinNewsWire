@@ -126,16 +126,21 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
     }
 
     private string? ProvidedThumbnailUrl(Article article, ThumbnailMode mode)
-    {
-        var thumbnail = NormalizedUrl(article.RawThumbnailLink);
-        var image = NormalizedUrl(article.RawImageLink);
-        var attachment = article.Attachments?.FirstOrDefault(attachment =>
+        => mode == ThumbnailMode.Small
+            ? UsableProvidedUrl(NormalizedUrl(article.RawThumbnailLink))
+                ?? UsableProvidedUrl(NormalizedUrl(article.RawImageLink))
+                ?? UsableProvidedUrl(FirstSignificantImageAttachmentUrl(article))
+            : UsableProvidedUrl(NormalizedUrl(article.RawImageLink))
+                ?? UsableProvidedUrl(FirstSignificantImageAttachmentUrl(article))
+                ?? UsableProvidedUrl(NormalizedUrl(article.RawThumbnailLink));
+
+    private string? UsableProvidedUrl(string? url)
+        => url is not null && !HasFailed(url) && SignificantImageFilter.IsSignificant(url, null, null) ? url : null;
+
+    private static string? FirstSignificantImageAttachmentUrl(Article article)
+        => article.Attachments?.FirstOrDefault(attachment =>
             attachment.DisplayMedium == Attachment.AttachmentMedium.Image && attachment.URL is { } url
                 && SignificantImageFilter.IsSignificant(url, attachment.Width, attachment.Height))?.URL;
-        var candidates = mode == ThumbnailMode.Small ? new[] { thumbnail, image, attachment } : [image, attachment, thumbnail];
-        return candidates.FirstOrDefault(url => url is not null && !HasFailed(url)
-            && SignificantImageFilter.IsSignificant(url, null, null));
-    }
 
     public void RecordDecodingFailure(string url)
     {
