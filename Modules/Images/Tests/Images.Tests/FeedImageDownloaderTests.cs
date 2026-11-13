@@ -268,7 +268,7 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal(source.Path, image.Path);
         Assert.Equal(original, await File.ReadAllBytesAsync(image.Path));
         Assert.Single(fixture.Requests);
-        Assert.Single(fixture.Activity.CompletedActivities);
+        Assert.Empty(fixture.Activity.CompletedActivities);
     }
 
     [Fact]
@@ -424,11 +424,55 @@ public sealed class FeedImageDownloaderTests
         Assert.Single(fixture.Requests);
         Assert.False(Directory.Exists(Path.Combine(fixture.CacheDirectory, "Thumbnails")));
         Assert.False(Directory.Exists(Path.Combine(fixture.CacheDirectory, "LargeThumbnails")));
-        Assert.All(fixture.Activity.CompletedActivities, activity => Assert.Equal(ActivityOwner.ThumbnailDownloader, activity.Owner));
-        Assert.Contains(fixture.Activity.CompletedActivities, activity => activity.Detail == "Article title");
+        Assert.Empty(fixture.Activity.CompletedActivities);
         fixture.NetworkAllowed = false;
         Assert.Equal(source.Data, (await fixture.Thumbnails.SourceAsync(url))?.Data);
-        Assert.Single(fixture.Activity.CompletedActivities);
+        Assert.Empty(fixture.Activity.CompletedActivities);
+    }
+
+    [Theory]
+    [InlineData(200, false)]
+    [InlineData(404, false)]
+    [InlineData(503, false)]
+    [InlineData(200, true)]
+    public async Task ThumbnailDownloadsOnlyCreateActivityEntriesWhenTheyFail(int status, bool unreadable)
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (_, ct) =>
+        {
+            started.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return Response((HttpStatusCode)status, unreadable ? "<html>Login</html>"u8.ToArray() : Bitmap(128, 128));
+        });
+        const string url = Home + "thumbnail-activity.bmp";
+        fixture.Activity.LogCompletedActivity(ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage(Home + "existing"));
+        var pending = fixture.Thumbnails.SourceAsync(url, activityDetail: "Article title");
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Empty(fixture.Activity.PendingActivities);
+            Assert.Empty(fixture.Activity.RunningActivities);
+            Assert.Single(fixture.Activity.CompletedActivities);
+        }
+        finally { release.TrySetResult(); }
+        var result = await pending;
+        var failures = fixture.Activity.CompletedActivities.Where(activity => activity.Owner.Equals(ActivityOwner.ThumbnailDownloader)).ToArray();
+        if (status == 200 && !unreadable)
+        {
+            Assert.NotNull(result);
+            Assert.Empty(failures);
+            Assert.Single(fixture.Activity.CompletedActivities);
+        }
+        else
+        {
+            Assert.Null(result);
+            var failure = Assert.Single(failures);
+            Assert.Equal("Article title", failure.Detail);
+            Assert.NotNull(failure.Error);
+        }
+        Assert.Empty(fixture.Activity.PendingActivities);
+        Assert.Empty(fixture.Activity.RunningActivities);
     }
 
     [Theory]
@@ -781,7 +825,7 @@ public sealed class FeedImageDownloaderTests
         Assert.Contains(largeImage.Path, files);
         Assert.Equal(iconImage.Data, await fixture.Images.DownloadedImages.DerivedImageDataAsync(url, "64-Png"));
         Assert.Single(fixture.Requests);
-        Assert.Single(fixture.Activity.CompletedActivities);
+        Assert.Empty(fixture.Activity.CompletedActivities);
     }
 
     [Fact]

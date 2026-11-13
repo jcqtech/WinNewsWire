@@ -192,25 +192,28 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                 return new(null, IsTransient: true);
             if (IsWaitingToRetry(url)) return new(null, IsTransient: true);
         }
-        int activity = _log.CreateActivity(request.Owner, request.Kind, request.Detail);
-        _log.DidStart(activity);
+        int? activity = request.Owner.Equals(ActivityOwner.ThumbnailDownloader)
+            ? null : _log.CreateActivity(request.Owner, request.Kind, request.Detail);
+        if (activity is { } startedActivity) _log.DidStart(startedActivity);
+        void LogFailure(Exception error)
+            => _log.DidFail(activity ?? _log.CreateActivity(request.Owner, request.Kind, request.Detail), error);
         DownloadResult response;
         try
         {
             response = await _downloader.DownloadAsync(url, null, ct, UserAgentStyle.Browser,
                 cachesResponse: !_configuration.StoresSourceData).ConfigureAwait(false);
         }
-        catch (OperationCanceledException error) when (ct.IsCancellationRequested) { _log.DidFail(activity, error); throw; }
+        catch (OperationCanceledException error) when (ct.IsCancellationRequested) { LogFailure(error); throw; }
         catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException)
         {
-            _log.DidFail(activity, error);
+            LogFailure(error);
             NoteTransientFailure(url);
             return new(null, IsTransient: true);
         }
         if (!response.Success || response.Data is not { Length: > 0 } bytes)
         {
             bool transient = IsTransientStatus((int)response.StatusCode);
-            _log.DidFail(activity, new HttpRequestException("Image request returned HTTP " + (int)response.StatusCode
+            LogFailure(new HttpRequestException("Image request returned HTTP " + (int)response.StatusCode
                 + (response.Success ? " with no image bytes." : "."), null, response.StatusCode));
             if (transient) NoteTransientFailure(url, response.RetryAfter, (int)response.StatusCode);
             else
@@ -227,7 +230,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                 && bytes.LongLength > 25L * 1024 * 1024 && !_unlimitedPending.Contains(url);
         if (oversized)
         {
-            _log.DidFail(activity, new InvalidDataException($"Image too large for a timeline download ({bytes.LongLength} bytes)."));
+            LogFailure(new InvalidDataException($"Image too large for a timeline download ({bytes.LongLength} bytes)."));
             ClearRetryDelay(url);
             _database.RecordThumbnailSizeRejection(url);
             DownloadFailed?.Invoke(this, url);
@@ -241,7 +244,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         catch (InvalidDataException error)
         {
-            _log.DidFail(activity, new InvalidDataException($"Could not decode image bytes (HTTP {(int)response.StatusCode}).", error));
+            LogFailure(new InvalidDataException($"Could not decode image bytes (HTTP {(int)response.StatusCode}).", error));
             ct.ThrowIfCancellationRequested();
             if (_configuration.StoresSourceData)
             {
@@ -256,7 +259,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         catch (OperationCanceledException error) when (ct.IsCancellationRequested)
         {
-            _log.DidFail(activity, error);
+            LogFailure(error);
             throw;
         }
         try
@@ -266,16 +269,17 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
         {
-            _log.DidFail(activity, error);
+            LogFailure(error);
             NoteTransientFailure(url, statusCode: (int)response.StatusCode);
             return new(null, IsTransient: true);
         }
         catch (OperationCanceledException error)
         {
-            _log.DidFail(activity, error);
+            LogFailure(error);
             throw;
         }
-        _log.DidComplete(activity, ActivityLogger.DataSizeMessage(bytes.LongLength), returnedFromCache: response.ReturnedFromCache);
+        if (activity is { } completedActivity)
+            _log.DidComplete(completedActivity, ActivityLogger.DataSizeMessage(bytes.LongLength), returnedFromCache: response.ReturnedFromCache);
         ClearRetryDelay(url);
         return Cache(new(url, path, processed));
     }
