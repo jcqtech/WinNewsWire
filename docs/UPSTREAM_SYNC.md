@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`a1a93abacf4adb5bccd23baf4a7d794735517f9a`**. This synchronization is in progress.
+`5ca0ad5b5d7d14b8bcf226552f173fb965adbe85`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is automatic replacement of recovered feed icons, `9cdcdfe222f68ed05a751450bbe9eda50a9c83cc`;
+is separating icons from the image-size budget, `55f592b7eb3f8fd26a22b4cdd543c449fcb81d36`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -220,6 +220,11 @@ falls back to homepage metadata within the same awaited request, including
 URL-only transient failures. Declared feed icon URLs remain in feed metadata;
 only homepage-discovered URLs are saved in the independent icon mapping.
 Warm representations and stored sources remain readable during retry cooldowns.
+Feeds awaiting their declared icon retry when connectivity returns or an ordinary
+read follows cooldown. A recovered image replaces the homepage fallback only on
+timeline rows whose current feed metadata still matches, dispatched on WinUI.
+Older in-flight homepage results cannot overwrite an already recovered icon.
+Recovery operations drain and connectivity observers detach at shutdown.
 Favicons share the same disk source and conditional-update policy, retaining
 only their small display representation in memory. Windows repairs missing
 display paths through the shared downloader without replacing full-size source
@@ -227,6 +232,9 @@ bytes with a small icon. Activity details identify the homepage. Favicon
 searches persist their URL only after a successful image load; an exhausted
 explicit candidate list records no favicon only if no candidate failed
 transiently. Unavailable homepage metadata does not record an empty search.
+A saved favicon that returns non-image data starts a fresh homepage search.
+The old mapping survives an unsuccessful search, including captive portals,
+and is replaced only after another candidate loads.
 Retired favicon
 folders, including the former SHA1 cache, are removed once on upgrade; they are
 no longer imported or periodically purged. Windows retains native decoder
@@ -359,8 +367,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **204 Ported, 68 Covered, 85 Skipped, and 148 Pending**
-source commits, backed by **219 source-attributed Windows port commits**.
+The inventory currently has **206 Ported, 74 Covered, 85 Skipped, and 140 Pending**
+source commits, backed by **221 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -400,9 +408,18 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **228 tests** after memory-only/fetch-time HTML
+The current image suite passes **233 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
-visible-only loading, priority-free queues, fixed retry dates and launch-only pruning.
+visible-only loading, priority-free queues, fixed retry dates, actual-file-size
+launch pruning, schema upgrades, icon recovery and saved-favicon rediscovery.
+Three metadata-schema/expiry controls, six disk-size/schema controls, both declared
+mapping controls, four default-preference controls, four immediate-fallback controls,
+and both saved-favicon rediscovery controls fail their previous implementations.
+Automatic own-icon recovery fails on the pristine backend, and the focused
+`--feed-icon-recovery` fixture fails without the native UI subscription/path update.
+The held-fallback race separately fails before its race guard. Restored native
+recovery passes actual pixel replacement, UI dispatch and unrelated-row preservation;
+both x64 configurations build warning-free. All five focused preference tests pass.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
