@@ -3,7 +3,7 @@ namespace WinNewsWire.Parsers;
 public static class SignificantImageFilter
 {
     public const int MinimumDimension = 64;
-    public const double MaximumAspectRatio = 4;
+    public const double MaximumAspectRatio = 6;
 
     private static readonly HashSet<string> BlockedFileNames = new(StringComparer.OrdinalIgnoreCase)
         { "1x1", "blank", "pixel", "spacer", "transparent" };

@@ -120,6 +120,10 @@ public class HtmlImageTests
     public void RepresentativeSmallerAndRectangularImagesAreAccepted(int width, int height)
         => Assert.NotNull(First($"""<img src="/photo.jpg" width="{width}" height="{height}">"""));
 
+    [Fact]
+    public void WiderArticlePhotosAreNotMistakenForBanners()
+        => Assert.NotNull(First("""<img src="/photo.jpg" width="600" height="100">"""));
+
     [Theory]
     [InlineData("""<img data-lazy-src="/photo.jpg" src="/placeholder.svg">""")]
     [InlineData("""<img data-src="/photo.jpg" src="/placeholder.svg">""")]
