@@ -10,6 +10,75 @@ public class RssParserTests
     private static ParserData Load(string f, string ext, string url) => TestResources.Load($"{f}.{ext}", url);
 
     [Fact]
+    public void MediaContentMergesMetadataWithEnclosure()
+    {
+        var feed = FeedParser.Parse(Load("atp", "rss", "http://atp.fm/"))!;
+        var item = feed.Items.Single(item => item.Title == "311: Mutually Assured Destruction");
+        var attachment = Assert.Single(item.Attachments!);
+        Assert.Equal("http://traffic.libsyn.com/atpfm/atp311.mp3", attachment.Url);
+        Assert.Equal("audio/mpeg", attachment.MimeType);
+        Assert.Equal(54919661, attachment.SizeInBytes);
+        Assert.Equal(6849, attachment.DurationInSeconds);
+        Assert.Equal(ParsedAttachment.AttachmentMedium.Audio, attachment.Medium);
+    }
+
+    [Theory]
+    [InlineData("http://search.yahoo.com/mrss/")]
+    [InlineData("http://www.rssboard.org/media-rss")]
+    public void MediaGroupKeepsDefaultRenditionAndDoesNotOverwriteItemTitle(string mediaNamespace)
+    {
+        var xml = $"""
+            <rss xmlns:m="{mediaNamespace}"><channel><item><guid>1</guid><title>Article</title>
+            <m:group><m:title>Media title</m:title>
+            <m:content url="https://example.com/low.mp4" medium="video" width="640" height="360">
+              <title>Wrong title</title><link>https://wrong.example/</link>
+            </m:content>
+            <m:content URL="https://example.com/high.mp4" TYPE="video/mp4" medium="Video"
+              width="1920" height="1080" duration="125.9" isDefault="TRUE"/>
+            <m:thumbnail url="https://example.com/preview.jpg"/>
+            </m:group></item></channel></rss>
+            """;
+        var item = Assert.Single(RssParser.Parse(new ParserData("https://example.com/feed",
+            System.Text.Encoding.UTF8.GetBytes(xml))).Items);
+        Assert.Equal("Article", item.Title);
+        Assert.Null(item.ExternalUrl);
+        Assert.Equal("https://example.com/preview.jpg", item.ImageUrl);
+        var attachment = Assert.Single(item.Attachments!);
+        Assert.Equal("https://example.com/high.mp4", attachment.Url);
+        Assert.Equal("video/mp4", attachment.MimeType);
+        Assert.Equal(ParsedAttachment.AttachmentMedium.Video, attachment.Medium);
+        Assert.Equal(1920, attachment.Width);
+        Assert.Equal(1080, attachment.Height);
+        Assert.Equal(125, attachment.DurationInSeconds);
+    }
+
+    [Theory]
+    [InlineData("1:02:03.9", 3723L)]
+    [InlineData("59:30", 3570L)]
+    [InlineData("120.9", 120L)]
+    [InlineData("NaN", null)]
+    [InlineData("Infinity", null)]
+    [InlineData("-1", null)]
+    [InlineData("0", null)]
+    [InlineData("1::3", null)]
+    [InlineData("1:2:3:4", null)]
+    [InlineData("9999999999999999999999999", null)]
+    public void ITunesDurationAppliesOnlyToAudioAndVideo(string duration, long? expected)
+    {
+        var xml = $"""
+            <rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel><item>
+            <guid>1</guid><itunes:duration>{duration}</itunes:duration>
+            <enclosure url="https://example.com/a.mp3" type="audio/mpeg"/>
+            <enclosure url="https://example.com/picture.jpg" type="image/jpeg"/>
+            </item></channel></rss>
+            """;
+        var item = Assert.Single(RssParser.Parse(new ParserData("https://example.com/feed",
+            System.Text.Encoding.UTF8.GetBytes(xml))).Items);
+        Assert.Equal(expected, item.Attachments!.Single(a => a.MimeType == "audio/mpeg").DurationInSeconds);
+        Assert.Null(item.Attachments!.Single(a => a.MimeType == "image/jpeg").DurationInSeconds);
+    }
+
+    [Fact]
     public void IgnoredElementsAndSupersededDescriptionsDoNotAllocateStrings()
     {
         const int length = 256 * 1024;

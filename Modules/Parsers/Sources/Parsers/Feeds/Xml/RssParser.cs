@@ -17,6 +17,7 @@ public static class RssParser
         private string? _title, _homepageUrl, _language, _channelImageUrl;
         private bool _isRdf, _endRssFound, _parsingArticle, _parsingAuthor, _parsingChannelImage, _parsingTextInput;
         private int _namespaceElementDepth;
+        private readonly MediaElementTracker _media = new();
         private readonly List<RssItem> _items = [];
         private readonly HashSet<RssItem> _rdfAboutItems = [];
         private Dictionary<string, string>? _currentAttributes;
@@ -34,6 +35,17 @@ public static class RssParser
             var name = localName.Span;
             var unprefixed = ns.Prefix is null;
             if (_namespaceElementDepth > 0) { _namespaceElementDepth++; return; }
+            if (_parsingArticle && ns.IsMediaRss && CurrentItem is { } mediaItem)
+            {
+                if (_media.Start(name, attributes, mediaItem, ResolveUrl)) _namespaceElementDepth = 1;
+                return;
+            }
+            if (_parsingArticle && ns.IsITunes && name.SequenceEqual("duration"u8))
+            {
+                parser.BeginStoringCharacters();
+                return;
+            }
+            if (_media.ContainerDepth > 0) { _namespaceElementDepth = 1; return; }
             if (_parsingArticle && !unprefixed && !ns.IsDublinCore && !ns.IsContent && !ns.IsSource)
             {
                 _namespaceElementDepth = 1;
@@ -51,6 +63,7 @@ public static class RssParser
                 var item = new RssItem();
                 _items.Add(item);
                 _parsingArticle = true;
+                _media.Reset();
                 if (_isRdf && _currentAttributes is { } itemAttributes
                     && itemAttributes.TryGetValue("rdf:about", out var about) && about.Length > 0)
                 {
@@ -70,6 +83,11 @@ public static class RssParser
             var name = localName.Span;
             var unprefixed = ns.Prefix is null;
             if (_namespaceElementDepth > 0) { _namespaceElementDepth--; return; }
+            if (_parsingArticle && ns.IsMediaRss && CurrentItem is { } mediaItem)
+            {
+                _media.End(name, mediaItem);
+                return;
+            }
             if ((_isRdf && name.SequenceEqual("RDF"u8)) || unprefixed && name.SequenceEqual("rss"u8)) { _endRssFound = true; return; }
             if (unprefixed && XmlAscii.EqualsCaseInsensitive(name, "textinput"u8)) { _parsingTextInput = false; return; }
             if (_parsingTextInput) return;
@@ -97,6 +115,11 @@ public static class RssParser
         private void HandleArticleElementEnd(XmlSaxParser parser, ReadOnlySpan<byte> name, XmlNamespace ns)
         {
             if (CurrentItem is not { } item) return;
+            if (ns.IsITunes && name.SequenceEqual("duration"u8))
+            {
+                item.ITunesDurationInSeconds = MediaRss.DurationInSeconds(parser.CurrentStringWithTrimmedWhitespace);
+                return;
+            }
             if (ns.Prefix is not null)
             {
                 if (ns.IsDublinCore)

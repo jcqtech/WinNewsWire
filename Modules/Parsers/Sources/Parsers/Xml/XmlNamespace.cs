@@ -6,7 +6,7 @@ public readonly record struct XmlNamespace(string? Prefix, string? Uri)
     public bool IsDublinCore => Uri is Uris.DublinCore or Uris.DublinCoreTerms;
     public bool IsContent => Uri == Uris.Content;
     public bool IsXhtml => Uri == Uris.Xhtml;
-    public bool IsMediaRss => Uri == Uris.MediaRss;
+    public bool IsMediaRss => Uri is Uris.MediaRss or Uris.MediaRssBoard;
     public bool IsITunes => Uri == Uris.ITunes;
     public bool IsSource => Uri == Uris.Source;
 
@@ -18,6 +18,7 @@ public readonly record struct XmlNamespace(string? Prefix, string? Uri)
         public const string Content = "http://purl.org/rss/1.0/modules/content/";
         public const string Xhtml = "http://www.w3.org/1999/xhtml";
         public const string MediaRss = "http://search.yahoo.com/mrss/";
+        public const string MediaRssBoard = "http://www.rssboard.org/media-rss";
         public const string ITunes = "http://www.itunes.com/dtds/podcast-1.0.dtd";
         public const string Source = "https://source.scripting.com/";
     }

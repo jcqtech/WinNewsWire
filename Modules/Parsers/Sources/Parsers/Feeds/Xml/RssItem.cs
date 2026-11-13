@@ -16,7 +16,9 @@ internal sealed class RssItem
     public DateTime? DatePublished { get; set; }
     public DateTime? DateModified { get; set; }
     public HashSet<ParsedAuthor> Authors { get; } = [];
-    public HashSet<ParsedAttachment> Attachments { get; } = [];
+    public List<ParsedAttachment> Attachments { get; } = [];
+    public string? ImageUrl { get; set; }
+    public long? ITunesDurationInSeconds { get; set; }
 
     public string UniqueId
     {
@@ -46,11 +48,37 @@ internal sealed class RssItem
             syncServiceId: null, uniqueId: UniqueId, feedUrl: feedUrl,
             url: Permalink, externalUrl: Link, title: Title, language: Language,
             contentHtml: contentHtml, contentText: null, markdown: Markdown, summary: summary,
-            imageUrl: null, bannerImageUrl: null, datePublished: DatePublished, dateModified: DateModified,
+            imageUrl: ImageUrl, bannerImageUrl: null, datePublished: DatePublished, dateModified: DateModified,
             authors: Authors.Count == 0 ? null : Authors, tags: null,
-            attachments: Attachments.Count == 0 ? null : Attachments)
+            attachments: MergedAttachments())
         {
             LegacyUniqueId = legacyUniqueId == UniqueId ? null : legacyUniqueId
         };
+    }
+
+    private IReadOnlySet<ParsedAttachment>? MergedAttachments()
+    {
+        if (Attachments.Count == 0) return null;
+        var byUrl = new Dictionary<string, ParsedAttachment>(StringComparer.Ordinal);
+        foreach (var attachment in Attachments)
+        {
+            byUrl[attachment.Url] = byUrl.TryGetValue(attachment.Url, out var existing)
+                ? existing with
+                {
+                    MimeType = existing.MimeType ?? attachment.MimeType,
+                    Title = existing.Title ?? attachment.Title,
+                    SizeInBytes = existing.SizeInBytes ?? attachment.SizeInBytes,
+                    DurationInSeconds = existing.DurationInSeconds ?? attachment.DurationInSeconds,
+                    Width = existing.Width ?? attachment.Width,
+                    Height = existing.Height ?? attachment.Height,
+                    Medium = existing.Medium ?? attachment.Medium
+                } : attachment;
+        }
+        return byUrl.Values.Select(attachment => attachment.DurationInSeconds is null
+            && ITunesDurationInSeconds is { } duration
+            && (attachment.Medium is ParsedAttachment.AttachmentMedium.Audio or ParsedAttachment.AttachmentMedium.Video
+                || attachment.MimeType?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true
+                || attachment.MimeType?.StartsWith("video/", StringComparison.OrdinalIgnoreCase) == true)
+                ? attachment with { DurationInSeconds = duration } : attachment).ToHashSet();
     }
 }
