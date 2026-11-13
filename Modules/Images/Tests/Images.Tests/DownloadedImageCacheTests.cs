@@ -40,6 +40,8 @@ public sealed class DownloadedImageCacheTests
             return response;
         });
         await using var cache = fixture.CreateCache(10, 20);
+        var changes = new List<string>();
+        cache.DownloadedImageChanged += (_, url) => changes.Add(url);
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
         var modified = File.GetLastWriteTimeUtc(fixture.PathFor("icon"));
         fixture.Clock.Advance(TimeSpan.FromDays(8));
@@ -54,6 +56,7 @@ public sealed class DownloadedImageCacheTests
         Assert.Equal(fixture.Clock.GetUtcNow().AddDays(3), validation.NextCheck);
         Assert.Equal("\"v1\"", validation.ConditionalGet?.ETag);
         Assert.Equal(2, requests);
+        Assert.Empty(changes);
     }
 
     [Theory]
@@ -74,6 +77,12 @@ public sealed class DownloadedImageCacheTests
             return Task.FromResult(ValidatedResponse((HttpStatusCode)status, corrupt ? "invalid image"u8.ToArray() : replacement));
         });
         await using var cache = fixture.CreateCache(10, 20);
+        var changes = new List<string>();
+        cache.DownloadedImageChanged += (_, url) =>
+        {
+            Assert.Equal(replacement, File.ReadAllBytes(fixture.PathFor("icon")));
+            changes.Add(url);
+        };
         Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
         fixture.Clock.Advance(TimeSpan.FromDays(8));
         var cached = Assert.IsType<DownloadedImage>(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
@@ -81,6 +90,8 @@ public sealed class DownloadedImageCacheTests
         await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         var expected = status == 200 && !corrupt ? replacement : Fixture.Image;
         Assert.Equal(expected, File.ReadAllBytes(fixture.PathFor("icon")));
+        if (status == 200 && !corrupt) Assert.Equal([Url("icon")], changes);
+        else Assert.Empty(changes);
         Assert.False(fixture.Database.RecentlyFailed(Url("icon")));
         Assert.Equal(expected, (await fixture.FetchAsync(cache, "icon"))?.Data);
         var validation = Assert.IsType<DownloadedImageValidation>(await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")));

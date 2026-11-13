@@ -33,6 +33,9 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     private long _removalByteCount;
     internal int WaitingDownloadCount => _downloadLimiter.WaitingCount;
 
+    /// <summary>Raised on a worker after a validated server replacement is saved; UI consumers must dispatch.</summary>
+    public event EventHandler<string>? DownloadedImageChanged;
+
     internal event EventHandler<string>? DownloadFailed
     {
         add => _downloads.DownloadFailed += value;
@@ -137,6 +140,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
             {
                 await _downloads.StoreUpdatedSourceAsync(url, data, response, ct).ConfigureAwait(false);
                 Trace.TraceInformation($"Replaced changed downloaded image at {url}.");
+                DownloadedImageChanged?.Invoke(this, url);
                 return;
             }
             if (!response.NotModified)
