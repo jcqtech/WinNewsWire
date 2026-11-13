@@ -69,6 +69,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private readonly Dictionary<FeedImageSource, OwnIconWait> _waitingForOwnIcons = [];
     private readonly HashSet<FeedImageSource> _homePageIconFeeds = [];
     private readonly HashSet<FeedImageSource> _checkingHomePageIcons = [];
+    private readonly Dictionary<FeedImageSource, HtmlMetadataRecord> _pendingHomePageMetadata = [];
     private readonly HashSet<string> _faviconHomePages = [];
     private readonly HashSet<string> _checkedFaviconHomePages = [];
     private readonly HashSet<string> _checkingFaviconHomePages = [];
@@ -201,11 +202,12 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     public Task<DownloadedImage?> IconAsync(FeedImageSource feed, CancellationToken ct = default)
         => RunOperationAsync(token => IconCoreAsync(feed, token), ct);
 
-    private async Task<DownloadedImage?> IconCoreAsync(FeedImageSource feed, CancellationToken ct)
+    private async Task<DownloadedImage?> IconCoreAsync(FeedImageSource feed, CancellationToken ct,
+        HtmlMetadataRecord? homePageMetadata = null, bool announceRecovery = true)
     {
         ct.ThrowIfCancellationRequested();
         if (ShouldSkipFeedIcon(feed.FeedUrl)) return null;
-        string? iconUrl = SpecialCases.ContainsSpecialCase(feed.FeedUrl, IgnoredFeedIconHosts) ? null : feed.IconUrl;
+        string? iconUrl = OwnIconUrl(feed);
         OwnIconWait? ownIcon = null;
         if (iconUrl is { Length: > 0 })
         {
@@ -218,7 +220,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
                 {
                     if (_waitingForOwnIcons.Remove(feed, out recovered)) recovered.Image = image;
                 }
-                if (recovered is not null) FeedIconDidBecomeAvailable?.Invoke(this, new(feed, image));
+                if (recovered is not null && announceRecovery) FeedIconDidBecomeAvailable?.Invoke(this, new(feed, image));
                 return image;
             }
             bool waiting = DownloadedImages.IsWaitingToRetry(url);
@@ -241,12 +243,13 @@ public sealed class FeedImageDownloader : IAsyncDisposable
                 lock (_gate) return ownIcon?.Image ?? cached.Image;
             }
         }
-        var fallback = await HomePageIconCoreAsync(feed, ct).ConfigureAwait(false);
+        var fallback = await HomePageIconCoreAsync(feed, ct, homePageMetadata).ConfigureAwait(false);
         lock (_gate) return ownIcon?.Image ?? fallback;
     }
 
     private void MetadataAvailable(object? sender, HtmlMetadataRecord metadata)
     {
+        metadata = _metadata.CachedMetadata(metadata.Url) ?? metadata;
         FeedImageSource[] feeds;
         bool checkFavicon;
         lock (_gate)
@@ -257,8 +260,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             if (checkFavicon) _checkedFaviconHomePages.Remove(metadata.Url);
         }
         foreach (var feed in feeds)
-            if (_database.IconUrl(feed.FeedUrl) is { } saved)
-                CheckForNewHomePageIcon(feed, saved, metadata);
+            CheckForNewHomePageIcon(feed, _database.IconUrl(feed.FeedUrl), metadata);
         if (checkFavicon && _database.FaviconUrl(metadata.Url) is { } favicon)
             CheckForNewFavicon(metadata.Url, favicon, metadata);
     }
@@ -298,7 +300,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         }
     }
 
-    private void CheckForNewHomePageIcon(FeedImageSource feed, string saved, HtmlMetadataRecord? metadata = null)
+    private void CheckForNewHomePageIcon(FeedImageSource feed, string? saved, HtmlMetadataRecord? metadata = null)
     {
         var homePage = HomePage(feed);
         if (homePage is null || ShouldSkipFeedIcon(homePage)) return;
@@ -306,13 +308,24 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         {
             if (_stopping) return;
             _homePageIconFeeds.Add(feed);
-            if (!_checkingHomePageIcons.Add(feed)) return;
+            if (!_checkingHomePageIcons.Add(feed))
+            {
+                if (metadata is not null) _pendingHomePageMetadata[feed] = metadata;
+                return;
+            }
             var task = RunOperationAsync(async ct =>
             {
                 try
                 {
-                    var current = metadata ?? await _metadata.GetMetadataAsync(homePage, ct).ConfigureAwait(false);
-                    if (current?.BestWebsiteIconUrl() is not { Length: > 0 } found) return null;
+                    var current = metadata ??= await _metadata.GetMetadataAsync(homePage, ct).ConfigureAwait(false);
+                    if (current is null) return null;
+                    if (saved is null || OwnIconUrl(feed) is { Length: > 0 })
+                    {
+                        var discovered = await IconCoreAsync(feed, ct, current, announceRecovery: false).ConfigureAwait(false);
+                        if (discovered is not null) FeedIconDidBecomeAvailable?.Invoke(this, new(feed, discovered));
+                        return discovered;
+                    }
+                    if (current.BestWebsiteIconUrl() is not { Length: > 0 } found) return null;
                     var url = SanitizedIconUrl(found);
                     if (url == saved) return null;
                     var result = await FetchImageAsync(url, favicon: false, ct).ConfigureAwait(false);
@@ -321,7 +334,17 @@ public sealed class FeedImageDownloader : IAsyncDisposable
                     FeedIconDidBecomeAvailable?.Invoke(this, new(feed, image));
                     return image;
                 }
-                finally { lock (_gate) _checkingHomePageIcons.Remove(feed); }
+                finally
+                {
+                    HtmlMetadataRecord? pending;
+                    lock (_gate)
+                    {
+                        _checkingHomePageIcons.Remove(feed);
+                        _pendingHomePageMetadata.Remove(feed, out pending);
+                    }
+                    if (pending is not null && !ReferenceEquals(pending, metadata))
+                        CheckForNewHomePageIcon(feed, _database.IconUrl(feed.FeedUrl), pending);
+                }
             }, CancellationToken.None);
             _ = task.ContinueWith(completed =>
             {
@@ -331,12 +354,17 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         }
     }
 
-    private async Task<DownloadedImage?> HomePageIconCoreAsync(FeedImageSource feed, CancellationToken ct)
+    private async Task<DownloadedImage?> HomePageIconCoreAsync(FeedImageSource feed, CancellationToken ct,
+        HtmlMetadataRecord? homePageMetadata = null)
     {
         var homePage = HomePage(feed);
         if (homePage is null || ShouldSkipFeedIcon(homePage)) return null;
-        var metadata = await _metadata.GetMetadataAsync(homePage, ct).ConfigureAwait(false);
-        if (metadata?.BestWebsiteIconUrl() is not { Length: > 0 } found) return null;
+        var metadata = homePageMetadata ?? await _metadata.GetMetadataAsync(homePage, ct).ConfigureAwait(false);
+        if (metadata?.BestWebsiteIconUrl() is not { Length: > 0 } found)
+        {
+            lock (_gate) { if (!_stopping) _homePageIconFeeds.Add(feed); }
+            return null;
+        }
         var result = await FetchImageAsync(SanitizedIconUrl(found), favicon: false, ct).ConfigureAwait(false);
         if (result.Image is { } discovered)
             await _database.SaveFeedIconUrlAsync(feed.FeedUrl, discovered.Url).ConfigureAwait(false);
@@ -346,6 +374,9 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     public static string SanitizedIconUrl(string url)
         => url.Contains("/wp-content/uploads/", StringComparison.Ordinal) && Uri.TryCreate(url, UriKind.Absolute, out var uri)
             ? new UriBuilder(uri) { Query = "", Fragment = "" }.Uri.AbsoluteUri : url;
+
+    private static string? OwnIconUrl(FeedImageSource feed)
+        => SpecialCases.ContainsSpecialCase(feed.FeedUrl, IgnoredFeedIconHosts) ? null : feed.IconUrl;
 
     public static bool ShouldSkipFeedIcon(string url) => SpecialCases.ContainsSpecialCase(url,
         ["macsparky.com", "xkcd.com", SpecialCases.RachelByTheBayHostName, SpecialCases.OpenRSSOrgHostName]);
@@ -401,6 +432,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             NetworkMonitor.ConnectivityChanged -= NetworkStatusChanged;
             _waitingForOwnIcons.Clear();
             _homePageIconFeeds.Clear();
+            _pendingHomePageMetadata.Clear();
             _faviconHomePages.Clear();
             _checkedFaviconHomePages.Clear();
             _lifetime.Cancel();

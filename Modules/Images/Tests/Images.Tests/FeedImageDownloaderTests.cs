@@ -322,6 +322,77 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task MissingHomepageIconsAreCheckedAgainWhenMetadataRefreshes(bool declared, bool ownRecovers)
+    {
+        int pages = 0, own = 0;
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
+        {
+            "/" => HtmlResponse(++pages == 1 ? "" : "<link rel='apple-touch-icon' sizes='180x180' href='/touch.png'>"),
+            "/own.png" => Response(++own > 1 && ownRecovers ? HttpStatusCode.OK : HttpStatusCode.NotFound, Image),
+            "/touch.png" => Response(HttpStatusCode.OK, Image),
+            _ => throw new InvalidOperationException("Unexpected missing-icon request.")
+        }));
+        var feed = new FeedImageSource(Feed, Home, IconUrl: declared ? Home + "own.png" : null);
+        Assert.Null(await fixture.Images.IconAsync(feed));
+        var available = new TaskCompletionSource<FeedIconImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Images.FeedIconDidBecomeAvailable += (_, image) => available.TrySetResult(image);
+        fixture.Clock.Advance(TimeSpan.FromDays(7));
+        Assert.NotNull(await fixture.Metadata.GetMetadataAsync(Home));
+        var discovered = await available.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(feed, discovered.Feed);
+        Assert.Equal(Home + (ownRecovers ? "own.png" : "touch.png"), discovered.Image.Url);
+        Assert.Equal(ownRecovers ? null : Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(2, pages);
+        if (declared) Assert.Equal(2, own);
+        if (ownRecovers) Assert.DoesNotContain(Home + "touch.png", fixture.Requests);
+    }
+
+    [Fact]
+    public async Task MetadataRefreshDuringAnOlderHomepageIconDownloadIsNotDropped()
+    {
+        int pages = 0;
+        var downloading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var available = new TaskCompletionSource<FeedIconImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/")
+                return HtmlResponse($"<link rel='apple-touch-icon' sizes='180x180' href='/{(++pages == 1 ? "middle" : "new")}.png'>");
+            if (request.RequestUri.AbsolutePath == "/middle.png")
+            {
+                downloading.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            }
+            return Response(HttpStatusCode.OK, Image);
+        });
+        await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, Home + "saved.png");
+        fixture.Metadata.MetadataAvailable += (_, metadata) =>
+        {
+            if (metadata.BestWebsiteIconUrl() == Home + "new.png") refreshed.TrySetResult();
+        };
+        fixture.Images.FeedIconDidBecomeAvailable += (_, image) =>
+        {
+            if (image.Image.Url == Home + "new.png") available.TrySetResult(image);
+        };
+        try
+        {
+            Assert.Equal(Home + "saved.png", (await fixture.Images.IconAsync(new(Feed, Home)))?.Url);
+            await downloading.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            fixture.Clock.Advance(TimeSpan.FromDays(7));
+            Assert.NotNull(await fixture.Metadata.GetMetadataAsync(Home));
+            await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            release.TrySetResult();
+            Assert.Equal(Home + "new.png", (await available.Task.WaitAsync(TimeSpan.FromSeconds(10))).Image.Url);
+            Assert.Equal(Home + "new.png", fixture.ImageDatabase.IconUrl(Feed));
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Theory]
     [InlineData(HttpStatusCode.NotFound)]
     [InlineData(HttpStatusCode.ServiceUnavailable)]
     [InlineData(HttpStatusCode.OK)]
