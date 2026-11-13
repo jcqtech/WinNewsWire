@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`f5f9043b05386b6e3984aace76aae9520c4fac81`**. This synchronization is in progress.
+`1c550ec17d887bcc53490702f25c5f3aad63dc5d`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is large timeline thumbnails, `19ce7a87bf1db70a59c6de32227c1dd4800b93a6`;
+is the shared thumbnail display enum/settings, `9655f1660c2268070229db3f3694d7018df0a150`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -71,7 +71,15 @@ automatic candidate fallback, and a one-screen download lookahead. Recycled
 views reject stale/canceled results and release their image references; models
 do not retain a decoded bitmap for every offscreen article. Visible downloads
 wait until native layout has settled. Column layout remains thumbnail-free.
-Large/hidden display settings and shared local-image routes remain pending.
+Large mode now has a persisted app-wide preference and localized checked View
+command, with UI-dispatched updates in other windows and no loss of selection.
+Its initial responsive layout was ported separately, then refined to a fixed
+180-logical-pixel height aligned with the feed icon (or text without an icon).
+Both timeline modes fit the whole image on a theme-aware fill. The reusable view
+also supports top-preserving portrait fill and centered wide crops, updates
+automatically on resize, and clips rounded corners. Permanent failures refresh
+only matching rows; download lookahead waits for native layout to settle.
+The later hidden/display-enum settings and shared local-image routes remain pending.
 
 Thumbnail downloading now shares the existing icon resource pipeline without
 duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
@@ -113,8 +121,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **93 Ported, 25 Covered, 67 Skipped, and 320 Pending**
-source commits, backed by **109 source-attributed Windows port commits**. Two
+The inventory currently has **95 Ported, 25 Covered, 67 Skipped, and 318 Pending**
+source commits, backed by **111 source-attributed Windows port commits**. Two
 pending rows already have partial Windows implementations. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -127,7 +135,7 @@ reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
 
-Still pending are large/hidden thumbnail modes and later image-cache
+Still pending are the shared thumbnail display enum/hidden mode and later image-cache
 rewrites, finder/cache refinements, shared local-image routing, appearance
 settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
 changes.
@@ -203,6 +211,18 @@ thumbnails, failing-provided-image fallback, UI-thread permanent-failure events,
 bounded lookahead, immutable article replacement, rejection of a late previous
 image, column exclusion, and scrolling after template changes. Restoring the
 exact original row template or model update fails its respective new check.
+
+Large-mode integration additionally passes 32 defaults tests and the 60-image,
+33-group reader/header/sidebar/navigation gate. Native probes verify persisted
+settings, UI-thread peer notifications, menu state, mode switching, selection,
+compact image-less rows and failure refresh that leaves unrelated requests
+alone. Exact original size/failure methods fail the corresponding checks.
+The refined view's DPI-aware pixel probes verify whole-image fit, custom fill,
+portrait top/bottom visibility, top-aligned crop, centered wide crop, resize and
+rounded clipping; actual rows verify fixed height and icon/text alignment.
+The original visual tree and previous size method fail the new checks. All
+temporary controls were removed; restored native probes and regular builds pass
+without warnings or errors.
 
 The broader backend run has one existing failure:
 `AccountManagerTests.UnsupportedAccountFilesAreKept` throws
