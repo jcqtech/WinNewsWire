@@ -76,9 +76,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public string RedoTitle => UndoManager.RedoActionName is { } name ? "Redo " + name : "Redo";
     public bool IsRestoringArticleSelection => _restoringArticleSelection;
     internal event EventHandler? SelectionNavigationStarting;
+    internal event EventHandler? TimelineArticlesChanged;
     public ArticleSortParameters SortParameters { get; private set; }
     public bool UseColumnLayout => AppDefaults.Shared.UseColumnLayout;
     public TimelineThumbnailsDisplay TimelineThumbnailsDisplay => AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+    public TimelineFeedIconsDisplay TimelineFeedIconsDisplay => AppDefaults.Shared.GetTimelineFeedIconsDisplay();
     public UnreadCountDisplay UnreadDisplayMode => _unreadDisplayMode;
     public bool ShowHeaderUnreadCount => _unreadDisplayMode == UnreadCountDisplay.Count && ArticleListUnreadCount > 0;
     public string HeaderUnreadCountText => ShowHeaderUnreadCount ? _unreadDisplayMode.TextFor(ArticleListUnreadCount)! : "";
@@ -206,6 +208,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             RefreshArticleHtml();
         if (key == AppDefaults.Key.UseColumnLayout) OnPropertyChanged(nameof(UseColumnLayout));
         if (key == AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey) OnPropertyChanged(nameof(TimelineThumbnailsDisplay));
+        if (key == AppDefaultsSharedExtensions.TimelineFeedIconsDisplayKey) OnPropertyChanged(nameof(TimelineFeedIconsDisplay));
         if (key == AppShared.Sidebar.SidebarFeedOrder.PreferenceKey) BuildSidebar();
         if (key == AppDefaultsSharedExtensions.UnreadCountDisplayKey)
         {
@@ -1131,6 +1134,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : $"{title} — Search Results";
         ArticleListUnreadCount = items.Count(i => !i.IsRead);
         UpdateSectionStatus();
+        TimelineArticlesChanged?.Invoke(this, EventArgs.Empty);
         _ = PopulateArticleFaviconsAsync(items, feedMap);
     }
 

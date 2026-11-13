@@ -7,6 +7,21 @@ public static class AppDefaultsSharedExtensions
 {
     public const string UnreadCountDisplayKey = "unreadCountDisplay";
     public const string TimelineThumbnailsDisplayKey = "timelineThumbnailsDisplay";
+    public const string TimelineFeedIconsDisplayKey = "timelineFeedIconsDisplay";
+
+    public static TimelineFeedIconsDisplay GetTimelineFeedIconsDisplay(this AppDefaults defaults)
+    {
+        int raw = defaults.GetValue(TimelineFeedIconsDisplayKey, (int)TimelineFeedIconsDisplay.Automatic);
+        if (Enum.IsDefined((TimelineFeedIconsDisplay)raw)) return (TimelineFeedIconsDisplay)raw;
+        Trace.TraceWarning($"Unknown timeline feed-icon display value {raw}; using automatic display.");
+        return TimelineFeedIconsDisplay.Automatic;
+    }
+
+    public static void SetTimelineFeedIconsDisplay(this AppDefaults defaults, TimelineFeedIconsDisplay display)
+    {
+        if (!Enum.IsDefined(display)) throw new ArgumentOutOfRangeException(nameof(display));
+        defaults.SetValue(TimelineFeedIconsDisplayKey, (int)display);
+    }
 
     public static TimelineThumbnailsDisplay GetTimelineThumbnailsDisplay(this AppDefaults defaults)
     {

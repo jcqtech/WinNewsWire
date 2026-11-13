@@ -19,6 +19,7 @@ public sealed partial class PreferencesWindow : Window
     private bool _populatingBrowsers;
     private bool _updatingUnreadDisplay;
     private bool _updatingTimelineThumbnails;
+    private bool _updatingTimelineFeedIcons;
     private bool _updatingAutomation;
     private bool _updatingRendering;
 
@@ -55,11 +56,16 @@ public sealed partial class PreferencesWindow : Window
             UnreadCountDisplayCombo.Items.Add(new ComboBoxItem { Content = AppStrings.Get(key), Tag = mode });
         SyncUnreadCountDisplay();
         TimelineHeading.Text = AppStrings.Get("Timeline");
-        TimelineThumbnailsLabel.Text = AppStrings.Get("Thumbnails");
+        TimelineThumbnailsLabel.Text = AppStrings.Get("ThumbnailSize");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TimelineThumbnailsCombo, TimelineThumbnailsLabel.Text);
         foreach (var mode in Enum.GetValues<TimelineThumbnailsDisplay>())
             TimelineThumbnailsCombo.Items.Add(new ComboBoxItem { Content = mode.DisplayString(), Tag = mode });
         SyncTimelineThumbnails();
+        TimelineFeedIconsLabel.Text = AppStrings.Get("FeedIcons");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TimelineFeedIconsCombo, TimelineFeedIconsLabel.Text);
+        foreach (var mode in Enum.GetValues<TimelineFeedIconsDisplay>())
+            TimelineFeedIconsCombo.Items.Add(new ComboBoxItem { Content = mode.DisplayString(), Tag = mode });
+        SyncTimelineFeedIcons();
 
         foreach (var v in Enum.GetValues<RefreshInterval>())
             RefreshIntervalCombo.Items.Add(new ComboBoxItem { Content = v.DisplayString(), Tag = (int)v });
@@ -99,6 +105,12 @@ public sealed partial class PreferencesWindow : Window
 
     private void PreferencesDefaultsChanged(object? sender, string key)
     {
+        if (!_closed && key == AppDefaultsSharedExtensions.TimelineFeedIconsDisplayKey)
+        {
+            if (DispatcherQueue.HasThreadAccess) SyncTimelineFeedIcons();
+            else DispatcherQueue.TryEnqueue(() => { if (!_closed) SyncTimelineFeedIcons(); });
+            return;
+        }
         if (!_closed && key == AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey)
         {
             if (DispatcherQueue.HasThreadAccess) SyncTimelineThumbnails();
@@ -120,6 +132,38 @@ public sealed partial class PreferencesWindow : Window
         if (_closed || key != AppDefaultsSharedExtensions.UnreadCountDisplayKey) return;
         if (DispatcherQueue.HasThreadAccess) SyncUnreadCountDisplay();
         else DispatcherQueue.TryEnqueue(() => { if (!_closed) SyncUnreadCountDisplay(); });
+    }
+
+    private void SyncTimelineFeedIcons()
+    {
+        _updatingTimelineFeedIcons = true;
+        try
+        {
+            var mode = AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+            TimelineFeedIconsCombo.SelectedItem = TimelineFeedIconsCombo.Items.OfType<ComboBoxItem>()
+                .Single(item => item.Tag is TimelineFeedIconsDisplay value && value == mode);
+            TimelineFeedIconsDescription.Text = mode == TimelineFeedIconsDisplay.Automatic
+                ? AppStrings.Get("FeedIconsAutomaticDescription") : "";
+        }
+        finally { _updatingTimelineFeedIcons = false; }
+    }
+
+    private void TimelineFeedIconsCombo_SelectionChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (!_loaded || _updatingTimelineFeedIcons
+            || TimelineFeedIconsCombo.SelectedItem is not ComboBoxItem { Tag: TimelineFeedIconsDisplay mode }) return;
+        try
+        {
+            AppDefaults.Shared.SetTimelineFeedIconsDisplay(mode);
+            TimelineFeedIconsStatus.Text = "";
+        }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
+        {
+            SyncTimelineFeedIcons();
+            TimelineFeedIconsStatus.Text = string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                AppStrings.Get("TimelineFeedIconsSaveError"), error.Message);
+            App.LogException("Save timeline feed-icon setting", error);
+        }
     }
 
     private void SyncTimelineThumbnails()

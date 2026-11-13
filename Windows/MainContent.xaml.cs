@@ -458,6 +458,7 @@ public sealed partial class MainContent : UserControl
         try
         {
             _shuttingDown = true;
+            _timelineFeedIcons.Clear();
             await StopTimelineThumbnailsAsync();
             DisposeStatusBar();
             CancelTimelineReveal();
@@ -1004,6 +1005,9 @@ public sealed partial class MainContent : UserControl
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (_shuttingDown) return;
+        if (e.PropertyName is nameof(ViewModel.TimelineFeedIconsDisplay) or nameof(ViewModel.SelectedSidebarItems)
+            or nameof(ViewModel.SearchQuery) or nameof(ViewModel.SearchAllAccounts))
+            QueueTimelineFeedIconsUpdate();
         if (e.PropertyName == nameof(ViewModel.ArticleItems)) ObserveThumbnailItems();
         if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout)
             or nameof(ViewModel.TimelineThumbnailsDisplay))

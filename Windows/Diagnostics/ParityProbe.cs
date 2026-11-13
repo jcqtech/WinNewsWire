@@ -322,18 +322,32 @@ internal static partial class ParityProbe
 
     private static async Task<object?> CheckFeedImageAsync(MainWindow window, Feed feed)
     {
-        var path = await AppShared.Favicons.FaviconDownloader.Shared.FaviconPathAsync(feed);
-        Require(path is not null && File.Exists(path), "The feed-image pipeline did not produce a cached image.");
-        Require(path == Path.Combine(AppConfig.CachesDirectory, "Favicons", feed.FaviconUrl!.Md5Hex()),
-            "The feed-image pipeline did not use the native cache directory and filename.");
-        var list = (ListView)window.ProbeContent.FindName("ArticleListView");
-        var row = window.ProbeContent.ViewModel.SelectedArticle!;
-        await WaitFor(() => Task.FromResult(row.FaviconPath == path && list.ContainerFromItem(row) is not null), "Feed image row");
-        var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
-        await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 1, PixelHeight: 1 }), "Feed image binding");
-        var displayedImage = Descendants(icon).OfType<Image>().Single();
-        await WaitFor(() => Task.FromResult(HasRedIconPixel(window, displayedImage)), "Visible timeline icon pixels");
-        return new { CachedBytes = new FileInfo(path!).Length, PixelWidth = 1, PixelHeight = 1, VisiblePixels = true, ActualTimelineRow = true };
+        var previousIcons = AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+        try
+        {
+            var path = await AppShared.Favicons.FaviconDownloader.Shared.FaviconPathAsync(feed);
+            Require(path is not null && File.Exists(path), "The feed-image pipeline did not produce a cached image.");
+            Require(path == Path.Combine(AppConfig.CachesDirectory, "Favicons", feed.FaviconUrl!.Md5Hex()),
+                "The feed-image pipeline did not use the native cache directory and filename.");
+            var model = window.ProbeContent.ViewModel;
+            var list = (ListView)window.ProbeContent.FindName("ArticleListView");
+            var row = model.SelectedArticle!;
+            await WaitFor(() => Task.FromResult(row.FaviconPath == path && list.ContainerFromItem(row) is not null), "Feed image row");
+            var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
+            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 1, PixelHeight: 1 }), "Feed image binding");
+            Require(model.SelectedSidebarItems.Count == 1 && model.SelectedSidebarItems[0].Tag is Feed
+                && model.ArticleItems.All(item => item.SourceArticle?.Authors?.Any(author => author.AvatarUrl is not null) != true),
+                "The automatic-icon fixture must be a single feed without author avatars.");
+            AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Automatic);
+            await WaitFor(() => Task.FromResult(icon.Visibility == Visibility.Collapsed), "Automatic hides redundant single-feed icons");
+            AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
+            await WaitFor(() => Task.FromResult(icon.Visibility == Visibility.Visible), "Explicit timeline feed icon");
+            var displayedImage = Descendants(icon).OfType<Image>().Single();
+            await WaitFor(() => Task.FromResult(HasRedIconPixel(window, displayedImage)), "Visible timeline icon pixels");
+            return new { CachedBytes = new FileInfo(path!).Length, PixelWidth = 1, PixelHeight = 1,
+                VisiblePixels = true, ActualTimelineRow = true, AutomaticHidesSingleFeedWithoutAvatars = true };
+        }
+        finally { AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousIcons); }
     }
 
     private static bool HasRedIconPixel(MainWindow window, Image image)
@@ -598,10 +612,12 @@ internal static partial class ParityProbe
         var content = window.ProbeContent;
         var model = content.ViewModel;
         var original = window.CaptureState();
+        var previousIcons = AppDefaults.Shared.GetTimelineFeedIconsDisplay();
         var account = AccountManager.Shared.DefaultAccount!;
         Feed? feed = null;
         try
         {
+            AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
             feed = await account.CreateFeedAsync(server.Url + "/reading-feed")
                 ?? throw new InvalidOperationException("The local Atom feed was not subscribed.");
             await account.RecalculateUnreadCountsAsync();
@@ -672,6 +688,7 @@ internal static partial class ParityProbe
             if (feed is not null) account.RemoveFeed(feed);
             model.BuildSidebar();
             await content.RestoreStateAsync(original);
+            AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousIcons);
         }
     }
 

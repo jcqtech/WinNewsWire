@@ -82,6 +82,7 @@ public sealed partial class MainContent
 
     private void InitializeTimelineThumbnails()
     {
+        ViewModel.TimelineArticlesChanged += TimelineFeedIconArticlesChanged;
         _thumbnailService = AppRuntime.AppService.Shared.ThumbnailImages;
         _thumbnailService.ThumbnailUrlsAvailable += TimelineThumbnailUrlsAvailable;
         _thumbnailService.ThumbnailDownloadFailed += TimelineThumbnailDownloadFailed;
@@ -91,6 +92,7 @@ public sealed partial class MainContent
 
     private void ObserveThumbnailItems()
     {
+        QueueTimelineFeedIconsUpdate();
         if (_thumbnailItems is not null) _thumbnailItems.CollectionChanged -= ThumbnailItemsChanged;
         _thumbnailItems = ViewModel.ArticleItems;
         _thumbnailItems.CollectionChanged += ThumbnailItemsChanged;
@@ -98,7 +100,10 @@ public sealed partial class MainContent
     }
 
     private void ThumbnailItemsChanged(object? sender, NotifyCollectionChangedEventArgs args)
-        => QueueTimelineThumbnailRefresh();
+    {
+        QueueTimelineFeedIconsUpdate();
+        QueueTimelineThumbnailRefresh();
+    }
 
     private void QueueTimelineThumbnailRefresh()
     {
@@ -125,7 +130,14 @@ public sealed partial class MainContent
     {
         if (_shuttingDown || sender is not ThumbnailView view || _timelineThumbnails.ContainsKey(view)) return;
         long callback = view.RegisterPropertyChangedCallback(FrameworkElement.TagProperty, (element, _) =>
-            RefreshTimelineThumbnail((ThumbnailView)element));
+        {
+            if (_timelineThumbnails.TryGetValue(view, out var previous)
+                && previous.Article is { } oldArticle && element.GetValue(FrameworkElement.TagProperty) is Article newArticle
+                && oldArticle.ArticleID == newArticle.ArticleID && oldArticle.AccountID == newArticle.AccountID
+                && !ReferenceEquals(oldArticle, newArticle))
+                QueueTimelineFeedIconsUpdate();
+            RefreshTimelineThumbnail((ThumbnailView)element);
+        });
         _timelineThumbnails.Add(view, new(callback));
         if (view.Parent is Grid grid && grid.Children.OfType<StackPanel>().FirstOrDefault() is { } text)
             text.SizeChanged += ThumbnailTextSizeChanged;
@@ -159,7 +171,7 @@ public sealed partial class MainContent
         binding.Loading = false;
         if (!ShowsTimelineThumbnails || _thumbnailService is null || view.Tag is not Article article)
         {
-            binding.Article = null;
+            binding.Article = view.Tag as Article;
             binding.HasThumbnail = false;
             binding.Url = null;
             view.ImageSource = null;
@@ -242,7 +254,7 @@ public sealed partial class MainContent
             view.Height = 180;
             return;
         }
-        double iconHeight = grid.Children.OfType<IconView>().FirstOrDefault()?.ActualHeight ?? 0;
+        double iconHeight = grid.Children.OfType<IconView>().FirstOrDefault(icon => icon.Visibility == Visibility.Visible)?.ActualHeight ?? 0;
         double textHeight = grid.Children.OfType<StackPanel>().FirstOrDefault()?.ActualHeight ?? 0;
         double dimension = Math.Min(76, Math.Max(iconHeight, textHeight));
         view.Width = view.Height = dimension;
@@ -347,6 +359,7 @@ public sealed partial class MainContent
 
     private async Task StopTimelineThumbnailsAsync()
     {
+        ViewModel.TimelineArticlesChanged -= TimelineFeedIconArticlesChanged;
         _thumbnailLifetime.Cancel();
         if (_thumbnailItems is not null) _thumbnailItems.CollectionChanged -= ThumbnailItemsChanged;
         if (_thumbnailService is not null)

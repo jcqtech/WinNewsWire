@@ -135,6 +135,24 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="TimelineFeedIconsLabel" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="TimelineFeedIconsCombo" MinWidth="180"
+                                          SelectionChanged="TimelineFeedIconsCombo_SelectionChanged" />
+                            </Grid>
+                            <TextBlock x:Name="TimelineFeedIconsDescription" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="TimelineFeedIconsStatus" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="TimelineThumbnailsLabel" VerticalAlignment="Center" />
                                 <ComboBox Grid.Column="1" x:Name="TimelineThumbnailsCombo" MinWidth="180"
                                           SelectionChanged="TimelineThumbnailsCombo_SelectionChanged" />

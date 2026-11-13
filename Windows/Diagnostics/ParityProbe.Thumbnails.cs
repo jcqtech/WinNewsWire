@@ -195,7 +195,9 @@ internal static partial class ParityProbe
             WholeImageFit = true, CustomLetterboxFill = true, TopAlignedPortraitCrop = true,
             CenteredWideCrop = true, CropUpdatesOnResize = true, LargeImageAlignsWithIconOrText = true,
             HiddenModeStopsNewRequests = true, MenuAndPreferencesShareMode = true,
-            FailedPreferenceWritesRestoreSelectionAndReport = true };
+            FailedPreferenceWritesRestoreSelectionAndReport = true,
+            FeedIconsAlwaysNeverAutomatic = true, FeedIconsColumnException = true,
+            FeedIconsSharedSettingsOnUI = true, FeedIconsFailedWriteRecovery = true };
     }
 
     private static async Task CheckTimelineThumbnailsAsync(MainWindow window, ArticleThumbnailService service,
@@ -208,6 +210,7 @@ internal static partial class ParityProbe
         var previousSelection = model.SelectedArticle;
         bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
         var previousDisplay = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        var previousFeedIcons = Core.AppDefaults.Shared.GetTimelineFeedIconsDisplay();
         bool previousUnified = model.IsUnifiedLayout;
         var list = (ListView)content.FindName("ArticleListView");
         Article ArticleFor(int index, string? image, string? html = null) =>
@@ -228,6 +231,7 @@ internal static partial class ParityProbe
         {
             Core.AppDefaults.Shared.UseColumnLayout = false;
             Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small);
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
             model.IsUnifiedLayout = false;
             model.SelectedArticle = null;
             content.ProbeSetThumbnailService(service);
@@ -302,9 +306,16 @@ internal static partial class ParityProbe
             var largeMenu = modeItems.Single(item => item.Tag is TimelineThumbnailsDisplay.Large);
             using var peer = new ViewModels.MainViewModel();
             int modeNotifications = 0;
+            int feedIconNotifications = 0;
             bool modeNotificationsOnUI = true;
             peer.PropertyChanged += (_, args) =>
             {
+                if (args.PropertyName == nameof(peer.TimelineFeedIconsDisplay))
+                {
+                    feedIconNotifications++;
+                    modeNotificationsOnUI &= window.DispatcherQueue.HasThreadAccess;
+                    return;
+                }
                 if (args.PropertyName != nameof(peer.TimelineThumbnailsDisplay)) return;
                 modeNotifications++;
                 modeNotificationsOnUI &= window.DispatcherQueue.HasThreadAccess;
@@ -341,17 +352,20 @@ internal static partial class ParityProbe
                     && Math.Abs(largeView.TransformToVisual(largeRow).TransformPoint(new(0, 0)).X
                         - icon.TransformToVisual(largeRow).TransformPoint(new(0, 0)).X) < 1),
                     "Large thumbnail keeps fixed height and aligns with the icon after resizing");
-                var previousIconVisibility = icon.Visibility;
                 try
                 {
-                    icon.Visibility = Visibility.Collapsed;
+                    await Task.Run(() => Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Never));
                     var text = largeRow.Children.OfType<StackPanel>().Single();
-                    await WaitFor(() => Task.FromResult(Grid.GetColumn(largeView) == 2
+                    await WaitFor(() => Task.FromResult(icon.Visibility == Visibility.Collapsed && Grid.GetColumn(largeView) == 2
                         && Math.Abs(largeView.TransformToVisual(largeRow).TransformPoint(new(0, 0)).X
                             - text.TransformToVisual(largeRow).TransformPoint(new(0, 0)).X) < 1),
                         "Large thumbnail aligns with text without an icon");
                 }
-                finally { icon.Visibility = previousIconVisibility; }
+                finally { Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always); }
+                await WaitFor(() => Task.FromResult(icon.Visibility == Visibility.Visible
+                    && Grid.GetColumn(largeView) == 1 && feedIconNotifications == 2),
+                    "Shared feed-icon display notifications restore icon alignment");
+                Require(modeNotificationsOnUI, "Feed-icon preference notifications ran outside the UI dispatcher.");
             }
             finally { largeRow.Width = previousWidth; }
 
@@ -382,6 +396,7 @@ internal static partial class ParityProbe
                 await WaitFor(() => Task.FromResult(choices.IsLoaded
                     && choices.SelectedItem is ComboBoxItem { Tag: TimelineThumbnailsDisplay.Small }),
                     "Thumbnail settings picker reflects the menu");
+                await CheckTimelineFeedIconSettingsAsync(window, preferences, peer);
                 using (var locked = new FileStream(Path.Combine(Core.AppConfig.DataDirectory, "AppDefaults.json"),
                     FileMode.Open, FileAccess.Read, FileShare.None))
                 {
@@ -436,6 +451,7 @@ internal static partial class ParityProbe
             model.SelectedArticle = previousSelection;
             Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
             Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousFeedIcons);
             model.IsUnifiedLayout = previousUnified;
             content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
         }

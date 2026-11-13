@@ -131,6 +131,13 @@
   <data name="None" xml:space="preserve"><value>None</value></data>
   <data name="Timeline" xml:space="preserve"><value>Timeline</value></data>
   <data name="TimelineThumbnailsSaveError" xml:space="preserve"><value>Could not save the thumbnail setting: {0}</value></data>
+  <data name="Automatic" xml:space="preserve"><value>Automatic</value></data>
+  <data name="Always" xml:space="preserve"><value>Always</value></data>
+  <data name="Never" xml:space="preserve"><value>Never</value></data>
+  <data name="FeedIcons" xml:space="preserve"><value>Feed Icons</value></data>
+  <data name="ThumbnailSize" xml:space="preserve"><value>Thumbnail Size</value></data>
+  <data name="FeedIconsAutomaticDescription" xml:space="preserve"><value>Folders, smart feeds, and authors with avatars</value></data>
+  <data name="TimelineFeedIconsSaveError" xml:space="preserve"><value>Could not save the feed-icon setting: {0}</value></data>
   <data name="ShareSubscriptionCancelled" xml:space="preserve"><value>The subscription was cancelled. No feed was added.</value></data>
   <data name="AllowLocalAutomation" xml:space="preserve"><value>Allow local automation</value></data>
   <data name="AutomationDescription" xml:space="preserve"><value>Programs running as your Windows user can read feed data and change subscriptions and read/starred state. Remote clients are rejected.</value></data>

@@ -538,6 +538,7 @@
                                         </Grid>
                                         <helpers:IconView Grid.Column="1" Width="48" Height="48"
                                                           VerticalAlignment="Top"
+                                                          Loaded="TimelineFeedIcon_Loaded" Unloaded="TimelineFeedIcon_Unloaded"
                                                           ImageSource="{x:Bind FaviconPath, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                                           AutomationProperties.AccessibilityView="Raw" />
                                         <StackPanel Grid.Column="2" Spacing="3"
