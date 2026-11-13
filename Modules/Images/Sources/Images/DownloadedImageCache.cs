@@ -103,6 +103,40 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     internal void PrioritizeDownload(string url) => _downloadLimiter.Prioritize(url);
 
     internal Task ImageWasUsedAsync(string url, bool checksForUpdates, CancellationToken ct)
+        => RunDiskOperationAsync(async _ =>
+        {
+            await SaveAccessDateIfNeededAsync(url, checksForUpdates).ConfigureAwait(false);
+            return true;
+        }, ct);
+
+    internal static string DerivedDiskKey(string url, string suffix) => url.Md5Hex() + "-" + suffix;
+
+    private static string BaseDiskKey(string key)
+    {
+        int separator = key.IndexOf('-');
+        return separator >= 0 ? key[..separator] : key;
+    }
+
+    internal Task<byte[]?> DerivedImageDataAsync(string url, string suffix, CancellationToken ct = default)
+        => RunDiskOperationAsync(token => File.Exists(_diskCache.PathForKey(url.Md5Hex()))
+            ? _diskCache.GetAsync(DerivedDiskKey(url, suffix), token) : Task.FromResult<byte[]?>(null), ct);
+
+    internal Task SaveDerivedImageDataAsync(string url, string suffix, byte[] data, CancellationToken ct = default)
+        => RunDiskOperationAsync(async token =>
+        {
+            if (File.Exists(_diskCache.PathForKey(url.Md5Hex())))
+                await _diskCache.SetAsync(DerivedDiskKey(url, suffix), data, token).ConfigureAwait(false);
+            return true;
+        }, ct);
+
+    internal Task DeleteDerivedImageDataAsync(string url, string suffix, CancellationToken ct = default)
+        => RunDiskOperationAsync(_ =>
+        {
+            _diskCache.Remove(DerivedDiskKey(url, suffix));
+            return Task.FromResult(true);
+        }, ct);
+
+    private Task<T> RunDiskOperationAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken ct)
     {
         lock (_backgroundGate)
         {
@@ -112,13 +146,13 @@ public sealed class DownloadedImageCache : IAsyncDisposable
                 using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
                 await _initialCleanup.WaitAsync(cancellation.Token).ConfigureAwait(false);
                 await _diskGate.WaitAsync(cancellation.Token).ConfigureAwait(false);
-                try { await SaveAccessDateIfNeededAsync(url, checksForUpdates).ConfigureAwait(false); }
+                try { return await work(cancellation.Token).ConfigureAwait(false); }
                 finally { _diskGate.Release(); }
             });
             _backgroundTasks.Add(task);
             _ = task.ContinueWith(completed =>
             {
-                if (completed.IsFaulted) Trace.TraceError($"Image access-date update failed: {completed.Exception}");
+                if (completed.IsFaulted) Trace.TraceError($"Image cache maintenance failed: {completed.Exception}");
                 lock (_backgroundGate) _backgroundTasks.Remove(completed);
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             return task;
@@ -280,7 +314,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
             if (!fileDates.ContainsKey(key) && record.LastAccessed < recentChange) urls.Add(record.Url);
             else keep.Add((record, key));
         }
-        var keys = fileDates.Where(pair => !recordedKeys.Contains(pair.Key) && pair.Value < recentChange)
+        var keys = fileDates.Where(pair => !recordedKeys.Contains(BaseDiskKey(pair.Key)) && pair.Value < recentChange)
             .Select(pair => pair.Key).ToHashSet(StringComparer.Ordinal);
         long bytes = keep.Sum(item => item.Record.ByteCount);
         void RemoveLeastRecentlyUsed(DateTimeOffset accessedBefore, ByteLimit target)
@@ -298,6 +332,8 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         }
         RemoveLeastRecentlyUsed(recentUse, limit);
         RemoveLeastRecentlyUsed(recentChange, hardLimit);
+        var removedKeys = keys.Concat(urls.Select(url => url.Md5Hex())).ToHashSet(StringComparer.Ordinal);
+        keys.UnionWith(fileDates.Keys.Where(key => BaseDiskKey(key) != key && removedKeys.Contains(BaseDiskKey(key))));
         return new(urls, keys, bytes);
     }
 

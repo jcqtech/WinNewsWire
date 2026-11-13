@@ -12,6 +12,56 @@ public sealed class DownloadedImageCacheTests
     private static readonly DateTimeOffset Now = new(2026, 10, 27, 0, 0, 0, TimeSpan.Zero);
     private static string Url(string name) => "https://images.test/" + name + ".png";
 
+    [Fact]
+    public void DerivedCopiesFollowTheirOriginalsDuringEvictionAndOrphanCleanup()
+    {
+        var old = Now.AddDays(-10);
+        var records = new[]
+        {
+            new DownloadedImageUsage(Url("a"), 100, old),
+            new DownloadedImageUsage(Url("b"), 100, old.AddSeconds(1)),
+            new DownloadedImageUsage(Url("missing"), 100, old.AddSeconds(2))
+        };
+        var dates = new Dictionary<string, DateTimeOffset>
+        {
+            [Url("a").Md5Hex()] = old,
+            [Url("b").Md5Hex()] = old,
+            [DownloadedImageCache.DerivedDiskKey(Url("a"), "144")] = Now,
+            [DownloadedImageCache.DerivedDiskKey(Url("b"), "144")] = old,
+            [DownloadedImageCache.DerivedDiskKey(Url("missing"), "144")] = Now,
+            [DownloadedImageCache.DerivedDiskKey(Url("orphan"), "144")] = old
+        };
+        var removal = DownloadedImageCache.PlanRemoval(records, dates, Now, new(150), new(1000));
+        Assert.Equal([Url("missing"), Url("a")], removal.Urls);
+        Assert.Equal(100, removal.RemainingByteCount);
+        Assert.True(removal.Keys.SetEquals([
+            Url("a").Md5Hex(), DownloadedImageCache.DerivedDiskKey(Url("a"), "144"),
+            DownloadedImageCache.DerivedDiskKey(Url("missing"), "144"),
+            DownloadedImageCache.DerivedDiskKey(Url("orphan"), "144")]));
+    }
+
+    [Fact]
+    public async Task DerivedCopiesRoundTripIndependentlyAndDisappearWithEvictedSources()
+    {
+        await using var fixture = new Fixture();
+        await using var cache = fixture.CreateCache(1, 2);
+        Assert.NotNull(await fixture.FetchAsync(cache, "a"));
+        Assert.Null(await cache.DerivedImageDataAsync(Url("a"), "144"));
+        await cache.SaveDerivedImageDataAsync(Url("a"), "144", [1, 2, 3]);
+        await cache.SaveDerivedImageDataAsync(Url("a"), "48", [4]);
+        Assert.Equal(new byte[] { 1, 2, 3 }, await cache.DerivedImageDataAsync(Url("a"), "144"));
+        await cache.DeleteDerivedImageDataAsync(Url("a"), "48");
+        Assert.Null(await cache.DerivedImageDataAsync(Url("a"), "48"));
+        Assert.Equal(Fixture.Image, File.ReadAllBytes(fixture.PathFor("a")));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        File.SetLastWriteTimeUtc(fixture.PathFor("a"), fixture.Clock.GetUtcNow().AddDays(-10).UtcDateTime);
+        Assert.NotNull(await fixture.FetchAsync(cache, "b"));
+        Assert.False(File.Exists(fixture.PathFor("a") + "-144"));
+        Assert.Null(await cache.DerivedImageDataAsync(Url("a"), "144"));
+        await cache.SaveDerivedImageDataAsync(Url("a"), "144", [5]);
+        Assert.False(File.Exists(fixture.PathFor("a") + "-144"));
+    }
+
     [Theory]
     [InlineData(null, true, 8)]
     [InlineData(60, true, 3)]
