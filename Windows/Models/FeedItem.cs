@@ -91,7 +91,17 @@ public partial class FeedItem : ObservableObject
     private string _feedIconUrl = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FaviconSource))]
     private string? _faviconPath;
+
+    private long _faviconRevision;
+    public FeedImageReference FaviconSource => new(FaviconPath, _faviconRevision);
+
+    internal void RefreshFavicon()
+    {
+        _faviconRevision++;
+        OnPropertyChanged(nameof(FaviconSource));
+    }
 
     public string FeedId { get; set; } = string.Empty;
     public string AccountID { get; set; } = string.Empty;
@@ -171,3 +181,5 @@ public partial class FeedItem : ObservableObject
     }
 
 }
+
+public readonly record struct FeedImageReference(string? Path, long Revision);

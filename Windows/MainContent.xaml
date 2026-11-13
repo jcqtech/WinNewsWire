@@ -57,7 +57,7 @@
                 <Grid Grid.Column="2" Tag="Feed" Margin="8,0" ColumnSpacing="5">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                     <helpers:IconView Width="16" Height="16" VerticalAlignment="Center"
-                                      ImageSource="{x:Bind FaviconPath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                                      ImageSource="{x:Bind FaviconSource, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                       AutomationProperties.AccessibilityView="Raw" />
                     <TextBlock Grid.Column="1" Text="{x:Bind FeedTitle, Mode=OneWay}" FontWeight="{x:Bind ColumnFontWeight, Mode=OneWay}"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -261,7 +261,7 @@
                             <FontIcon Glyph="{x:Bind ExpansionGlyph, Mode=OneWay}" FontSize="10" />
                         </Button>
                         <Image Grid.Column="1" Width="16" Height="16" Margin="0,0,2,0"
-                               Source="{x:Bind FaviconPath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                               Source="{x:Bind FaviconSource, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                Visibility="{x:Bind HasFeedImage, Converter={StaticResource BoolToVisibility}}"
                                AutomationProperties.AccessibilityView="Raw" />
                         <FontIcon Grid.Column="1" Width="16" Height="16" FontSize="14" Margin="0,0,2,0"
@@ -539,7 +539,7 @@
                                         <helpers:IconView Grid.Column="1" Width="48" Height="48"
                                                           VerticalAlignment="Top"
                                                           Loaded="TimelineFeedIcon_Loaded" Unloaded="TimelineFeedIcon_Unloaded"
-                                                          ImageSource="{x:Bind FaviconPath, Mode=OneWay, Converter={StaticResource PathToImage}}"
+                                                          ImageSource="{x:Bind FaviconSource, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                                           AutomationProperties.AccessibilityView="Raw" />
                                         <StackPanel Grid.Column="2" Spacing="3"
                                                     VerticalAlignment="Center"

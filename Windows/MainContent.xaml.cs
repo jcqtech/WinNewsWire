@@ -1013,7 +1013,7 @@ public sealed partial class MainContent : UserControl
         if (_shuttingDown) return;
         if (e.PropertyName == nameof(FeedItem.IsStarred))
             DispatcherQueue.TryEnqueue(() => { if (!_shuttingDown) UpdateStarButtonIcon(); });
-        else if (e.PropertyName == nameof(FeedItem.FaviconPath))
+        else if (e.PropertyName == nameof(FeedItem.FaviconSource))
             DispatcherQueue.TryEnqueue(() => { if (!_shuttingDown) TrackBrowserTask(RefreshArticleIconAsync()); });
     }
 

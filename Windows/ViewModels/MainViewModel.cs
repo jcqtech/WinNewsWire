@@ -40,6 +40,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private long _lastAccountChange;
     private int _urgentAccountUpdate;
     private volatile bool _disposed;
+    private Images.FeedImageDownloader? _feedImages;
+    private readonly HashSet<string> _changedFeedImagePaths = new(StringComparer.OrdinalIgnoreCase);
     private int _articleLoadGeneration;
     private bool _restoringArticleSelection;
     private bool _changingSelection;
@@ -56,6 +58,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _displayedGlobalSearch;
     internal Task PendingAutomaticReads => _automaticReadTask;
 #if PARITY_PROBE
+    internal Images.FeedImageDownloader? ProbeFeedImages
+    {
+        get => _feedImages;
+        set => ObserveFeedImages(value);
+    }
     internal int ProbeSectionStatusUpdates;
     internal int ProbeSubscriptionRefreshes;
     internal Action? ProbePreparingTimeline;
@@ -360,6 +367,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _disposed = true;
+        ObserveFeedImages(null);
         _readerModeCancellation?.Cancel();
         _viewOperations.CancelAll();
         AppService.Shared.Accounts.AccountsDidChange -= OnAccountChanged;
@@ -939,13 +947,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
+            await EnsureFeedImageObserverAsync();
             foreach (var section in SidebarItems.ToList())
                 await PopulateFaviconsForSectionAsync(section);
         }
         catch { /* favicons are best-effort */ }
     }
 
-    private static async Task PopulateFaviconsForSectionAsync(SidebarItem item)
+    private async Task PopulateFaviconsForSectionAsync(SidebarItem item)
     {
         if (item.Tag is AccountNs.Feed feed)
         {
@@ -955,6 +964,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (!string.IsNullOrEmpty(path))
                 {
                     item.FaviconPath = path;
+                    if (_changedFeedImagePaths.Contains(path)) item.RefreshFavicon();
                 }
             }
             catch { }
@@ -1207,6 +1217,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
+            await EnsureFeedImageObserverAsync();
             var cache = new Dictionary<(string, string), string?>();
             foreach (var item in items)
             {
@@ -1220,10 +1231,44 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (!string.IsNullOrEmpty(path))
                 {
                     item.FaviconPath = path;
+                    if (_changedFeedImagePaths.Contains(path)) item.RefreshFavicon();
                 }
             }
         }
         catch { /* favicons are best-effort */ }
+    }
+
+    private async Task EnsureFeedImageObserverAsync()
+    {
+        if (_feedImages is not null || _disposed) return;
+        var service = await Images.FeedImageDownloader.GetSharedAsync();
+        if (!_disposed && _feedImages is null) ObserveFeedImages(service);
+    }
+
+    private void ObserveFeedImages(Images.FeedImageDownloader? service)
+    {
+        if (_feedImages is not null) _feedImages.ImageDidBecomeAvailable -= FeedImageDidBecomeAvailable;
+        _feedImages = service;
+        if (service is not null) service.ImageDidBecomeAvailable += FeedImageDidBecomeAvailable;
+    }
+
+    private void FeedImageDidBecomeAvailable(object? sender, Images.DownloadedImage image)
+    {
+        if (_disposed) return;
+        if (!_dispatcher.TryEnqueue(() =>
+        {
+            if (_disposed || !ReferenceEquals(sender, _feedImages)) return;
+            _changedFeedImagePaths.Add(image.Path);
+            foreach (var item in ArticleItems)
+                if (string.Equals(item.FaviconPath, image.Path, StringComparison.OrdinalIgnoreCase)) item.RefreshFavicon();
+            void RefreshSidebar(SidebarItem item)
+            {
+                if (string.Equals(item.FaviconPath, image.Path, StringComparison.OrdinalIgnoreCase)) item.RefreshFavicon();
+                foreach (var child in item.Children) RefreshSidebar(child);
+            }
+            foreach (var item in SidebarItems) RefreshSidebar(item);
+        }) && !_disposed)
+            System.Diagnostics.Trace.TraceError($"Could not dispatch a changed feed image at {image.Url}.");
     }
 
     private sealed record TimelineFeedMetadata(string Url, string? HomePageUrl, string IconUrl, string Name, IReadOnlySet<Author>? Authors);
@@ -1597,7 +1642,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         + "?article=" + Uri.EscapeDataString(item.AccountID + "|" + item.Id);
 
     internal static string ArticleIconSource(FeedItem item) => ArticleIconIdentityUrl(item)
-        + "&state=" + (item.FaviconPath is null ? "pending" : "ready");
+        + "&state=" + (item.FaviconPath is null ? "pending" : "ready")
+        + "&revision=" + item.FaviconSource.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture);
 }
 
 /// <summary>Payload for <see cref="MainViewModel.AddFeedCommand"/>.</summary>

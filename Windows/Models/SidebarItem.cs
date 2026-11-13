@@ -36,7 +36,17 @@ public partial class SidebarItem : ObservableObject
     private SidebarItemType _itemType = SidebarItemType.Feed;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FaviconSource))]
     private string? _faviconPath;
+
+    private long _faviconRevision;
+    public FeedImageReference FaviconSource => new(FaviconPath, _faviconRevision);
+
+    internal void RefreshFavicon()
+    {
+        _faviconRevision++;
+        OnPropertyChanged(nameof(FaviconSource));
+    }
 
     /// <summary>True while the user is editing this item's name inline. The sidebar
     /// row template watches this to swap between the read-only label and a TextBox

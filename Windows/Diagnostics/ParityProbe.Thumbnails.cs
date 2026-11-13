@@ -243,6 +243,7 @@ internal static partial class ParityProbe
         }
         finally { account.RemoveFeed(baseFeed); }
         Require(failureOnUI && failures == 4, "Permanent thumbnail failures were not dispatched once to the UI.");
+        await CheckChangedFeedIconsAsync(window);
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
         bool stopped = false;
@@ -253,6 +254,7 @@ internal static partial class ParityProbe
             CoalescedDiscoveryAndDecode = true, SeparateModes = true, DecodedLRUBudget = true,
             DisplaySizeDecode = true, ExifOrientation = true, NativeDimensionRejection = true,
             LargestFrameDecode = true,
+            ChangedFeedIconsReloadNativeAndReaderImages = true,
             ReaderUsesOriginalSharedImage = true,
             RenderedImagesUseSharedSources = true, FailedLocalImagesFallBackWithoutPublisherScripts = true,
             HiddenModeLeavesReaderImagesRemote = true,
@@ -273,6 +275,102 @@ internal static partial class ParityProbe
             FailedPreferenceWritesRestoreSelectionAndReport = true,
             FeedIconsAlwaysNeverAutomatic = true, FeedIconsColumnException = true,
             FeedIconsSharedSettingsOnUI = true, FeedIconsFailedWriteRecovery = true };
+    }
+
+    private static async Task CheckChangedFeedIconsAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSelection = model.SelectedArticle;
+        var previousImages = model.ProbeFeedImages;
+        var previousIcons = Core.AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+        bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
+        var clock = new ChangedImageClock();
+        int requests = 0;
+        using var http = new HttpClient(new ThumbnailHandler((_, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(Interlocked.Increment(ref requests) == 1
+                    ? ThumbnailBitmap(128, 128) : ThumbnailBitmap(1600, 800))
+            };
+            response.Headers.TryAddWithoutValidation("ETag", "\"changed-icon\"");
+            return Task.FromResult(response);
+        }));
+        var downloader = new Downloader(http, clock);
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "changed-icon.db"), clock);
+        using var htmlDatabase = new HTMLMetadata.HtmlMetadataDatabase(":memory:", clock);
+        await using var metadata = new HTMLMetadata.HtmlMetadataDownloader(htmlDatabase, downloader, clock);
+        await using var images = new FeedImageDownloader(database, metadata, Path.Combine(OutputDirectory, "changed-icons"),
+            downloader, clock, maxPixelSize: 48, networkAllowsUpdates: () => true);
+        const string url = "https://thumbnail.test/changed-icon.bmp";
+        var feed = new FeedImageSource("https://thumbnail.test/changed-icon-feed", IconUrl: url, FaviconUrl: url);
+        var original = await images.IconAsync(feed) ?? throw new InvalidOperationException("The original icon did not load.");
+        var article = new Article("account", "changed-icon", "feed", "changed-icon", "Changed icon fixture",
+            "<p id='changed-icon-body'>Original document</p>", null, null, "https://thumbnail.test/changed-icon-article",
+            null, null, null, null, null, null, null, new ArticleStatus("changed-icon", true, false, DateTime.UnixEpoch));
+        var row = new Models.FeedItem
+        {
+            Id = article.ArticleID, AccountID = article.AccountID, SourceArticle = article,
+            FeedTitle = "Changed icon fixture", FaviconPath = original.Path, IsRead = true
+        };
+        var unrelated = new Models.FeedItem { Id = "unrelated-icon" };
+        var sidebarRow = new Models.SidebarItem { Title = "Changed icon fixture", FaviconPath = original.Path };
+        var section = model.SidebarItems.First();
+        bool onUI = true;
+        row.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(Models.FeedItem.FaviconSource))
+                onUI &= window.DispatcherQueue.HasThreadAccess;
+        };
+        var list = (ListView)content.FindName("ArticleListView");
+        try
+        {
+            Core.AppDefaults.Shared.UseColumnLayout = false;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
+            model.ProbeFeedImages = images;
+            model.SelectedArticle = null;
+            model.ArticleItems = new ObservableCollection<Models.FeedItem> { row, unrelated };
+            section.Children.Add(sidebarRow);
+            list.SelectedItem = row;
+            await WaitFor(() => Task.FromResult(list.ContainerFromItem(row) is not null), "Original icon row");
+            var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
+            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 128 }),
+                "Original native icon");
+            await WaitFor(async () => await ScriptBool(content,
+                "window.__wnwArticleProcessed === true && document.getElementById('nnwImageIcon')?.naturalWidth === 128"),
+                "Original reader icon");
+            await content.ProbeWebView.CoreWebView2.ExecuteScriptAsync("window.changedIconSentinel = true;");
+            string document = model.ArticleHtml;
+            clock.Advance(TimeSpan.FromDays(8));
+            Require(await images.FaviconAsync(feed) is not null, "The icon source was not rechecked.");
+            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 1600, PixelHeight: 800 }),
+                "Replacement native icon at the unchanged file path");
+            await WaitFor(async () => await ScriptBool(content,
+                "window.changedIconSentinel === true && document.getElementById('nnwImageIcon')?.naturalWidth === 1600"),
+                "Replacement reader icon without document navigation");
+            Require(onUI && row.FaviconPath == original.Path && row.FaviconSource.Revision > 0
+                && sidebarRow.FaviconSource.Revision > 0 && unrelated.FaviconSource.Revision == 0
+                && model.ArticleHtml == document && requests == 2,
+                "Changed icons must refresh matching rows on UI without changing paths, unrelated rows, or the document.");
+        }
+        finally
+        {
+            model.ProbeFeedImages = previousImages;
+            section.Children.Remove(sidebarRow);
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousIcons);
+        }
+    }
+
+    private sealed class ChangedImageClock : TimeProvider
+    {
+        private DateTimeOffset _now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => _now;
+        internal void Advance(TimeSpan amount) => _now += amount;
     }
 
     private static async Task CheckTimelineThumbnailsAsync(MainWindow window, ArticleThumbnailService service,
