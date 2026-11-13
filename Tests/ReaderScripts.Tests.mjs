@@ -50,7 +50,10 @@ function openFootnote({ articleLeft = 100, articleWidth = 600, referenceLeft = 3
         getComputedStyle: () => ({ maxWidth: "704px", marginLeft: "0px", marginRight: "0px" }),
         addEventListener(name, callback) { if (name === "resize") resizeListeners.add(callback); }
     };
-    vm.runInNewContext(script("newsfoot.js"), { document, window, Element, HTMLAnchorElement });
+    vm.runInNewContext(script("newsfoot.js"), {
+        document, window, Element, HTMLAnchorElement,
+        Date: class extends Date { static now() { return 100; } }
+    });
     listeners.get("click")[0]({ target: new HTMLAnchorElement(), preventDefault() {} });
     return {
         get popover() { return popover; },
@@ -75,4 +78,13 @@ test("footnotes center on their reference and clamp the popover and arrow at col
         assert.equal(fixture.popover.style.left, left);
         assert.equal(fixture.popover.children[1].style.left, arrowLeft);
     }
+});
+
+test("each resize updates the open footnote, including the final rapid resize", () => {
+    const fixture = openFootnote();
+    fixture.resize(200, 300);
+    assert.equal(fixture.popover.style.width, "300px");
+    fixture.resize(220, 280);
+    assert.equal(fixture.popover.style.width, "280px");
+    assert.equal(fixture.popover.style.left, "-160px");
 });
