@@ -2,8 +2,8 @@ namespace WinNewsWire.Parsers;
 
 public static class SignificantImageFilter
 {
-    public const int MinimumDimension = 100;
-    public const double MaximumAspectRatio = 3;
+    public const int MinimumDimension = 64;
+    public const double MaximumAspectRatio = 4;
 
     private static readonly (string Host, string Path)[] BlockedImagePrefixes =
     [

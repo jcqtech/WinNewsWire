@@ -82,6 +82,12 @@ public class HtmlImageTests
         => Assert.Equal("https://example.com/photo.jpg",
             First("""<script>var img = '<img src="/fake.jpg">';</script><img src="/photo.jpg">""")?.Url);
 
+    [Theory]
+    [InlineData(64, 64)]
+    [InlineData(400, 100)]
+    public void RepresentativeSmallerAndRectangularImagesAreAccepted(int width, int height)
+        => Assert.NotNull(First($"""<img src="/photo.jpg" width="{width}" height="{height}">"""));
+
     private static HtmlImage? First(string html)
         => HtmlImageParser.FirstSignificantImage(new ParserData("https://example.com/posts/1", Encoding.UTF8.GetBytes(html)));
 }
