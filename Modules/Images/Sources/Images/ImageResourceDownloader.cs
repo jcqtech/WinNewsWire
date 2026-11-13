@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Text;
 using WinNewsWire.ActivityLog;
 using WinNewsWire.Core;
-using WinNewsWire.Parsers;
 using WinNewsWire.Web;
 using ActivityLogger = WinNewsWire.ActivityLog.ActivityLog;
 using ActivityKind = WinNewsWire.ActivityLog.ActivityKind;
@@ -12,8 +11,8 @@ namespace WinNewsWire.Images;
 
 internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransient = false);
 internal sealed record ImageResourceConfiguration(int MaxPixelSize, ScaledImageFormat Format = ScaledImageFormat.Png,
-    long MemoryCacheByteLimit = 0, bool RequiresSignificantDimensions = false,
-    DownloadLimiter? DownloadLimiter = null, Func<bool>? NetworkAllowsDownloads = null,
+    long MemoryCacheByteLimit = 0, DownloadLimiter? DownloadLimiter = null,
+    Func<bool>? NetworkAllowsDownloads = null,
     bool StoresSourceData = false, bool KeepsDiskCache = false);
 internal sealed record ImageResourceRequest(ActivityOwner Owner, ActivityKind Kind, string? Detail,
     Func<bool>? NetworkAllowsDownloads);
@@ -99,7 +98,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             return new(cached);
         }
         if (_database.RecentlyFailed(url)) return new(null);
-        if (_configuration.RequiresSignificantDimensions && _database.RecentlyLackedSignificantDimensions(url)) return new(null);
         Task<ImageResourceResult> pending;
         lock (_gate)
         {
@@ -123,12 +121,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     private byte[] ProcessImage(byte[] data)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Images require the Windows image decoder.");
-        if (_configuration.RequiresSignificantDimensions)
-        {
-            var dimensions = WindowsImage.LargestFramePixelSize(data);
-            if (!SignificantImageFilter.HasSignificantDimensions(dimensions.Width, dimensions.Height))
-                throw new InsignificantDimensionsException(dimensions.Width, dimensions.Height);
-        }
         return WindowsImage.ScaledImageData(data, _configuration.MaxPixelSize, _configuration.Format);
     }
 
@@ -140,7 +132,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         string path = _diskCache.PathForKey(key);
         if (await ReadFromDiskAsync(url, key, ct).ConfigureAwait(false) is { } cached)
             return Cache(cached);
-        if (_configuration.RequiresSignificantDimensions && _database.RecentlyLackedSignificantDimensions(url)) return new(null);
         if (_sourceCache is not null)
         {
             var result = await ImageFromSourceAsync(url, request, ct).ConfigureAwait(false);
@@ -188,14 +179,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             processed = ProcessImage(bytes);
         }
-        catch (InsignificantDimensionsException error)
-        {
-            _log.DidFail(activity, error);
-            ct.ThrowIfCancellationRequested();
-            await _database.RecordInsignificantDimensionsAsync(url).ConfigureAwait(false);
-            DownloadFailed?.Invoke(this, url);
-            return new(null);
-        }
         catch (InvalidDataException error)
         {
             _log.DidFail(activity, new InvalidDataException($"Could not decode image bytes (HTTP {(int)response.StatusCode}).", error));
@@ -235,12 +218,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             return _configuration.KeepsDiskCache ? new(image) : Cache(image);
         }
-        catch (InsignificantDimensionsException error)
-        {
-            Trace.TraceWarning($"Rejecting thumbnail {url}: {error.Message}");
-            ct.ThrowIfCancellationRequested();
-            await _database.RecordInsignificantDimensionsAsync(url).ConfigureAwait(false);
-        }
         catch (InvalidDataException error)
         {
             Trace.TraceWarning($"Could not decode stored image {url}: {error.Message}");
@@ -271,14 +248,6 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             }
             catch (FileNotFoundException) { continue; }
             catch (DirectoryNotFoundException) { continue; }
-            catch (InsignificantDimensionsException error)
-            {
-                Trace.TraceWarning($"Ignoring an unsuitable cached thumbnail {path}: {error.Message}");
-                if (path == destination) _diskCache.Remove(key);
-                await _database.RecordInsignificantDimensionsAsync(url).ConfigureAwait(false);
-                DownloadFailed?.Invoke(this, url);
-                return null;
-            }
             catch (InvalidDataException error)
             {
                 Trace.TraceWarning($"Ignoring an undecodable cached image {path}: {error.Message}");
@@ -371,7 +340,4 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { EmptyCache(); _lifetime.Dispose(); }
     }
-
-    private sealed class InsignificantDimensionsException(uint width, uint height)
-        : Exception($"Image too small or too narrow ({width}x{height}).");
 }

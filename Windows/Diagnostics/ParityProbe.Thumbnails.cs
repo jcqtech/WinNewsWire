@@ -29,6 +29,9 @@ internal static partial class ParityProbe
     private static async Task<object?> CheckThumbnailsAsync(MainWindow window)
     {
         var imageData = ThumbnailBitmap();
+        var orientedData = OrientedThumbnailTiff();
+        var smallData = ThumbnailBitmap(48, 48);
+        var narrowData = ThumbnailBitmap(1000, 64);
         int requests = 0, notifications = 0;
         bool initializationOnUI = true, notificationOnUI = true;
         bool networkAllowed = true;
@@ -49,8 +52,15 @@ internal static partial class ParityProbe
             }
             if (request.RequestUri.AbsolutePath == "/missing.bmp")
                 await releaseMissing.Task.WaitAsync(ct);
+            var data = request.RequestUri.AbsolutePath switch
+            {
+                "/oriented.tiff" => orientedData,
+                "/small.bmp" => smallData,
+                "/narrow.bmp" => narrowData,
+                _ => imageData
+            };
             return new HttpResponseMessage(request.RequestUri.AbsolutePath == "/missing.bmp"
-                ? HttpStatusCode.NotFound : HttpStatusCode.OK) { Content = new ByteArrayContent(imageData) };
+                ? HttpStatusCode.NotFound : HttpStatusCode.OK) { Content = new ByteArrayContent(data) };
         }));
         var downloader = new Downloader(http);
         using var database = new ImageMetadataDatabase(Path.Combine(OutputDirectory, "thumbnail-metadata.db"));
@@ -78,6 +88,7 @@ internal static partial class ParityProbe
         var simultaneous = await Task.WhenAll(service.ThumbnailAsync(article, ThumbnailMode.Small),
             service.ThumbnailAsync(article, ThumbnailMode.Small));
         var small = simultaneous[0] ?? throw new InvalidOperationException("The thumbnail did not decode.");
+        Require(service.ProbeLastDecodedSize == (512, 256), "Small thumbnails were not decoded at display size.");
         Require(ReferenceEquals(small, simultaneous[1]) && service.ProbeDecodes == 1,
             "Concurrent discovery/download/decoding was not coalesced.");
         Require(!initializationOnUI && !service.ProbeDecodedOnUIThread && notificationOnUI && notifications == 1,
@@ -86,6 +97,7 @@ internal static partial class ParityProbe
             && service.ProbeDecodes == 1, "A warm thumbnail was decoded again.");
 
         var large = await service.ThumbnailAsync(article, ThumbnailMode.Large);
+        Require(service.ProbeLastDecodedSize == (1200, 600), "Large thumbnails were not decoded at display size.");
         Require(large is not null && !ReferenceEquals(small, large) && service.ProbeDecodes == 2,
             "Small and large decoded thumbnails shared a cache entry.");
         Require(service.ProbeCacheBytes == 1200L * 600 * 4,
@@ -94,6 +106,21 @@ internal static partial class ParityProbe
         Require(reloaded is not null && !ReferenceEquals(small, reloaded) && service.ProbeDecodes == 3
             && service.ProbeCacheBytes == 512L * 256 * 4,
             "Decoded thumbnail LRU eviction or byte accounting failed.");
+
+        Article FixtureFor(string filename) => new("account", filename, "feed", filename, "Decoder fixture",
+            $"<img src='https://thumbnail.test/{filename}'>", null, null, "https://thumbnail.test/article",
+            null, null, null, null, null, null, null, new ArticleStatus(filename, false, false, DateTime.UnixEpoch));
+        var oriented = await service.ThumbnailAsync(FixtureFor("oriented.tiff"), ThumbnailMode.Small);
+        Require(oriented is not null && service.ProbeLastDecodedSize == (200, 400),
+            "The native thumbnail decoder ignored EXIF orientation.");
+        foreach (var filename in new[] { "small.bmp", "narrow.bmp" })
+        {
+            string url = "https://thumbnail.test/" + filename;
+            Require(await service.ThumbnailAsync(FixtureFor(filename), ThumbnailMode.Small) is null
+                && database.RecentlyLackedSignificantDimensions(url) && !database.RecentlyFailed(url),
+                "The native decoder did not persist a thumbnail-only dimension rejection.");
+        }
+        await WaitFor(() => Task.FromResult(failures == 2), "Native dimension rejection notifications");
 
         var host = Descendants(window.ProbeContent).OfType<Grid>().First();
         var image = new ThumbnailView { Width = 80, Height = 80, CornerRadius = new CornerRadius(12) };
@@ -165,6 +192,16 @@ internal static partial class ParityProbe
             Require(resized[left + 2] > 200 && resized[left] < 50
                 && resized[right] > 200 && resized[right + 2] < 50 && resized[3] == 0,
                 "Resizing did not update the crop or preserve rounded clipping.");
+
+            image.ImageSource = oriented;
+            image.FitsImage = true;
+            await raster.RenderAsync(image, 160, 80);
+            var rotated = (await raster.GetPixelsAsync()).ToArray();
+            int topHalf = (raster.PixelHeight / 4 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+            int bottomHalf = (raster.PixelHeight * 3 / 4 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+            Require(rotated[topHalf + 2] > 200 && rotated[topHalf] < 50
+                && rotated[bottomHalf] > 200 && rotated[bottomHalf + 2] < 50,
+                "EXIF-oriented native thumbnail pixels were not rotated from left/right to top/bottom.");
         }
         finally { host.Children.Remove(image); }
 
@@ -177,7 +214,7 @@ internal static partial class ParityProbe
         networkAllowed = true;
         await CheckTimelineThumbnailsAsync(window, service, requested, heldStarted, releaseHeld, releaseMissing,
             allowed => networkAllowed = allowed);
-        Require(failureOnUI && failures == 1, "Permanent thumbnail failures were not dispatched once to the UI.");
+        Require(failureOnUI && failures == 3, "Permanent thumbnail failures were not dispatched once to the UI.");
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
         bool stopped = false;
@@ -186,6 +223,7 @@ internal static partial class ParityProbe
         Require(stopped, "A disposed thumbnail service accepted another request.");
         return new { InitializationOffUI = true, DecodingOffUI = true, NotificationsOnUI = true,
             CoalescedDiscoveryAndDecode = true, SeparateModes = true, DecodedLRUBudget = true,
+            DisplaySizeDecode = true, ExifOrientation = true, NativeDimensionRejection = true,
             VisibleNativePixels = true, AspectFill = true, RoundedClipping = true, ThemedPlaceholder = true,
             RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
             TimelineRows = true, HTMLDiscovery = true, FailedCandidateFallback = true, FailureNotificationsOnUI = true, BoundedLookahead = true,
@@ -515,9 +553,9 @@ internal static partial class ParityProbe
         return bitmap;
     }
 
-    private static byte[] ThumbnailBitmap()
+    private static byte[] ThumbnailBitmap(int width = 1600, int height = 800)
     {
-        const int width = 1600, height = 800, stride = width * 3;
+        int stride = width * 3;
         using var output = new MemoryStream();
         using var writer = new BinaryWriter(output);
         writer.Write((ushort)0x4d42);
@@ -531,6 +569,44 @@ internal static partial class ParityProbe
         {
             writer.Write((byte)0); writer.Write((byte)0); writer.Write((byte)255);
         }
+        return output.ToArray();
+    }
+
+    private static byte[] OrientedThumbnailTiff()
+    {
+        const int width = 400, height = 200, entries = 11;
+        const int bitsOffset = 8 + 2 + entries * 12 + 4;
+        const int pixelsOffset = bitsOffset + 6;
+        using var output = new MemoryStream();
+        using var writer = new BinaryWriter(output);
+        writer.Write((ushort)0x4949);
+        writer.Write((ushort)42);
+        writer.Write(8);
+        writer.Write((ushort)entries);
+        void Entry(ushort tag, ushort type, int count, int value)
+        {
+            writer.Write(tag); writer.Write(type); writer.Write(count); writer.Write(value);
+        }
+        Entry(256, 4, 1, width);
+        Entry(257, 4, 1, height);
+        Entry(258, 3, 3, bitsOffset);
+        Entry(259, 3, 1, 1);
+        Entry(262, 3, 1, 2);
+        Entry(273, 4, 1, pixelsOffset);
+        Entry(274, 3, 1, 6);
+        Entry(277, 3, 1, 3);
+        Entry(278, 4, 1, height);
+        Entry(279, 4, 1, width * height * 3);
+        Entry(284, 3, 1, 1);
+        writer.Write(0);
+        writer.Write((ushort)8); writer.Write((ushort)8); writer.Write((ushort)8);
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+            {
+                writer.Write(x < width / 2 ? (byte)255 : (byte)0);
+                writer.Write((byte)0);
+                writer.Write(x >= width / 2 ? (byte)255 : (byte)0);
+            }
         return output.ToArray();
     }
 

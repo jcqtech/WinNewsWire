@@ -13,6 +13,7 @@ using Windows.Storage.Streams;
 using WinNewsWire.Articles;
 using WinNewsWire.Core;
 using WinNewsWire.Images;
+using WinNewsWire.Parsers;
 using WinNewsWire.Web;
 
 namespace WinNewsWire.Services;
@@ -20,6 +21,8 @@ namespace WinNewsWire.Services;
 internal sealed class ArticleThumbnailService : IAsyncDisposable
 {
     private sealed record CachedThumbnail(string Url, ThumbnailMode Mode, SoftwareBitmapSource Source, long ByteCount);
+    private sealed class InsignificantThumbnailDimensionsException(uint width, uint height)
+        : Exception($"Thumbnail dimensions are too small or too narrow ({width}x{height}).");
     private readonly DispatcherQueue _dispatcher;
     private readonly Lazy<Task<(ArticleThumbnailFinder Finder, ThumbnailDownloader Downloads)>> _backend;
     private readonly long _cacheByteLimit;
@@ -41,6 +44,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal int ProbeDecodes;
     internal bool ProbeDecodedOnUIThread;
     internal long ProbeCacheBytes => _cacheBytes;
+    internal (int Width, int Height) ProbeLastDecodedSize;
 #endif
 
     internal ArticleThumbnailService(DispatcherQueue dispatcher,
@@ -182,10 +186,22 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             return Task.FromResult<SoftwareBitmapSource?>(node.Value.Source);
         }).ConfigureAwait(false);
         if (cached is not null) return cached;
-        var downloaded = await downloads.ImageAsync(url, mode, ct, title).ConfigureAwait(false);
+        var downloaded = await downloads.SourceAsync(url, ct, title).ConfigureAwait(false);
         if (downloaded is null) return null;
-        using var bitmap = await DecodeAsync(downloaded.Data, ct).ConfigureAwait(false);
-        long byteCount = checked((long)bitmap.PixelWidth * bitmap.PixelHeight * 4);
+        SoftwareBitmap decoded;
+        try { decoded = await DecodeAsync(downloaded.Data, mode, ct).ConfigureAwait(false); }
+        catch (InsignificantThumbnailDimensionsException)
+        {
+            await downloads.RejectInsignificantDimensionsAsync(url, ct).ConfigureAwait(false);
+            return null;
+        }
+        using var bitmap = decoded;
+        long byteCount;
+        using (var buffer = bitmap.LockBuffer(BitmapBufferAccessMode.Read))
+        {
+            var plane = buffer.GetPlaneDescription(0);
+            byteCount = checked(Math.Abs((long)plane.Stride) * plane.Height);
+        }
         return await OnDispatcherAsync(async () =>
         {
             ct.ThrowIfCancellationRequested();
@@ -209,7 +225,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         }).ConfigureAwait(false);
     }
 
-    private async Task<SoftwareBitmap> DecodeAsync(byte[] data, CancellationToken ct)
+    private async Task<SoftwareBitmap> DecodeAsync(byte[] data, ThumbnailMode mode, CancellationToken ct)
     {
 #if PARITY_PROBE
         Interlocked.Increment(ref ProbeDecodes);
@@ -219,8 +235,22 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         await stream.WriteAsync(data.AsBuffer()).AsTask(ct).ConfigureAwait(false);
         stream.Seek(0);
         var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(ct).ConfigureAwait(false);
-        return await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied)
+        if (!SignificantImageFilter.HasSignificantDimensions(decoder.PixelWidth, decoder.PixelHeight))
+            throw new InsignificantThumbnailDimensionsException(decoder.PixelWidth, decoder.PixelHeight);
+        int maxPixelSize = mode == ThumbnailMode.Small ? 512 : DownloadedImageCache.MaxPixelSize;
+        double scale = Math.Min(1, (double)maxPixelSize / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
+        var transform = new BitmapTransform
+        {
+            ScaledWidth = (uint)Math.Max(1, Math.Round(decoder.PixelWidth * scale)),
+            ScaledHeight = (uint)Math.Max(1, Math.Round(decoder.PixelHeight * scale))
+        };
+        var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
+                transform, ExifOrientationMode.RespectExifOrientation, ColorManagementMode.ColorManageToSRgb)
             .AsTask(ct).ConfigureAwait(false);
+#if PARITY_PROBE
+        ProbeLastDecodedSize = (bitmap.PixelWidth, bitmap.PixelHeight);
+#endif
+        return bitmap;
     }
 
     private Task<T> OnDispatcherAsync<T>(Func<Task<T>> work)
@@ -243,8 +273,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         _cache.Clear();
         _cacheOrder.Clear();
         _cacheBytes = 0;
-        if (_backend.IsValueCreated && _backend.Value.IsCompletedSuccessfully)
-            _backend.Value.Result.Downloads.EmptyCache();
     }
 
     private void VerifyAccess()
