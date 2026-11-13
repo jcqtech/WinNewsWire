@@ -122,6 +122,14 @@ public class HtmlImageTests
         Assert.Equal(["https://example.com/first.jpg", "https://example.com/second.jpg"], images.Select(image => image.Url));
     }
 
+    [Fact]
+    public void RelativeImagesAreSkippedWithoutDocumentBase()
+    {
+        var images = HtmlImageParser.SignificantImages(
+            """<img src="/images/a.jpg"><img src="https://example.com/b.jpg">""", null, 3);
+        Assert.Equal(["https://example.com/b.jpg"], images.Select(image => image.Url));
+    }
+
     private static HtmlImage? First(string html)
         => HtmlImageParser.SignificantImages(html, new Uri("https://example.com/posts/1"), 1).FirstOrDefault();
 }
