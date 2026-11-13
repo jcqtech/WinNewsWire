@@ -660,6 +660,23 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Fact]
+    public async Task RecentImagesAboveTheSoftLimitDeferAnotherPassUntilAQuarterMoreBytesArrive()
+    {
+        await using var fixture = new Fixture();
+        for (int index = 0; index < 20; index++) await fixture.SeedAsync("seed-" + index);
+        await using var cache = fixture.CreateCache(20, 100);
+        await cache.ImageWasUsedAsync(Url("seed-0"), false, default);
+        string orphan = Path.Combine(fixture.SourceDirectory, "old-orphan");
+        File.WriteAllBytes(orphan, Fixture.Image);
+        File.SetLastWriteTimeUtc(orphan, fixture.Clock.GetUtcNow().AddMinutes(-10).UtcDateTime);
+        for (int index = 0; index < 3; index++) Assert.NotNull(await fixture.FetchAsync(cache, "new-" + index));
+        Assert.True(File.Exists(orphan));
+        for (int index = 3; index < 6; index++) Assert.NotNull(await fixture.FetchAsync(cache, "new-" + index));
+        Assert.False(File.Exists(orphan));
+        Assert.Equal(26, (await fixture.Database.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Count);
+    }
+
+    [Fact]
     public async Task AccessDateThrottleIsBoundedWithoutLosingPersistentUsage()
     {
         await using var fixture = new Fixture();

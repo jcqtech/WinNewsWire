@@ -294,7 +294,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         foreach (var url in removal.Urls) _accessDatesSaved.Remove(url);
         _totalByteCount = removal.RemainingByteCount;
         _removalByteCount = Math.Max(_limit.MaximumByteCount,
-            checked(removal.RemainingByteCount + _limit.MaximumByteCount / 10));
+            checked(removal.RemainingByteCount + _limit.MaximumByteCount / 4));
         if (removal.Keys.Count > 0 || removal.Urls.Count > 0)
             Trace.TraceInformation($"Removed {removal.Keys.Count} downloaded image files and {removal.Urls.Count} records; {removal.RemainingByteCount} bytes remain.");
     }
