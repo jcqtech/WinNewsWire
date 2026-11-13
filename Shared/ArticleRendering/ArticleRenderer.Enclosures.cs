@@ -20,8 +20,8 @@ public static partial class ArticleRenderer
         var dimensions = attachment.Width is > 0 && attachment.Height is > 0
             ? $" width=\"{attachment.Width.Value.ToString(CultureInfo.InvariantCulture)}\" height=\"{attachment.Height.Value.ToString(CultureInfo.InvariantCulture)}\"" : "";
         if (ArticleRenderingSpecialCases.YouTubeEmbedUrl(url) is { } youtube)
-            return "<figure class=\"nnw-enclosure nnw-enclosure-video\"><iframe src=\"" + Html(youtube) + "\"" + dimensions
-                + " allowfullscreen></iframe></figure>";
+            return "<div class=\"nnw-enclosure nnw-enclosure-video\"><iframe src=\"" + Html(youtube) + "\"" + dimensions
+                + " allowfullscreen></iframe></div>";
         var medium = attachment.DisplayMedium;
         string media;
         string? caption = attachment.Title;
@@ -41,8 +41,8 @@ public static partial class ArticleRenderer
             default:
                 return null;
         }
-        return "<figure class=\"nnw-enclosure nnw-enclosure-" + medium.Value.ToString().ToLowerInvariant() + "\">" + media
-            + (string.IsNullOrEmpty(caption) ? "" : "<figcaption>" + Html(caption) + "</figcaption>") + "</figure>";
+        return "<div class=\"nnw-enclosure nnw-enclosure-" + medium.Value.ToString().ToLowerInvariant() + "\">" + media
+            + (string.IsNullOrEmpty(caption) ? "" : "<div class=\"nnw-enclosure-caption\">" + Html(caption) + "</div>") + "</div>";
     }
 
     private static string? MediaUrl(string? value, string baseUrl)
