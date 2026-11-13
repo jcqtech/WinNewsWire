@@ -40,7 +40,6 @@ internal static partial class ParityProbe
         int requests = 0, notifications = 0;
         bool initializationOnUI = true, notificationOnUI = true;
         bool networkAllowed = true;
-        bool prefetchAllowed = true;
         bool failureOnUI = true;
         int failures = 0;
         var requested = new ConcurrentQueue<string>();
@@ -78,8 +77,7 @@ internal static partial class ParityProbe
             return (new ArticleThumbnailFinder(database),
                 new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "thumbnail-cache"),
                     () => networkAllowed, downloader, clock));
-        }, cacheByteLimit: largeByteCount, networkAllowsDownloads: () => networkAllowed,
-            networkAllowsPrefetch: () => networkAllowed && prefetchAllowed);
+        }, cacheByteLimit: largeByteCount, networkAllowsDownloads: () => networkAllowed);
         service.ThumbnailAvailable += (_, _) =>
         {
             notifications++;
@@ -230,19 +228,6 @@ internal static partial class ParityProbe
         }
         finally { host.Children.Remove(image); }
 
-        int beforeRestrictedPrefetch = requests;
-        int beforeRestrictedDiscovery = service.ProbeUrlResolutions;
-        prefetchAllowed = false;
-        var restrictedPrefetch = FixtureFor("restricted-prefetch.bmp");
-        await service.PrefetchThumbnailAsync(restrictedPrefetch, ThumbnailMode.Small);
-        Require(requests == beforeRestrictedPrefetch && service.ProbeUrlResolutions == beforeRestrictedDiscovery,
-            "Restricted prefetch still started image discovery or downloading.");
-        Require(await service.ThumbnailAsync(restrictedPrefetch, ThumbnailMode.Small) is not null
-            && requests == beforeRestrictedPrefetch + 1,
-            "Prefetch restrictions must not suppress a visible image.");
-        prefetchAllowed = true;
-        await service.PrefetchThumbnailAsync(FixtureFor("allowed-prefetch.bmp"), ThumbnailMode.Small);
-        Require(requests == beforeRestrictedPrefetch + 2, "Allowed prefetch did not resume.");
         int downloaded = requests;
         service.EmptyCache();
         Require(service.ProbeCacheBytes == 0, "Low-memory cleanup retained decoded thumbnails.");
@@ -273,7 +258,7 @@ internal static partial class ParityProbe
         Require(failureOnUI && failures == 4, "Permanent thumbnail failures were not dispatched once to the UI.");
         await CheckThumbnailDisplaySizesAsync(window);
         await CheckThumbnailDecodeQueueAsync(window);
-        await CheckDirectionalThumbnailPrefetchAsync(window);
+        await CheckVisibleOnlyThumbnailLoadingAsync(window);
         await CheckChangedFeedIconsAsync(window);
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
@@ -293,11 +278,10 @@ internal static partial class ParityProbe
             HiddenModeLeavesReaderImagesRemote = true,
             ReaderAndDiscoveryShareBaseUrls = true, FeedBasesCapturedOnUI = true,
             ConnectivityRecoveryRetriesVisiblePlaceholders = true,
-            RestrictedPrefetchPreservesVisibleDownloads = true,
             DecoderFailureStopsRetriesWithoutSuppressingIcons = true,
             VisibleNativePixels = true, RoundedClipping = true, ThemedPlaceholder = true,
             RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
-            TimelineRows = true, HTMLDiscovery = true, FailedCandidateFallback = true, FailureNotificationsOnUI = true, BoundedLookahead = true,
+            TimelineRows = true, HTMLDiscovery = true, FailedCandidateFallback = true, FailureNotificationsOnUI = true, VisibleOnlyDownloads = true,
             RecycledRowRejectsLateImage = true, ColumnLayoutExcludesThumbnails = true,
             LargeRows = true, LargeModePersists = true, SharedModeNotificationsOnUI = true,
             LargeMenuState = true, FixedHeightLargeRows = true, ImagelessRowsStayCompact = true,
@@ -402,37 +386,38 @@ internal static partial class ParityProbe
             Require(running == 4, "Queued decode work did not preserve the four active slots.");
         }
         var active = await HoldFourAsync("decode-order");
-        var older = fixtureFor("decode-older-prefetch.bmp");
-        var olderPrefetch = service.PrefetchThumbnailAsync(older, ThumbnailMode.Small);
+        var older = fixtureFor("decode-older.bmp");
+        var olderRequest = service.ThumbnailAsync(older, ThumbnailMode.Small);
         await WaitForQueuedAsync(1);
         var olderVisible = service.ThumbnailAsync(fixtureFor("decode-older-visible.bmp"), ThumbnailMode.Small);
         await WaitForQueuedAsync(2);
-        var newerPrefetch = service.PrefetchThumbnailAsync(fixtureFor("decode-newer-prefetch.bmp"), ThumbnailMode.Small);
+        var newerRequest = service.ThumbnailAsync(fixtureFor("decode-newer.bmp"), ThumbnailMode.Small);
         await WaitForQueuedAsync(3);
         var newerVisible = service.ThumbnailAsync(fixtureFor("decode-newer-visible.bmp"), ThumbnailMode.Small);
         await WaitForQueuedAsync(4);
         var sameUrlOtherMode = service.ThumbnailAsync(fixtureFor("decode-order-0.bmp"), ThumbnailMode.Large);
         await WaitForQueuedAsync(5);
+        int previousPrioritizations = Volatile.Read(ref service.ProbeDecodePrioritizations);
         var promoted = service.ThumbnailAsync(older, ThumbnailMode.Small);
-        const string promotedUrl = "https://thumbnail.test/decode-older-prefetch.bmp";
-        await WaitFor(() => Task.FromResult(service.ProbePendingPriority(promotedUrl, ThumbnailMode.Small)
-            == ThumbnailPriority.Visible), "A visible join promotes its pending native decode");
+        const string promotedUrl = "https://thumbnail.test/decode-older.bmp";
+        await WaitFor(() => Task.FromResult(Volatile.Read(ref service.ProbeDecodePrioritizations)
+            > previousPrioritizations), "A repeated visible row reprioritizes its pending native decode");
         var expected = new[]
         {
             (promotedUrl, ThumbnailMode.Small),
             ("https://thumbnail.test/decode-order-0.bmp", ThumbnailMode.Large),
             ("https://thumbnail.test/decode-newer-visible.bmp", ThumbnailMode.Small),
-            ("https://thumbnail.test/decode-older-visible.bmp", ThumbnailMode.Small),
-            ("https://thumbnail.test/decode-newer-prefetch.bmp", ThumbnailMode.Small)
+            ("https://thumbnail.test/decode-newer.bmp", ThumbnailMode.Small),
+            ("https://thumbnail.test/decode-older-visible.bmp", ThumbnailMode.Small)
         };
         for (int index = 0; index < expected.Length; index++)
         {
             permits.Release();
-            await WaitFor(() => Task.FromResult(started.Count == 5 + index), "Visible-first newest-first native decode order");
-            Require(started.Last() == expected[index], "A queued decode lost its visible promotion or priority order.");
+            await WaitFor(() => Task.FromResult(started.Count == 5 + index), "Reprioritized newest-first native decode order");
+            Require(started.Last() == expected[index], "A queued decode lost its visible reprioritization or newest-first order.");
         }
         permits.Release(4);
-        await Task.WhenAll(active.Concat([olderPrefetch, olderVisible, newerPrefetch, newerVisible, sameUrlOtherMode, promoted]));
+        await Task.WhenAll(active.Concat([olderRequest, olderVisible, newerRequest, newerVisible, sameUrlOtherMode, promoted]));
         Require(started.Count == 9 && promoted.Result is not null && sameUrlOtherMode.Result is not null,
             "Coalesced native decodes or independent URL/mode requests were lost or duplicated.");
 
@@ -440,7 +425,7 @@ internal static partial class ParityProbe
         var queued = new List<Task>();
         for (int index = 0; index < 61; index++)
         {
-            queued.Add(service.PrefetchThumbnailAsync(fixtureFor($"decode-overflow-{index}.bmp"), ThumbnailMode.Small));
+            queued.Add(service.ThumbnailAsync(fixtureFor($"decode-overflow-{index}.bmp"), ThumbnailMode.Small));
             await WaitForQueuedAsync(Math.Min(index + 1, 60));
             if (index == 60) await queued[0].WaitAsync(TimeSpan.FromSeconds(10));
         }
@@ -467,7 +452,7 @@ internal static partial class ParityProbe
             "Shutdown retained an active decode or a queued lease.");
     }
 
-    private static async Task CheckDirectionalThumbnailPrefetchAsync(MainWindow window)
+    private static async Task CheckVisibleOnlyThumbnailLoadingAsync(MainWindow window)
     {
         var content = window.ProbeContent;
         var model = content.ViewModel;
@@ -476,11 +461,18 @@ internal static partial class ParityProbe
         bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
         bool previousUnified = model.IsUnifiedLayout;
         var previousDisplay = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
-        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "prefetch-direction.db"));
+        var requests = new ConcurrentQueue<string>();
+        var imageData = ThumbnailBitmap(128, 128);
+        using var http = new HttpClient(new ThumbnailHandler((request, _) =>
+        {
+            requests.Enqueue(request.RequestUri!.AbsolutePath);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(imageData) });
+        }));
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "visible-only.db"));
         await using var service = new ArticleThumbnailService(window.DispatcherQueue,
             () => (new ArticleThumbnailFinder(database),
-                new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "prefetch-direction-cache"), () => false)),
-            networkAllowsDownloads: () => false, networkAllowsPrefetch: () => true);
+                new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "visible-only-cache"), () => true, new Downloader(http))),
+            networkAllowsDownloads: () => true, networkAllowsPrefetch: () => true);
         int savedLoads = 0;
         bool savedOnUI = false;
         service.ProbeLoadingSavedUrls = () =>
@@ -492,22 +484,23 @@ internal static partial class ParityProbe
         service.ThumbnailUrlsAvailable += (_, ids) => discovered.UnionWith(ids);
         var rows = new ObservableCollection<Models.FeedItem>(Enumerable.Range(0, 120).Select(index =>
         {
-            string id = "prefetch-direction-" + index;
-            var article = new Article("account", id, "feed", id, "Directional prefetch fixture " + index,
+            string id = "visible-only-" + index;
+            var article = new Article("account", id, "feed", id, "Visible thumbnail fixture " + index,
                 index == 119 ? "<img src='/offscreen-discovery.bmp'>" : null,
                 null, null, "https://thumbnail.test/article/" + index, null, "A short preview.",
-                index == 119 ? null : $"https://thumbnail.test/prefetch-direction-{index}.bmp", null, null, null, null,
+                index == 119 ? null : $"https://thumbnail.test/visible-only-{index}.bmp", null, null, null, null,
                 new ArticleStatus(id, true, false, DateTime.UnixEpoch));
             return new Models.FeedItem { Id = id, AccountID = article.AccountID, SourceArticle = article,
-                FeedTitle = "Directional prefetch", IsRead = true };
+                FeedTitle = "Visible thumbnails", IsRead = true };
         }));
         var list = (ListView)content.FindName("ArticleListView");
-        var scheduled = new List<(int First, int Last, int Row)>();
-        content.ProbePrefetchingThumbnailRow = row =>
+        var visibleRanges = new List<(int First, int Last)>();
+        void CaptureVisibleRows(object? sender, object args)
         {
-            var panel = (ItemsStackPanel)list.ItemsPanelRoot;
-            scheduled.Add((panel.FirstVisibleIndex, panel.LastVisibleIndex, row));
-        };
+            if (list.ItemsPanelRoot is ItemsStackPanel { FirstVisibleIndex: >= 0 } panel)
+                visibleRanges.Add((panel.FirstVisibleIndex, panel.LastVisibleIndex));
+        }
+        list.LayoutUpdated += CaptureVisibleRows;
         try
         {
             Core.AppDefaults.Shared.UseColumnLayout = false;
@@ -516,46 +509,42 @@ internal static partial class ParityProbe
             model.SelectedArticle = null;
             content.ProbeSetThumbnailService(service);
             model.ArticleItems = rows;
-            (int Start, int End)? previousLookahead = null;
-            foreach (var (target, up) in new[] { (0, false), (70, false), (73, false), (40, true), (37, true) })
+            foreach (int target in new[] { 0, 70, 73, 40, 37 })
             {
-                scheduled.Clear();
+                requests.Clear();
+                visibleRanges.Clear();
+                CaptureVisibleRows(null, EventArgs.Empty);
                 list.ScrollIntoView(rows[target], ScrollIntoViewAlignment.Leading);
                 await WaitFor(() =>
                 {
                     if (list.ItemsPanelRoot is not ItemsStackPanel panel) return Task.FromResult(false);
                     return Task.FromResult(panel.FirstVisibleIndex >= Math.Max(0, target - 1)
                         && panel.FirstVisibleIndex <= target && content.ProbeThumbnailWorkIsIdle
-                        && content.ProbeThumbnailPrefetchPosition?.FirstVisibleRow == panel.FirstVisibleIndex);
-                }, "Directional prefetch after native viewport settles");
-                var settled = (ItemsStackPanel)list.ItemsPanelRoot;
+                        && Descendants(list).OfType<ThumbnailView>().Any(view => view.ImageSource is not null));
+                }, "Visible thumbnail loading after native viewport settles");
                 Require(Volatile.Read(ref savedLoads) > 0 && !savedOnUI,
                     "Small timeline rows did not await saved-URL loading off the UI thread.");
-                int first = settled.FirstVisibleIndex, last = settled.LastVisibleIndex;
-                int count = last - first + 1;
-                int start = up ? Math.Max(0, first - count) : last + 1;
-                int end = up ? first : Math.Min(rows.Count, start + count);
-                var previous = previousLookahead;
-                var expected = Enumerable.Range(start, end - start)
-                    .Where(index => !(previous is { } position && index >= position.Start && index < position.End));
-                if (!up) expected = expected.Reverse();
-                Require(scheduled.Where(item => item.First == first && item.Last == last).Select(item => item.Row)
-                    .SequenceEqual(expected), "Thumbnail lookahead did not request only newly added rows in scroll direction, nearest last.");
-                previousLookahead = (start, end);
-                int before = scheduled.Count;
+                CaptureVisibleRows(null, EventArgs.Empty);
+                var fetched = requests.Where(path => path.StartsWith("/visible-only-", StringComparison.Ordinal))
+                    .Select(path => int.Parse(path["/visible-only-".Length..^4])).ToArray();
+                Require(fetched.All(index => visibleRanges.Any(range => index >= range.First && index <= range.Last)),
+                    "Timeline thumbnail loading downloaded an offscreen lookahead row.");
+                int before = requests.Count;
                 list.UpdateLayout();
                 var pulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 Require(window.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                    () => pulse.TrySetResult()), "The prefetch probe dispatcher was unavailable.");
+                    () => pulse.TrySetResult()), "The visible-thumbnail probe dispatcher was unavailable.");
                 await pulse.Task;
-                Require(scheduled.Count == before, "An unchanged viewport repeated thumbnail prefetch.");
+                Require(requests.Count == before, "An unchanged viewport repeated thumbnail downloads.");
             }
-            await WaitFor(() => Task.FromResult(discovered.Contains("prefetch-direction-119")),
+            Require(!requests.Contains("/offscreen-discovery.bmp"),
+                "Metadata discovery started an image download for a never-visible article.");
+            await WaitFor(() => Task.FromResult(discovered.Contains("visible-only-119")),
                 "Combined discovery parses a never-realized row after saved URLs are ready");
         }
         finally
         {
-            content.ProbePrefetchingThumbnailRow = null;
+            list.LayoutUpdated -= CaptureVisibleRows;
             content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
             model.ArticleItems = previousItems;
             model.SelectedArticle = previousSelection;
@@ -714,18 +703,10 @@ internal static partial class ParityProbe
             Require(!heldRequest.IsCancellationRequested,
                 "A failed thumbnail canceled an unrelated visible row's pending request.");
             var panel = (ItemsStackPanel)list.ItemsPanelRoot;
-            int visibleCount = panel.LastVisibleIndex - panel.FirstVisibleIndex + 1;
-            int lookaheadEnd = panel.LastVisibleIndex + 1 + visibleCount;
-            await WaitFor(() => Task.FromResult(requests.Any(path => path == $"/timeline-photo-{panel.LastVisibleIndex + 1}.bmp")),
-                "Next-screen thumbnail prefetch");
-            Require(service.ProbeDownloadPriorities.TryGetValue(
-                $"https://thumbnail.test/timeline-photo-{panel.LastVisibleIndex + 1}.bmp", out var priority)
-                && priority == ThumbnailPriority.Prefetch,
-                "Next-screen timeline requests did not use the low-priority thumbnail path.");
             var fetched = requests.Where(path => path.StartsWith("/timeline-photo-", StringComparison.Ordinal))
                 .Select(path => int.Parse(path["/timeline-photo-".Length..^4])).ToArray();
-            Require(fetched.All(index => index < lookaheadEnd) && fetched.Length < rows.Count,
-                "Thumbnail prefetch downloaded beyond the next screenful.");
+            Require(fetched.All(index => index <= panel.LastVisibleIndex) && fetched.Length < rows.Count,
+                "Timeline thumbnails downloaded offscreen rows.");
 
             Require(heldView.Visibility == Visibility.Visible && heldView.ImageSource is null
                 && heldView.Width > 0 && heldView.Width <= 76,

@@ -39,13 +39,10 @@ public sealed partial class MainContent
     private bool _thumbnailRefreshQueued;
     private int _thumbnailRefreshVersion;
     private bool _visibleThumbnailRefreshQueued;
-    private (int FirstVisibleRow, int Start, int End)? _thumbnailPrefetchPosition;
     private bool ShowsTimelineThumbnails => !_shuttingDown && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout
         && ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode() is not null;
     private ThumbnailMode TimelineThumbnailMode => ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode() ?? ThumbnailMode.Small;
 #if PARITY_PROBE
-    internal Action<int>? ProbePrefetchingThumbnailRow;
-    internal (int FirstVisibleRow, int Start, int End)? ProbeThumbnailPrefetchPosition => _thumbnailPrefetchPosition;
     internal CancellationToken ProbeThumbnailRequestToken(ThumbnailView view)
         => _timelineThumbnails[view].Request?.Token
             ?? throw new InvalidOperationException("The thumbnail view has no active request.");
@@ -61,7 +58,6 @@ public sealed partial class MainContent
         ShowsTimelineThumbnails,
         First = (ArticleListView.ItemsPanelRoot as ItemsStackPanel)?.FirstVisibleIndex,
         Last = (ArticleListView.ItemsPanelRoot as ItemsStackPanel)?.LastVisibleIndex,
-        PrefetchFirstVisibleRow = _thumbnailPrefetchPosition?.FirstVisibleRow,
         Bindings = _timelineThumbnails.Select(pair => new
         {
             Article = (pair.Key.Tag as Article)?.ArticleID,
@@ -137,7 +133,6 @@ public sealed partial class MainContent
                 if (ShowsTimelineThumbnails && articles.Length > 0)
                     await _thumbnailService.FindAsync(articles, _thumbnailLifetime.Token);
                 if (_shuttingDown || version != _thumbnailRefreshVersion) return;
-                _thumbnailPrefetchPosition = null;
                 foreach (var view in _timelineThumbnails.Keys.ToArray()) RefreshTimelineThumbnail(view);
                 if (!ShowsTimelineThumbnails) return;
                 QueueVisibleThumbnailRefresh();
@@ -304,7 +299,6 @@ public sealed partial class MainContent
         if (!ShowsTimelineThumbnails) return;
         foreach (var view in _timelineThumbnails.Keys.ToArray())
             if (view.Tag is Article article && ids.Contains(article.ArticleID)) RefreshTimelineThumbnail(view);
-        _thumbnailPrefetchPosition = null;
         QueueVisibleThumbnailRefresh();
     }
 
@@ -313,7 +307,6 @@ public sealed partial class MainContent
         if (!ShowsTimelineThumbnails || _thumbnailService?.NetworkDownloadsAllowed != true) return;
         foreach (var pair in _timelineThumbnails.ToArray())
             if (pair.Key.ImageSource is null && !pair.Value.Loading) RefreshTimelineThumbnail(pair.Key);
-        _thumbnailPrefetchPosition = null;
         QueueVisibleThumbnailRefresh();
     }
 
@@ -323,7 +316,6 @@ public sealed partial class MainContent
         foreach (var pair in _timelineThumbnails.ToArray())
             if (pair.Key.Tag is Article article && failure.ArticleIds.Contains(article.ArticleID))
                 RefreshTimelineThumbnail(pair.Key);
-        _thumbnailPrefetchPosition = null;
         QueueVisibleThumbnailRefresh();
     }
 
@@ -354,37 +346,11 @@ public sealed partial class MainContent
                 if (!pair.Value.Loading && pair.Value.HasThumbnail
                     && pair.Key.ImageSource is null && IsVisibleTimelineThumbnail(pair.Key))
                     RefreshTimelineThumbnail(pair.Key);
-            PrefetchTimelineThumbnails();
         }))
         {
             _visibleThumbnailRefreshQueued = false;
             throw new InvalidOperationException("The visible-thumbnail dispatcher is unavailable.");
         }
-    }
-
-    private void PrefetchTimelineThumbnails()
-    {
-        if (!ShowsTimelineThumbnails || _thumbnailService is null
-            || ArticleListView.ItemsPanelRoot is not ItemsStackPanel panel || panel.FirstVisibleIndex < 0) return;
-        int count = panel.LastVisibleIndex - panel.FirstVisibleIndex + 1;
-        int first = panel.FirstVisibleIndex;
-        if (count <= 0 || first == _thumbnailPrefetchPosition?.FirstVisibleRow) return;
-        bool scrollingUp = first < (_thumbnailPrefetchPosition?.FirstVisibleRow ?? 0);
-        var previous = _thumbnailPrefetchPosition;
-        int start = scrollingUp ? Math.Max(0, first - count) : Math.Min(ViewModel.ArticleItems.Count, panel.LastVisibleIndex + 1);
-        int end = scrollingUp ? first : Math.Min(ViewModel.ArticleItems.Count, start + count);
-        _thumbnailPrefetchPosition = (first, start, end);
-        var indices = Enumerable.Range(start, end - start);
-        if (!scrollingUp) indices = indices.Reverse();
-        foreach (int index in indices)
-            if (!(previous is { } position && index >= position.Start && index < position.End)
-                && ViewModel.ArticleItems[index].SourceArticle is { } article)
-            {
-#if PARITY_PROBE
-                ProbePrefetchingThumbnailRow?.Invoke(index);
-#endif
-                TrackThumbnailTask(() => _thumbnailService.PrefetchThumbnailAsync(article, TimelineThumbnailMode, _thumbnailLifetime.Token));
-            }
     }
 
     private void TrackThumbnailTask(Func<Task> work)

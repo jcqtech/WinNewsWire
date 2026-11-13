@@ -72,10 +72,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal Action? ProbeLoadingSavedUrls;
     internal Func<string, ThumbnailMode, CancellationToken, Task>? ProbeDecoding;
     internal int ProbeWaitingDecodeCount => _decodeQueue.WaitingCount;
-    internal ThumbnailPriority? ProbePendingPriority(string url, ThumbnailMode mode)
-    {
-        lock (_gate) return _pending.TryGetValue((url, mode), out var pending) ? pending.Priority : null;
-    }
+    internal int ProbeDecodePrioritizations;
     internal readonly ConcurrentDictionary<string, ThumbnailPriority> ProbeDownloadPriorities = new(StringComparer.Ordinal);
 #endif
 
@@ -143,17 +140,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
         var baseUrl = ArticleBaseUrl(article);
         return RunOperationAsync(token => FindImageAsync(article, mode, ThumbnailPriority.Visible, baseUrl, token, resolvedUrl), ct);
-    }
-
-    internal Task PrefetchThumbnailAsync(Article article, ThumbnailMode mode, CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(article);
-        if (mode is not (ThumbnailMode.Small or ThumbnailMode.Large)) throw new ArgumentOutOfRangeException(nameof(mode));
-        var baseUrl = ArticleBaseUrl(article);
-        bool allowed = _networkAllowsPrefetch();
-        return RunOperationAsync(token => allowed
-            ? FindImageAsync(article, mode, ThumbnailPriority.Prefetch, baseUrl, token)
-            : Task.FromResult<SoftwareBitmapSource?>(null), ct);
     }
 
     internal Task<string?> ThumbnailUrlAsync(Article article, ThumbnailMode mode, CancellationToken ct = default)
@@ -278,6 +264,9 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
                 {
                     pending.Priority = priority;
                     _decodeQueue.Prioritize(DecodeKey(imageUrl, mode));
+#if PARITY_PROBE
+                    Interlocked.Increment(ref ProbeDecodePrioritizations);
+#endif
                 }
             }
             if (priority == ThumbnailPriority.Visible) backend.Downloads.PrioritizeDownload(url);

@@ -115,13 +115,14 @@ internal static partial class ParityProbe
                         "The probe did not load the installed Windows App Runtime used by normal Debug.");
             }
 
-            if (Environment.GetCommandLineArgs().Contains("--thumbnail-prefetch"))
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-viewport")
+                || Environment.GetCommandLineArgs().Contains("--thumbnail-prefetch"))
             {
-                await CheckAsync("Directional native timeline thumbnail prefetch", async () =>
+                await CheckAsync("Visible-only native timeline thumbnail loading", async () =>
                 {
-                    await CheckDirectionalThumbnailPrefetchAsync(window);
-                    return new { Downward = true, Upward = true, NearestRequestedLast = true,
-                        OneScreenOnly = true, UnchangedViewportSuppressed = true };
+                    await CheckVisibleOnlyThumbnailLoadingAsync(window);
+                    return new { Downward = true, Upward = true, NoOffscreenDownloads = true,
+                        MetadataDiscovery = true, UnchangedViewportSuppressed = true };
                 });
                 return;
             }
