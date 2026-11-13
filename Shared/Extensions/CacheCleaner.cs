@@ -8,11 +8,13 @@ public static class CacheCleaner
 {
     internal const string ResizingPurgeKey = "didPurgeImageCachesForResizing-2026-03-30";
     internal const string LastFlushKey = "lastImageCacheFlushDate";
+    internal const string DownloadedImagesPurgeKey = "didRemoveFoldersReplacedByDownloadedImageCache-2026-10-26";
 
     public static void PurgeIfNecessary(AppDefaults defaults, DateTime? now = null)
     {
         var date = now ?? DateTime.UtcNow;
         var resized = defaults.GetValue(ResizingPurgeKey, false);
+        bool removedOldFolders = defaults.GetValue(DownloadedImagesPurgeKey, false);
         var last = defaults.GetValue<DateTime?>(LastFlushKey);
         bool periodicFlush = last is { } previous && date - previous > TimeSpan.FromDays(3);
         var caches = AppConfig.CachesDirectory;
@@ -21,6 +23,10 @@ public static class CacheCleaner
         {
             targets.Add(Path.Combine(AppConfig.DataDirectory, "Favicons"));
             targets.Add(Path.Combine(caches, "Favicons"));
+            targets.Add(Path.Combine(caches, "DownloadedImages"));
+        }
+        if (!removedOldFolders)
+        {
             targets.Add(Path.Combine(caches, "Images"));
             targets.Add(Path.Combine(caches, "Thumbnails"));
             targets.Add(Path.Combine(caches, "LargeThumbnails"));
@@ -43,6 +49,7 @@ public static class CacheCleaner
         }
         var changes = new Dictionary<string, JsonElement>();
         if (!resized) changes[ResizingPurgeKey] = JsonSerializer.SerializeToElement(true);
+        if (!removedOldFolders) changes[DownloadedImagesPurgeKey] = JsonSerializer.SerializeToElement(true);
         if (last is null || periodicFlush) changes[LastFlushKey] = JsonSerializer.SerializeToElement(date);
         defaults.SetValues(changes);
     }

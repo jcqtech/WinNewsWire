@@ -243,7 +243,7 @@ public sealed class FeedImageDownloaderTests
         var repaired = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
         Assert.Equal(Image, repaired.Data);
         Assert.Equal(Image, await File.ReadAllBytesAsync(first.Path));
-        Assert.Equal(2, fixture.Requests.Count);
+        Assert.Single(fixture.Requests);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(source.FaviconUrl!));
     }
 
@@ -364,7 +364,7 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task ThumbnailModesShareTheResourcePipelineButKeepTheirSizesAndFilesSeparate()
+    public async Task ThumbnailModesShareOneDiskSourceButKeepTheirEncodedSizesSeparate()
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native thumbnail decoding requires Windows.");
         var original = Bitmap(1600, 800);
@@ -373,19 +373,23 @@ public sealed class FeedImageDownloaderTests
         var small = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small,
             activityDetail: "Article title"));
         var large = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Large));
-        Assert.Equal(Path.Combine(fixture.CacheDirectory, "Thumbnails", url.Md5Hex()), small.Path);
-        Assert.Equal(Path.Combine(fixture.CacheDirectory, "LargeThumbnails", url.Md5Hex()), large.Path);
+        Assert.Equal(Path.Combine(fixture.CacheDirectory, "DownloadedImages", url.Md5Hex()), small.Path);
+        Assert.Equal(small.Path, large.Path);
         Assert.Equal(new byte[] { 0xff, 0xd8 }, small.Data[..2]);
         Assert.Equal(new byte[] { 0xff, 0xd8 }, large.Data[..2]);
         Assert.Equal((512u, 256u), WindowsImage.LargestFramePixelSize(small.Data));
         Assert.Equal((1200u, 600u), WindowsImage.LargestFramePixelSize(large.Data));
+        Assert.Equal(large.Data, await File.ReadAllBytesAsync(large.Path));
+        Assert.Single(fixture.Requests);
+        Assert.False(Directory.Exists(Path.Combine(fixture.CacheDirectory, "Thumbnails")));
+        Assert.False(Directory.Exists(Path.Combine(fixture.CacheDirectory, "LargeThumbnails")));
         Assert.All(fixture.Activity.CompletedActivities, activity => Assert.Equal(ActivityOwner.ThumbnailDownloader, activity.Owner));
         Assert.Contains(fixture.Activity.CompletedActivities, activity => activity.Detail == "Article title");
         fixture.Thumbnails.EmptyCache();
         fixture.NetworkAllowed = false;
         Assert.Equal(small.Data, (await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small))?.Data);
         Assert.Equal(large.Data, (await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Large))?.Data);
-        Assert.Equal(2, fixture.Activity.CompletedActivities.Count);
+        Assert.Single(fixture.Activity.CompletedActivities);
     }
 
     [Theory]
@@ -402,6 +406,65 @@ public sealed class FeedImageDownloaderTests
         Assert.Null(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Large));
         Assert.Single(fixture.Requests);
         Assert.NotNull(await fixture.Images.IconAsync(new(Feed, Home, IconUrl: url)));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+    }
+
+    [Fact]
+    public async Task IconAndThumbnailConsumersShareOneSourceAndCancelTheirWaitsIndependently()
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native image decoding requires Windows.");
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var original = Bitmap(1600, 800);
+        await using var fixture = new Fixture(async (_, ct) =>
+        {
+            started.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return Response(HttpStatusCode.OK, original);
+        }, maxPixelSize: 64);
+        const string url = Home + "shared-source.bmp";
+        using var cancellation = new CancellationTokenSource();
+        var canceled = fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small, cancellation.Token);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var large = fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Large);
+        var icon = fixture.Images.IconAsync(new(Feed, Home, IconUrl: url));
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled);
+        release.TrySetResult();
+        var largeImage = Assert.IsType<DownloadedImage>(await large);
+        var iconImage = Assert.IsType<DownloadedImage>(await icon);
+        Assert.Equal(largeImage.Path, iconImage.Path);
+        Assert.Equal((1200u, 600u), WindowsImage.LargestFramePixelSize(largeImage.Data));
+        Assert.Equal((64u, 32u), WindowsImage.LargestFramePixelSize(iconImage.Data));
+        Assert.Equal(largeImage.Data, await File.ReadAllBytesAsync(largeImage.Path));
+        Assert.Single(Directory.GetFiles(Path.Combine(fixture.CacheDirectory, "DownloadedImages")));
+        Assert.Single(fixture.Requests);
+        Assert.Single(fixture.Activity.CompletedActivities);
+    }
+
+    [Fact]
+    public async Task SharedDiskSourceDoesNotLeaveASecondCopyInTheHttpResponseCache()
+    {
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Bitmap(128, 128))));
+        const string url = Home + "no-second-cache.bmp";
+        Assert.NotNull(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small));
+        Assert.False((await fixture.Downloader.DownloadAsync(url)).ReturnedFromCache);
+        Assert.Equal(2, fixture.Requests.Count);
+    }
+
+    [Fact]
+    public async Task CorruptSharedDiskSourceIsRedownloadedRatherThanPermanentlyPoisoningTheUrl()
+    {
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Bitmap(128, 128))));
+        const string url = Home + "corrupt-source.bmp";
+        var first = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Small));
+        fixture.Thumbnails.EmptyCache();
+        await File.WriteAllBytesAsync(first.Path, "not an image"u8.ToArray());
+        var repaired = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.ImageAsync(url, ThumbnailMode.Large));
+        Assert.Equal(first.Path, repaired.Path);
+        Assert.Equal(first.Data, repaired.Data);
+        Assert.Equal(repaired.Data, await File.ReadAllBytesAsync(repaired.Path));
+        Assert.Equal(2, fixture.Requests.Count);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
     }
 
@@ -569,6 +632,7 @@ public sealed class FeedImageDownloaderTests
         private readonly HttpClient _http;
         private readonly Downloader _downloader;
         private readonly int? _maxPixelSize;
+        private readonly DownloadedImageCache _downloadedImages;
         public TestClock Clock { get; } = new();
         public ImageMetadataDatabase ImageDatabase { get; }
         public HtmlMetadataDatabase HtmlDatabase { get; }
@@ -581,7 +645,7 @@ public sealed class FeedImageDownloaderTests
         public ActivityLogger Activity { get; }
         public string CacheDirectory => Path.Combine(_directory, "Caches");
         public string LegacyDirectory => Path.Combine(_directory, "Favicons");
-        public string NativePath(string url, bool favicon = true) => Path.Combine(CacheDirectory, favicon ? "Favicons" : "Images", url.Md5Hex());
+        public string NativePath(string url, bool favicon = true) => Path.Combine(CacheDirectory, favicon ? "Favicons" : "DownloadedImages", url.Md5Hex());
         public string LegacyPath(string url, string extension) => Path.Combine(LegacyDirectory, Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(url))) + extension);
         public ConcurrentQueue<string> Requests { get; } = new();
         public Fixture(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond, int? maxPixelSize = null)
@@ -598,11 +662,14 @@ public sealed class FeedImageDownloaderTests
             _maxPixelSize = maxPixelSize;
             Activity = new ActivityLogger(Clock);
             Metadata = new(HtmlDatabase, _downloader, Clock, Activity);
+            _downloadedImages = new(ImageDatabase, CacheDirectory, _downloader, Clock, Activity);
             Images = CreateImages();
-            Thumbnails = new(ImageDatabase, CacheDirectory, () => NetworkPolicy?.Invoke() ?? NetworkAllowed, _downloader, Clock, Activity);
+            Thumbnails = new(ImageDatabase, CacheDirectory, () => NetworkPolicy?.Invoke() ?? NetworkAllowed,
+                _downloader, Clock, Activity, _downloadedImages);
         }
         private FeedImageDownloader CreateImages()
-            => new(ImageDatabase, Metadata, CacheDirectory, _downloader, Clock, Activity, _maxPixelSize, LegacyDirectory);
+            => new(ImageDatabase, Metadata, CacheDirectory, _downloader, Clock, Activity, _maxPixelSize,
+                LegacyDirectory, _downloadedImages);
         public async Task ReopenImagesAsync()
         {
             await Images.DisposeAsync();
@@ -612,6 +679,7 @@ public sealed class FeedImageDownloaderTests
         {
             await Images.DisposeAsync();
             await Thumbnails.DisposeAsync();
+            await _downloadedImages.DisposeAsync();
             await Metadata.DisposeAsync();
             ImageDatabase.Dispose();
             HtmlDatabase.Dispose();

@@ -10,28 +10,34 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
 {
     private readonly ImageResourceDownloader _small;
     private readonly Lazy<ImageResourceDownloader> _large;
+    private readonly DownloadedImageCache _downloadedImages;
+    private readonly bool _ownsDownloadedImages;
     private readonly object _gate = new();
     private Task? _shutdown;
     /// <summary>Raised on a worker after persisting a non-transient failure; UI subscribers must dispatch.</summary>
     public event EventHandler<string>? DownloadFailed;
 
     public ThumbnailDownloader(ImageMetadataDatabase database, string cacheFolder, Func<bool> networkAllowsDownloads,
-        Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null)
+        Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null,
+        DownloadedImageCache? downloadedImages = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFolder);
         ArgumentNullException.ThrowIfNull(networkAllowsDownloads);
-        var limiter = new DownloadLimiter(4);
+        _downloadedImages = downloadedImages ?? new(database, cacheFolder, downloader, clock, activityLog);
+        _ownsDownloadedImages = downloadedImages is null;
+        _downloadedImages.DownloadFailed += ResourceDownloadFailed;
         var small = new ImageResourceConfiguration(512, ScaledImageFormat.Jpeg, 32 * 1024 * 1024, true,
-            limiter, networkAllowsDownloads);
+            NetworkAllowsDownloads: networkAllowsDownloads);
         _small = new(database, Path.Combine(cacheFolder, "Thumbnails"), small,
-            ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, downloader, clock, activityLog);
+            ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail, downloader, clock, activityLog,
+            sourceCache: _downloadedImages);
         _small.DownloadFailed += ResourceDownloadFailed;
         _large = new(() =>
         {
             var service = new ImageResourceDownloader(database, Path.Combine(cacheFolder, "LargeThumbnails"),
                 small with { MaxPixelSize = 1200 }, ActivityOwner.ThumbnailDownloader, ActivityKind.DownloadThumbnail,
-                downloader, clock, activityLog);
+                downloader, clock, activityLog, sourceCache: _downloadedImages);
             service.DownloadFailed += ResourceDownloadFailed;
             return service;
         });
@@ -66,7 +72,12 @@ public sealed class ThumbnailDownloader : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         lock (_gate)
-            return new(_shutdown ??= Task.WhenAll(_small.DisposeAsync().AsTask(),
-                _large.IsValueCreated ? _large.Value.DisposeAsync().AsTask() : Task.CompletedTask));
+        {
+            if (_shutdown is not null) return new(_shutdown);
+            _downloadedImages.DownloadFailed -= ResourceDownloadFailed;
+            return new(_shutdown = Task.WhenAll(_small.DisposeAsync().AsTask(),
+                _large.IsValueCreated ? _large.Value.DisposeAsync().AsTask() : Task.CompletedTask,
+                _ownsDownloadedImages ? _downloadedImages.DisposeAsync().AsTask() : Task.CompletedTask));
+        }
     }
 }

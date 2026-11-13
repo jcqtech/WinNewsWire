@@ -86,6 +86,24 @@ public sealed class DownloaderTests
     }
 
     [Fact]
+    public async Task OptingOutOfResponseStorageLeavesTheNextRequestUncached()
+    {
+        int requests = 0;
+        using var http = new HttpClient(new Handler((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(Response());
+        }));
+        var downloader = new Downloader(http, new DownloadCache());
+        Assert.False((await downloader.DownloadAsync("https://example.com/image", cachesResponse: false)).ReturnedFromCache);
+        Assert.False((await downloader.DownloadAsync("https://example.com/image", cachesResponse: false)).ReturnedFromCache);
+        Assert.Equal(2, requests);
+        Assert.False((await downloader.DownloadAsync("https://example.com/image")).ReturnedFromCache);
+        Assert.True((await downloader.DownloadAsync("https://example.com/image")).ReturnedFromCache);
+        Assert.Equal(3, requests);
+    }
+
+    [Fact]
     public async Task OneShotCacheExpiresAfterThreeMinutes()
     {
         var clock = new Clock();

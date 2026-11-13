@@ -48,7 +48,7 @@ public sealed class Downloader
     public void EmptyCache() => _cache.RemoveAll();
 
     public async Task<DownloadResult> DownloadAsync(string url, ConditionalGetInfo? conditional = null, CancellationToken ct = default,
-        UserAgentStyle userAgentStyle = UserAgentStyle.Feed)
+        UserAgentStyle userAgentStyle = UserAgentStyle.Feed, bool cachesResponse = true)
     {
         ct.ThrowIfCancellationRequested();
         var key = new Uri(url, UriKind.Absolute).AbsoluteUri;
@@ -62,7 +62,8 @@ public sealed class Downloader
             else
             {
                 var cancellation = new CancellationTokenSource();
-                pending = new(Task.Run(() => DownloadCoreAsync(url, key, conditional, userAgentStyle, cancellation.Token), cancellation.Token), cancellation);
+                pending = new(Task.Run(() => DownloadCoreAsync(url, key, conditional, userAgentStyle, cachesResponse,
+                    cancellation.Token), cancellation.Token), cancellation);
                 _pending.Add(key, pending);
             }
             pending.Waiters++;
@@ -92,7 +93,8 @@ public sealed class Downloader
         }
     }
 
-    private async Task<DownloadResult> DownloadCoreAsync(string url, string key, ConditionalGetInfo? conditional, UserAgentStyle userAgentStyle, CancellationToken ct)
+    private async Task<DownloadResult> DownloadCoreAsync(string url, string key, ConditionalGetInfo? conditional,
+        UserAgentStyle userAgentStyle, bool cachesResponse, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         conditional?.ApplyTo(req);
@@ -109,7 +111,7 @@ public sealed class Downloader
         var conditionalGet = ConditionalGetInfo.FromResponse(resp.Headers, resp.Content.Headers);
         var result = new DownloadResult(resp.RequestMessage?.RequestUri?.AbsoluteUri ?? url, resp.StatusCode, data, contentType, conditionalGet);
         ct.ThrowIfCancellationRequested();
-        _cache.Add(key, result);
+        if (cachesResponse) _cache.Add(key, result);
         return result;
     }
 

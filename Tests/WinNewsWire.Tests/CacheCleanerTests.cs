@@ -22,6 +22,7 @@ public sealed class CacheCleanerTests : IDisposable
     {
         var favicon = AddFile("Favicons", "icon.png");
         var nativeFavicon = AddFile("Caches\\Favicons", "native-icon");
+        var downloaded = AddFile("Caches\\DownloadedImages", "source");
         var image = AddFile("Caches\\Images", "image.png");
         var thumbnail = AddFile("Caches\\Thumbnails", "small.jpg");
         var largeThumbnail = AddFile("Caches\\LargeThumbnails", "large.jpg");
@@ -31,6 +32,7 @@ public sealed class CacheCleanerTests : IDisposable
         CacheCleaner.PurgeIfNecessary(_defaults, Now);
         Assert.False(File.Exists(favicon));
         Assert.False(File.Exists(nativeFavicon));
+        Assert.False(File.Exists(downloaded));
         Assert.False(File.Exists(image));
         Assert.False(File.Exists(thumbnail));
         Assert.False(File.Exists(largeThumbnail));
@@ -39,6 +41,7 @@ public sealed class CacheCleanerTests : IDisposable
         Assert.True(File.Exists(article));
         var reopened = new AppDefaults(Path.Combine(_directory, "defaults.json"));
         Assert.True(reopened.GetValue(CacheCleaner.ResizingPurgeKey, false));
+        Assert.True(reopened.GetValue(CacheCleaner.DownloadedImagesPurgeKey, false));
         Assert.Equal(Now, reopened.GetValue<DateTime?>(CacheCleaner.LastFlushKey));
     }
 
@@ -48,24 +51,41 @@ public sealed class CacheCleanerTests : IDisposable
         CacheCleaner.PurgeIfNecessary(_defaults, Now);
         var favicon = AddFile("Favicons", "icon.png");
         var nativeFavicon = AddFile("Caches\\Favicons", "native-icon");
-        var thumbnail = AddFile("Caches\\Thumbnails", "small.jpg");
-        var largeThumbnail = AddFile("Caches\\LargeThumbnails", "large.jpg");
+        var downloaded = AddFile("Caches\\DownloadedImages", "source");
         var feedIcon = AddFile("Caches\\FeedIcons", "feed.png");
         var mapping = AddFile("Caches", "FeedURLToIconURLCache.plist");
         CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(3));
         Assert.True(File.Exists(favicon));
         Assert.True(File.Exists(nativeFavicon));
-        Assert.True(File.Exists(thumbnail));
-        Assert.True(File.Exists(largeThumbnail));
+        Assert.True(File.Exists(downloaded));
         Assert.True(File.Exists(mapping));
         CacheCleaner.PurgeIfNecessary(_defaults, Now.AddDays(3).AddTicks(1));
         Assert.False(File.Exists(favicon));
         Assert.False(File.Exists(nativeFavicon));
-        Assert.False(File.Exists(thumbnail));
-        Assert.False(File.Exists(largeThumbnail));
+        Assert.False(File.Exists(downloaded));
         Assert.False(File.Exists(mapping));
         Assert.True(File.Exists(feedIcon));
         Assert.Equal(Now.AddDays(3).AddTicks(1), _defaults.GetValue<DateTime?>(CacheCleaner.LastFlushKey));
+    }
+
+    [Fact]
+    public void UpgradingRemovesRetiredSizeFoldersOnceWithoutDeletingNewSourcesOrFavicons()
+    {
+        _defaults.SetValue(CacheCleaner.ResizingPurgeKey, true);
+        _defaults.SetValue(CacheCleaner.LastFlushKey, Now);
+        var old = new[] { "Images", "Thumbnails", "LargeThumbnails" }
+            .Select(folder => AddFile("Caches\\" + folder, "retired")).ToArray();
+        var source = AddFile("Caches\\DownloadedImages", "source");
+        var favicon = AddFile("Caches\\Favicons", "icon");
+        var browser = AddFile("Caches\\WebView2", "data");
+        CacheCleaner.PurgeIfNecessary(_defaults, Now);
+        Assert.All(old, path => Assert.False(File.Exists(path)));
+        Assert.True(File.Exists(source));
+        Assert.True(File.Exists(favicon));
+        Assert.True(File.Exists(browser));
+        var laterFile = AddFile("Caches\\Images", "not-from-the-upgrade");
+        CacheCleaner.PurgeIfNecessary(_defaults, Now.AddHours(1));
+        Assert.True(File.Exists(laterFile));
     }
 
     [Fact]

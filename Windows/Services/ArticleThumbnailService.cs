@@ -64,7 +64,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     private static (ArticleThumbnailFinder, ThumbnailDownloader) CreateBackend()
     {
         var database = ImageMetadataDatabase.Shared;
-        return (new(database), new(database, AppConfig.CachesDirectory, NetworkAllowsDownloads));
+        return (new(database), new(database, AppConfig.CachesDirectory, NetworkAllowsDownloads,
+            downloadedImages: FeedImageDownloader.Shared.DownloadedImages));
     }
 
     private static bool NetworkAllowsDownloads()

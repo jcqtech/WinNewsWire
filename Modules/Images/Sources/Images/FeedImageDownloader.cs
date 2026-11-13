@@ -9,6 +9,7 @@ using ActivityKind = WinNewsWire.ActivityLog.ActivityKind;
 namespace WinNewsWire.Images;
 
 public sealed record FeedImageSource(string FeedUrl, string? HomePageUrl = null, string? FaviconUrl = null, string? IconUrl = null);
+/// <summary>Data is the requested representation; Path can identify its larger shared disk source.</summary>
 public sealed record DownloadedImage(string Url, string Path, byte[] Data);
 
 public sealed class FeedImageDownloader : IAsyncDisposable
@@ -46,6 +47,8 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private readonly HtmlMetadataDownloader _metadata;
     private readonly ImageResourceDownloader _favicons;
     private readonly ImageResourceDownloader _images;
+    private readonly bool _ownsDownloadedImages;
+    public DownloadedImageCache DownloadedImages { get; }
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly HashSet<Task> _operations = [];
@@ -54,7 +57,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
 
     public FeedImageDownloader(ImageMetadataDatabase database, HtmlMetadataDownloader metadata, string cacheFolder,
         Downloader? downloader = null, TimeProvider? clock = null, ActivityLogger? activityLog = null, int? maxPixelSize = null,
-        string? legacyCacheFolder = null)
+        string? legacyCacheFolder = null, DownloadedImageCache? downloadedImages = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(metadata);
@@ -63,10 +66,14 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         _metadata = metadata;
         int pixelSize = maxPixelSize ?? DefaultMaxPixelSize();
         string legacyFolder = Path.GetFullPath(legacyCacheFolder ?? cacheFolder);
-        _favicons = new(database, Path.Combine(cacheFolder, "Favicons"), new(pixelSize),
-            ActivityOwner.FaviconDownloader, ActivityKind.DownloadFavicon, downloader, clock, activityLog, legacyFolder);
+        DownloadedImages = downloadedImages ?? new(database, cacheFolder, downloader, clock, activityLog);
+        _ownsDownloadedImages = downloadedImages is null;
+        _favicons = new(database, Path.Combine(cacheFolder, "Favicons"), new(pixelSize, KeepsDiskCache: true),
+            ActivityOwner.FaviconDownloader, ActivityKind.DownloadFavicon, downloader, clock, activityLog, legacyFolder,
+            DownloadedImages);
         _images = new(database, Path.Combine(cacheFolder, "Images"), new(pixelSize),
-            ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, downloader, clock, activityLog, legacyFolder);
+            ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, downloader, clock, activityLog,
+            sourceCache: DownloadedImages);
     }
 
     private static int DefaultMaxPixelSize()
@@ -213,6 +220,13 @@ public sealed class FeedImageDownloader : IAsyncDisposable
                 .Append(_images.DisposeAsync().AsTask())).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        finally { _lifetime.Dispose(); }
+        finally
+        {
+            try
+            {
+                if (_ownsDownloadedImages) await DownloadedImages.DisposeAsync().ConfigureAwait(false);
+            }
+            finally { _lifetime.Dispose(); }
+        }
     }
 }

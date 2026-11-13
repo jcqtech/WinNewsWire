@@ -13,13 +13,17 @@ namespace WinNewsWire.Images;
 internal sealed record ImageResourceResult(DownloadedImage? Image, bool IsTransient = false);
 internal sealed record ImageResourceConfiguration(int MaxPixelSize, ScaledImageFormat Format = ScaledImageFormat.Png,
     long MemoryCacheByteLimit = 0, bool RequiresSignificantDimensions = false,
-    DownloadLimiter? DownloadLimiter = null, Func<bool>? NetworkAllowsDownloads = null);
+    DownloadLimiter? DownloadLimiter = null, Func<bool>? NetworkAllowsDownloads = null,
+    bool StoresSourceData = false, bool KeepsDiskCache = false);
+internal sealed record ImageResourceRequest(ActivityOwner Owner, ActivityKind Kind, string? Detail,
+    Func<bool>? NetworkAllowsDownloads);
 
 internal sealed class ImageResourceDownloader : IAsyncDisposable
 {
     private readonly ImageMetadataDatabase _database;
     private readonly BinaryDiskCache _diskCache;
     private readonly string? _legacyFolder;
+    private readonly DownloadedImageCache? _sourceCache;
     private readonly ImageResourceConfiguration _configuration;
     private readonly Downloader _downloader;
     private readonly TimeProvider _clock;
@@ -40,7 +44,8 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
 
     internal ImageResourceDownloader(ImageMetadataDatabase database, string cacheFolder, ImageResourceConfiguration configuration,
         ActivityOwner owner, Func<string, ActivityKind> kind, Downloader? downloader = null,
-        TimeProvider? clock = null, ActivityLogger? activityLog = null, string? legacyCacheFolder = null)
+        TimeProvider? clock = null, ActivityLogger? activityLog = null, string? legacyCacheFolder = null,
+        DownloadedImageCache? sourceCache = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFolder);
@@ -51,6 +56,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         _database = database;
         _diskCache = new(cacheFolder);
         _legacyFolder = legacyCacheFolder;
+        _sourceCache = sourceCache;
         _configuration = configuration;
         _owner = owner;
         _kind = kind;
@@ -59,13 +65,15 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         _log = activityLog ?? ActivityLogger.Shared;
     }
 
-    internal Task<ImageResourceResult> FetchAsync(string url, CancellationToken ct, string? activityDetail = null)
+    internal Task<ImageResourceResult> FetchAsync(string url, CancellationToken ct, string? activityDetail = null,
+        ImageResourceRequest? request = null)
     {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_stopping, this);
             var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
-            var operation = FetchCoreAsync(url, cancellation.Token, activityDetail);
+            var operation = FetchCoreAsync(url, cancellation.Token,
+                request ?? new(_owner, _kind(url), activityDetail, _configuration.NetworkAllowsDownloads));
             _operations.Add(operation);
             _ = operation.ContinueWith(completed =>
             {
@@ -76,7 +84,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
     }
 
-    private async Task<ImageResourceResult> FetchCoreAsync(string url, CancellationToken ct, string? activityDetail)
+    private async Task<ImageResourceResult> FetchCoreAsync(string url, CancellationToken ct, ImageResourceRequest request)
     {
         ct.ThrowIfCancellationRequested();
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
@@ -86,7 +94,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
         if (CachedImage(url) is { } cached)
         {
-            if (!File.Exists(cached.Path))
+            if ((_sourceCache is null || _configuration.KeepsDiskCache) && !File.Exists(cached.Path))
                 await _diskCache.SetAsync(url.Md5Hex(), cached.Data, ct).ConfigureAwait(false);
             return new(cached);
         }
@@ -103,7 +111,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
                     return new(null, IsTransient: true);
                 pending = Task.Run(async () =>
                 {
-                    try { return await DownloadImageAsync(url, _lifetime.Token, activityDetail).ConfigureAwait(false); }
+                    try { return await DownloadImageAsync(url, _lifetime.Token, request).ConfigureAwait(false); }
                     finally { lock (_gate) _pending.Remove(url); }
                 });
                 _pending.Add(url, pending);
@@ -124,22 +132,36 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         return WindowsImage.ScaledImageData(data, _configuration.MaxPixelSize, _configuration.Format);
     }
 
-    private async Task<ImageResourceResult> DownloadImageAsync(string url, CancellationToken ct, string? activityDetail)
+    private async Task<ImageResourceResult> DownloadImageAsync(string url, CancellationToken ct, ImageResourceRequest request)
     {
+        if (_sourceCache is not null && !_configuration.KeepsDiskCache)
+            return await ImageFromSourceAsync(url, request, ct).ConfigureAwait(false);
         string key = url.Md5Hex();
         string path = _diskCache.PathForKey(key);
         if (await ReadFromDiskAsync(url, key, ct).ConfigureAwait(false) is { } cached)
             return Cache(cached);
         if (_configuration.RequiresSignificantDimensions && _database.RecentlyLackedSignificantDimensions(url)) return new(null);
-        if (_configuration.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
+        if (_sourceCache is not null)
+        {
+            var result = await ImageFromSourceAsync(url, request, ct).ConfigureAwait(false);
+            if (result.Image is not { } image) return result;
+            await _diskCache.SetAsync(key, image.Data, ct).ConfigureAwait(false);
+            return Cache(image with { Path = path });
+        }
+        if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
         using var lease = _configuration.DownloadLimiter is { } limiter
+            && (!_configuration.StoresSourceData || request.NetworkAllowsDownloads is not null)
             ? await limiter.AcquireAsync(ct).ConfigureAwait(false) : null;
         ct.ThrowIfCancellationRequested();
-        if (_configuration.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
-        int activity = _log.CreateActivity(_owner, _kind(url), activityDetail);
+        if (request.NetworkAllowsDownloads?.Invoke() == false) return new(null, IsTransient: true);
+        int activity = _log.CreateActivity(request.Owner, request.Kind, request.Detail);
         _log.DidStart(activity);
         DownloadResult response;
-        try { response = await _downloader.DownloadAsync(url, null, ct, UserAgentStyle.Browser).ConfigureAwait(false); }
+        try
+        {
+            response = await _downloader.DownloadAsync(url, null, ct, UserAgentStyle.Browser,
+                cachesResponse: !_configuration.StoresSourceData).ConfigureAwait(false);
+        }
         catch (OperationCanceledException error) when (ct.IsCancellationRequested) { _log.DidFail(activity, error); throw; }
         catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException)
         {
@@ -202,6 +224,33 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         return Cache(new(url, path, processed));
     }
 
+    private async Task<ImageResourceResult> ImageFromSourceAsync(string url, ImageResourceRequest request, CancellationToken ct)
+    {
+        var result = await _sourceCache!.FetchAsync(url, request, ct).ConfigureAwait(false);
+        if (result.Image is not { } source) return result;
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var image = source with { Data = ProcessImage(source.Data) };
+            ct.ThrowIfCancellationRequested();
+            return _configuration.KeepsDiskCache ? new(image) : Cache(image);
+        }
+        catch (InsignificantDimensionsException error)
+        {
+            Trace.TraceWarning($"Rejecting thumbnail {url}: {error.Message}");
+            ct.ThrowIfCancellationRequested();
+            await _database.RecordInsignificantDimensionsAsync(url).ConfigureAwait(false);
+        }
+        catch (InvalidDataException error)
+        {
+            Trace.TraceWarning($"Could not decode stored image {url}: {error.Message}");
+            ct.ThrowIfCancellationRequested();
+            await _database.RecordFailureAsync(url, null).ConfigureAwait(false);
+        }
+        DownloadFailed?.Invoke(this, url);
+        return new(null);
+    }
+
     private async Task<DownloadedImage?> ReadFromDiskAsync(string url, string key, CancellationToken ct)
     {
         string destination = _diskCache.PathForKey(key);
@@ -213,7 +262,11 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             {
                 data = path == destination ? await _diskCache.GetAsync(key, ct).ConfigureAwait(false)
                     : await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
-                if (data is null) continue;
+                if (data is not { Length: > 0 })
+                {
+                    if (path == destination && data is not null) _diskCache.Remove(key);
+                    continue;
+                }
                 processed = ProcessImage(data);
             }
             catch (FileNotFoundException) { continue; }
@@ -250,6 +303,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         lock (_gate)
         {
             _transientAttempts.Remove(image.Url);
+            if (_configuration.StoresSourceData) return new(image);
             if (_cache.Remove(image.Url, out var previous))
             {
                 _cacheOrder.Remove(previous);
