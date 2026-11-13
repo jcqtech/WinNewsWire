@@ -1,15 +1,17 @@
+using System.Globalization;
 using WinNewsWire.Articles;
 
 namespace WinNewsWire.AppShared.ArticleRendering;
 
 public static partial class ArticleRenderer
 {
-    private static Attachment? PrimaryImage(string? imageUrl, IReadOnlyList<Attachment> attachments,
+    private static Attachment? PrimaryImage(string? imageUrl, string? thumbnailUrl, IReadOnlyList<Attachment> attachments,
         string body, IReadOnlySet<string> bodyImageIdentities, string baseUrl)
     {
         var image = !string.IsNullOrEmpty(imageUrl)
             ? attachments.FirstOrDefault(attachment => attachment.URL == imageUrl) ?? ImageAttachment(imageUrl)
-            : attachments.FirstOrDefault(attachment => attachment.DisplayMedium == Attachment.AttachmentMedium.Image);
+            : attachments.FirstOrDefault(attachment => attachment.DisplayMedium == Attachment.AttachmentMedium.Image)
+                ?? ImageAttachment(thumbnailUrl);
         return image is not null && MediaUrl(image.URL, baseUrl) is not null
             && !BodyContainsMedia(body, image.URL, bodyImageIdentities, baseUrl) ? image : null;
     }
@@ -34,4 +36,13 @@ public static partial class ArticleRenderer
 
     private static string CollapsingWhitespace(string? value)
         => string.Join(" ", value?.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries) ?? []);
+
+    private static bool IsShortUntitledPost(string? title, string body)
+    {
+        if (!string.IsNullOrEmpty(title)) return false;
+        var characters = StringInfo.GetTextElementEnumerator(body);
+        for (var count = 0; count < 2048; count++)
+            if (!characters.MoveNext()) return true;
+        return false;
+    }
 }

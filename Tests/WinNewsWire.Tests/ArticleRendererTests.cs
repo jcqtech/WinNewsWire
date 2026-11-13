@@ -30,6 +30,25 @@ public sealed class ArticleRendererTests
         Assert.DoesNotContain("nnw-primary-image-caption", html);
     }
 
+    [Fact]
+    public void PrimaryImageCanFallBackToThumbnailButLegacyEnclosuresCannot()
+    {
+        var article = Article(thumbnail: "https://example.com/thumbnail.jpg");
+        var html = ArticleRenderer.Render(article, theme: Theme("[[primary_image]]|[[body]]|[[enclosures]]")).Html;
+        Assert.StartsWith("<div class=\"nnw-primary-image\">", html);
+        Assert.Contains("src=\"https://example.com/thumbnail.jpg\"", html);
+        Assert.DoesNotContain("thumbnail.jpg", ArticleRenderer.Render(article, theme: Theme()).Html);
+    }
+
+    [Fact]
+    public void ShortUntitledPostsPlaceLeadImagesAfterTheirText()
+    {
+        var html = ArticleRenderer.Render(Article(title: null, image: "https://example.com/photo.jpg"),
+            theme: Theme("[[primary_image]]|[[body]]|[[enclosures]]")).Html;
+        Assert.StartsWith("|<p>Body</p>|<div class=\"nnw-enclosures\">", html);
+        Assert.Contains("<img src=\"https://example.com/photo.jpg\"", html);
+    }
+
     [Theory]
     [InlineData("[[primary_image]]|[[body]]|[[enclosures]]")]
     [InlineData("[[body]]")]

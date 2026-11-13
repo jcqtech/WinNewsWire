@@ -73,9 +73,12 @@ public static partial class ArticleRenderer
         var bodyImageIdentities = BodyImageIdentities(body, baseUrl);
         var attachments = article.Attachments?.ToList() ?? [];
         var primaryImageHtml = "";
-        if (PrimaryImage(article.RawImageLink, attachments, body, bodyImageIdentities, baseUrl) is { } primaryImage)
+        var showsPrimaryImage = theme.TemplateHtml.Contains("[[primary_image]]", StringComparison.Ordinal)
+            && !IsShortUntitledPost(article.Title, body);
+        if (PrimaryImage(article.RawImageLink, showsPrimaryImage ? article.RawThumbnailLink : null,
+            attachments, body, bodyImageIdentities, baseUrl) is { } primaryImage)
         {
-            if (theme.TemplateHtml.Contains("[[primary_image]]", StringComparison.Ordinal))
+            if (showsPrimaryImage)
             {
                 primaryImageHtml = PrimaryImageHtml(primaryImage, article.Title, baseUrl);
                 attachments.RemoveAll(attachment => attachment.URL == primaryImage.URL);
@@ -83,7 +86,7 @@ public static partial class ArticleRenderer
             else if (!attachments.Contains(primaryImage)) attachments.Insert(0, primaryImage);
         }
         substitutions["primary_image"] = primaryImageHtml;
-        var enclosures = EnclosuresHtml(attachments, body, bodyImageIdentities, article.RawImageLink, baseUrl);
+        var enclosures = EnclosuresHtml(attachments, body, bodyImageIdentities, article.RawImageLink ?? article.RawThumbnailLink, baseUrl);
         if (theme.TemplateHtml.Contains("[[enclosures]]", StringComparison.Ordinal))
             substitutions["enclosures"] = enclosures;
         else substitutions["body"] = enclosures.Length == 0 ? body : "<div>" + body + "</div>" + enclosures;
