@@ -109,6 +109,23 @@ public sealed class ArticleThumbnailFinderTests
     }
 
     [Fact]
+    public async Task ArticlesWithoutHtmlDoNotLoadStaleDiscoveryRecordsOrPreventLaterDiscovery()
+    {
+        using var database = new ImageMetadataDatabase(":memory:");
+        await database.SaveArticleThumbnailsAsync([new("1", ["https://example.com/previous.jpg"])]);
+        var finder = new ArticleThumbnailFinder(database);
+        foreach (var html in new string?[] { null, "" })
+        {
+            var empty = Article(html: html);
+            await finder.DiscoverThumbnailUrlsAsync([empty]);
+            Assert.Null(finder.ThumbnailUrl(empty, ThumbnailMode.Small));
+        }
+        var populated = Article(html: "<img src='/photo.jpg'>");
+        await finder.DiscoverThumbnailUrlsAsync([populated]);
+        Assert.Equal("https://example.com/previous.jpg", finder.ThumbnailUrl(populated, ThumbnailMode.Small));
+    }
+
+    [Fact]
     public async Task DiscoveryReloadsPositiveAndNegativeResultsAfterTheCombinedCacheExceedsItsLimit()
     {
         using var database = new ImageMetadataDatabase(":memory:");

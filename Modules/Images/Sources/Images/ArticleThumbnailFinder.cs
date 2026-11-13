@@ -35,7 +35,8 @@ public sealed class ArticleThumbnailFinder(ImageMetadataDatabase database)
         {
             if (_htmlUrls.Count > MaximumCachedArticleCount) _htmlUrls.Clear();
             pending = articles.DistinctBy(article => article.ArticleID)
-                .Where(article => !_htmlUrls.ContainsKey(article.ArticleID) && !_discovering.Contains(article.ArticleID)
+                .Where(article => !string.IsNullOrEmpty(article.ContentHtml ?? article.Summary)
+                    && !_htmlUrls.ContainsKey(article.ArticleID) && !_discovering.Contains(article.ArticleID)
                     && ProvidedThumbnailUrl(article, ThumbnailMode.Small) is null).ToArray();
             foreach (var article in pending) _discovering.Add(article.ArticleID);
         }
