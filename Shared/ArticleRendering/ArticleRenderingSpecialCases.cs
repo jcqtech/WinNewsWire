@@ -25,12 +25,15 @@ public static class ArticleRenderingSpecialCases
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex SanitizedFreshRssClass = new(@"(<[^>]*?)data-sanitized-class([^<]*?>)", RegexOptions.Compiled);
     private static readonly Regex SanitizedFreshRssId = new(@"(<[^>]*?)data-sanitized-id([^<]*?>)", RegexOptions.Compiled);
+    private static readonly Regex NoscriptTags = new(@"</?noscript\b[^>]*>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static bool ShouldDisableJavaScript(IEnumerable<string?> urls)
-        => urls.Any(url => url is not null && SpecialCases.UrlStringMatchesDomain(url, ["slashdot.org"]));
+        => urls.Any(url => url is not null && SpecialCases.UrlStringMatchesDomain(url, ["slashdot.org", "blog.rust-lang.org"]));
 
     public static string InsertParagraphTagsIfNeeded(string html, string? feedUrl, string? homePageUrl)
-        => ShouldDisableJavaScript([feedUrl, homePageUrl]) && html.Contains('\n')
+        => new[] { feedUrl, homePageUrl }.Any(url => url is not null
+            && SpecialCases.UrlStringMatchesDomain(url, ["slashdot.org"])) && html.Contains('\n')
             ? ConsecutiveReturns.Replace(html, "<p>") : html;
 
     public static Uri BaseUrlForRendering(Uri url)
@@ -43,6 +46,8 @@ public static class ArticleRenderingSpecialCases
 
     public static string DesanitizeFreshRssContent(string html)
         => SanitizedFreshRssId.Replace(SanitizedFreshRssClass.Replace(html, "$1class$2"), "$1id$2");
+
+    public static string UnwrapNoscriptTags(string html) => NoscriptTags.Replace(html, "");
 
     public static string RemoveLocationHrefRedirectScripts(string html)
         => html.Contains("location.href", StringComparison.Ordinal) ? RedirectScript.Replace(html, "") : html;
@@ -57,7 +62,8 @@ public static class ArticleRenderingSpecialCases
         if (string.IsNullOrEmpty(html)) return html ?? string.Empty;
         html = RemoveLocationHrefRedirectScripts(html);
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var url)) return html;
-        if (IsVergeSpecialCase(url)) return FilterVergeHtml(html);
+        if (IsVergeSpecialCase(url)) html = FilterVergeHtml(html);
+        if (ShouldDisableJavaScript([baseUrl])) html = UnwrapNoscriptTags(html);
         return html;
     }
 

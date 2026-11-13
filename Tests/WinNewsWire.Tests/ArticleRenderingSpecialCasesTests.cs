@@ -209,4 +209,21 @@ public class ArticleRenderingSpecialCasesTests
         Assert.Equal("<UL><LI>Item</LI></UL>", ArticleRenderingSpecialCases.RemoveStrayLineBreaksIfNeeded(
             "<UL><BR /><br><LI>Item</LI><Br/></UL>", "https://macrumors.com/", null));
     }
+
+    [Theory]
+    [InlineData("https://blog.rust-lang.org/2026/11/01/post.html", true)]
+    [InlineData("https://blog.rust-lang.org.evil.example/post", false)]
+    [InlineData("https://rust-lang.org/", false)]
+    public void RustBlogJavascriptPolicyMatchesOnlyTheBlog(string url, bool expected)
+        => Assert.Equal(expected, ArticleRenderingSpecialCases.ShouldDisableJavaScript([url]));
+
+    [Fact]
+    public void RustBlogNoscriptContentIsVisibleWithoutChangingParagraphs()
+    {
+        const string html = "<noscript class='chart'><img src='chart.svg'></noscript>\n\n<p>Text</p>";
+        Assert.Equal("<img src='chart.svg'>\n\n<p>Text</p>",
+            ArticleRenderingSpecialCases.FilterHtmlIfNeeded("https://blog.rust-lang.org/post", html));
+        Assert.Equal(html, ArticleRenderingSpecialCases.InsertParagraphTagsIfNeeded(html, "https://blog.rust-lang.org/feed.xml", null));
+        Assert.Equal(html, ArticleRenderingSpecialCases.FilterHtmlIfNeeded("https://example.com/post", html));
+    }
 }
