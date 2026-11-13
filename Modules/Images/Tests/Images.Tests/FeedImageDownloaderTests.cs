@@ -439,6 +439,40 @@ public sealed class FeedImageDownloaderTests
         Assert.Single(fixture.Requests);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ChangedSourcesRebuildAndAnnounceIconsEvenAfterMemoryEviction(bool evict)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native icon decoding requires Windows.");
+        int requests = 0;
+        await using var fixture = new Fixture((_, _) =>
+        {
+            var response = Response(HttpStatusCode.OK,
+                Interlocked.Increment(ref requests) == 1 ? Bitmap(128, 128) : Bitmap(1600, 800));
+            response.Headers.TryAddWithoutValidation("ETag", "\"icon\"");
+            return Task.FromResult(response);
+        }, maxPixelSize: 48);
+        const string url = Home + "changed-icon.bmp";
+        var feed = new FeedImageSource(Feed, Home, IconUrl: url);
+        var old = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(feed));
+        Assert.Equal((48u, 48u), WindowsImage.LargestFramePixelSize(old.Data));
+        if (evict) fixture.Images.EmptyCache();
+        var available = new TaskCompletionSource<DownloadedImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Images.ImageDidBecomeAvailable += (_, image) =>
+        {
+            if (image.Url == url) available.TrySetResult(image);
+        };
+        fixture.Clock.Advance(TimeSpan.FromDays(8));
+        Assert.NotNull(await fixture.Images.FaviconAsync(feed with { FaviconUrl = url }));
+        var fresh = await available.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal((48u, 24u), WindowsImage.LargestFramePixelSize(fresh.Data));
+        Assert.Equal(old.Path, fresh.Path);
+        Assert.Equal(fresh.Data, (await fixture.Images.IconAsync(feed))?.Data);
+        Assert.Equal((1600u, 800u), WindowsImage.LargestFramePixelSize(await File.ReadAllBytesAsync(fresh.Path)));
+        Assert.Equal(2, requests);
+    }
+
     [Fact]
     public async Task DownloadedSourceRecordsStoredDimensionsBytesAndHttpValidators()
     {

@@ -344,6 +344,24 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         }
     }
 
+    internal async Task<ImageResourceResult> RefreshAsync(string url, CancellationToken ct)
+    {
+        Task<ImageResourceResult>? pending;
+        lock (_gate) _pending.TryGetValue(url, out pending);
+        // An older decode must finish before invalidation, or it can cache stale pixels again.
+        if (pending is not null) await pending.WaitAsync(ct).ConfigureAwait(false);
+        lock (_gate)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (_cache.Remove(url, out var previous))
+            {
+                _cacheOrder.Remove(previous);
+                _cacheBytes -= previous.Value.Data.LongLength;
+            }
+        }
+        return await FetchAsync(url, ct).ConfigureAwait(false);
+    }
+
     public ValueTask DisposeAsync()
     {
         lock (_gate)

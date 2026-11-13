@@ -56,6 +56,8 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private readonly ImageResourceDownloader _images;
     private readonly bool _ownsDownloadedImages;
     public DownloadedImageCache DownloadedImages { get; }
+    /// <summary>Raised on a worker when a changed source has a freshly rebuilt icon representation.</summary>
+    public event EventHandler<DownloadedImage>? ImageDidBecomeAvailable;
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly HashSet<Task> _operations = [];
@@ -81,6 +83,26 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         _images = new(database, Path.Combine(cacheFolder, "Images"), new(pixelSize),
             ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, downloader, clock, activityLog,
             sourceCache: DownloadedImages);
+        DownloadedImages.DownloadedImageChanged += SourceChanged;
+    }
+
+    private void SourceChanged(object? sender, string url)
+    {
+        lock (_gate)
+        {
+            if (_stopping) return;
+            var task = RunOperationAsync(async ct =>
+            {
+                var result = await _images.RefreshAsync(url, ct).ConfigureAwait(false);
+                if (result.Image is { } image) ImageDidBecomeAvailable?.Invoke(this, image);
+                return result.Image;
+            }, CancellationToken.None);
+            _ = task.ContinueWith(completed =>
+            {
+                if (completed.IsFaulted)
+                    Trace.TraceError($"Could not rebuild a changed feed image at {url}: {completed.Exception}");
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 
     private static int DefaultMaxPixelSize()
@@ -214,6 +236,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         {
             if (_shutdown is not null) return new(_shutdown);
             _stopping = true;
+            DownloadedImages.DownloadedImageChanged -= SourceChanged;
             _lifetime.Cancel();
             return new(_shutdown = DrainAsync(_operations.ToArray()));
         }
