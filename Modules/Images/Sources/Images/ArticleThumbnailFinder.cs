@@ -9,6 +9,7 @@ public sealed record ThumbnailUrlFailure(IReadOnlySet<string> ArticleIds);
 public sealed class ArticleThumbnailFinder(ImageDatabase database)
 {
     private const int MaximumCachedArticleCount = 50_000;
+    private const int MaximumArticlesParsedBeforeReady = 1_000;
     private readonly ImageDatabase _database = database ?? throw new ArgumentNullException(nameof(database));
     private readonly object _gate = new();
     private readonly Dictionary<string, IReadOnlyList<string>> _htmlUrls = new(StringComparer.Ordinal);
@@ -76,15 +77,29 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             var saved = await _database.FetchArticleThumbnailsAsync(pending.Select(article => article.ArticleID)).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             CacheRecords(saved);
-            savedUrlsLoaded?.Invoke();
             var savedIds = saved.Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
             var toParse = pending.Where(article => !savedIds.Contains(article.ArticleID)).ToArray();
-            if (toParse.Length == 0) return;
             var baseUrls = toParse.ToDictionary(article => article.ArticleID,
                 article => baseUrlResolver is null ? article.BaseUrl() : baseUrlResolver(article), StringComparer.Ordinal);
-            foreach (var batch in toParse.Chunk(100))
+            var initial = await ParseAsync(toParse.Take(MaximumArticlesParsedBeforeReady).ToArray()).ConfigureAwait(false);
+            CacheRecords(initial);
+            savedUrlsLoaded?.Invoke();
+            foreach (var batch in initial.Chunk(100))
             {
-                var parsed = await Task.Run(() =>
+                ct.ThrowIfCancellationRequested();
+                await _database.SaveArticleThumbnailsAsync(batch).ConfigureAwait(false);
+            }
+            PublishRecords(initial);
+            foreach (var batch in toParse.Skip(MaximumArticlesParsedBeforeReady).Chunk(100))
+            {
+                var parsed = await ParseAsync(batch).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                if (parsed.Count > 0) await _database.SaveArticleThumbnailsAsync(parsed).ConfigureAwait(false);
+                CacheRecords(parsed);
+                PublishRecords(parsed);
+            }
+            Task<List<ArticleThumbnailRecord>> ParseAsync(Article[] batch)
+                => Task.Run(() =>
                 {
                     var records = new List<ArticleThumbnailRecord>();
                     foreach (var article in batch)
@@ -95,14 +110,7 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
                         records.Add(new(article.ArticleID, HtmlImageParser.SignificantImageUrlStrings(html, baseUrls[article.ArticleID], 3)));
                     }
                     return records;
-                }, ct).ConfigureAwait(false);
-                ct.ThrowIfCancellationRequested();
-                if (parsed.Count > 0) await _database.SaveArticleThumbnailsAsync(parsed).ConfigureAwait(false);
-                CacheRecords(parsed);
-                var found = parsed.Where(record => record.ThumbnailUrls.Count > 0)
-                    .Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
-                if (found.Count > 0) ThumbnailUrlsAvailable?.Invoke(this, found);
-            }
+                }, ct);
         }
         finally
         {
@@ -123,6 +131,13 @@ public sealed class ArticleThumbnailFinder(ImageDatabase database)
             ForgetChosenUrls(records.Select(record => record.ArticleId));
             foreach (var record in records) _htmlUrls[record.ArticleId] = record.ThumbnailUrls;
         }
+    }
+
+    private void PublishRecords(IReadOnlyList<ArticleThumbnailRecord> records)
+    {
+        var found = records.Where(record => record.ThumbnailUrls.Count > 0)
+            .Select(record => record.ArticleId).ToHashSet(StringComparer.Ordinal);
+        if (found.Count > 0) ThumbnailUrlsAvailable?.Invoke(this, found);
     }
 
     private string? ProvidedThumbnailUrl(Article article, ThumbnailMode mode)

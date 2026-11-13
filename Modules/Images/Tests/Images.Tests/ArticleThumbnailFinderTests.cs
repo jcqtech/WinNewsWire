@@ -7,7 +7,7 @@ namespace WinNewsWire.Images.Tests;
 public sealed class ArticleThumbnailFinderTests
 {
     [Fact]
-    public async Task CombinedDiscoveryMakesSavedUrlsReadyBeforeParsingOnlyTheRemainingArticles()
+    public async Task CombinedDiscoveryMakesSavedAndInitialParsedUrlsReadyBeforeNotification()
     {
         using var database = new ImageDatabase(":memory:");
         await database.SaveArticleThumbnailsAsync([new("saved", ["https://example.com/saved.jpg"]), new("negative", [])]);
@@ -21,14 +21,14 @@ public sealed class ArticleThumbnailFinderTests
         finder.ThumbnailUrlsAvailable += (_, ids) => notified.UnionWith(ids);
         await finder.FindThumbnailUrlsAsync([saved, negative, missing], baseUrlResolver: article =>
         {
-            Assert.True(ready);
+            Assert.False(ready);
             parsed.Add(article.ArticleID);
             return article.BaseUrl();
         }, savedUrlsLoaded: () =>
         {
             Assert.Equal("https://example.com/saved.jpg", finder.ThumbnailUrl(saved, ThumbnailMode.Large));
             Assert.Null(finder.ThumbnailUrl(negative, ThumbnailMode.Small));
-            Assert.Null(finder.ThumbnailUrl(missing, ThumbnailMode.Small));
+            Assert.Equal("https://example.com/new.jpg", finder.ThumbnailUrl(missing, ThumbnailMode.Small));
             Assert.Empty(notified);
             ready = true;
         });
@@ -419,29 +419,39 @@ public sealed class ArticleThumbnailFinderTests
     {
         using var database = new ImageDatabase(":memory:");
         var finder = new ArticleThumbnailFinder(database);
-        var articles = Enumerable.Range(0, 101).Select(index => Article(index.ToString(),
-            html: index == 99 ? "<p>No image</p>" : "<img src='/photo.jpg'>")).ToArray();
+        var articles = Enumerable.Range(0, 1001).Select(index => Article(index.ToString(),
+            html: index == 999 ? "<p>No image</p>" : "<img src='/photo.jpg'>")).ToArray();
         using var cancellation = new CancellationTokenSource();
         var batches = new List<IReadOnlySet<string>>();
+        bool ready = false;
         finder.ThumbnailUrlsAvailable += (_, ids) =>
         {
             batches.Add(ids);
             if (batches.Count == 1)
             {
-                Assert.Null(finder.ThumbnailUrl(articles[100], ThumbnailMode.Small));
+                Assert.True(ready);
+                Assert.Null(finder.ThumbnailUrl(articles[1000], ThumbnailMode.Small));
                 cancellation.Cancel();
             }
         };
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finder.FindThumbnailUrlsAsync(articles, cancellation.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finder.FindThumbnailUrlsAsync(articles, cancellation.Token,
+            savedUrlsLoaded: () =>
+            {
+                Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(articles[998], ThumbnailMode.Small));
+                Assert.Null(finder.ThumbnailUrl(articles[999], ThumbnailMode.Small));
+                Assert.Null(finder.ThumbnailUrl(articles[1000], ThumbnailMode.Small));
+                Assert.Empty(batches);
+                ready = true;
+            }));
         var saved = await database.FetchArticleThumbnailsAsync(articles.Select(article => article.ArticleID));
-        Assert.Equal(100, saved.Count);
-        Assert.Empty(saved.Single(record => record.ArticleId == "99").ThumbnailUrls);
-        Assert.True(batches[0].SetEquals(articles.Take(99).Select(article => article.ArticleID)));
+        Assert.Equal(1000, saved.Count);
+        Assert.Empty(saved.Single(record => record.ArticleId == "999").ThumbnailUrls);
+        Assert.True(batches[0].SetEquals(articles.Take(999).Select(article => article.ArticleID)));
         await finder.FindThumbnailUrlsAsync(articles);
-        Assert.Equal([99, 1], batches.Select(ids => ids.Count));
-        Assert.True(batches[1].SetEquals(["100"]));
-        Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(articles[100], ThumbnailMode.Small));
-        Assert.Equal(101, (await database.FetchArticleThumbnailsAsync(articles.Select(article => article.ArticleID))).Count);
+        Assert.Equal([999, 1], batches.Select(ids => ids.Count));
+        Assert.True(batches[1].SetEquals(["1000"]));
+        Assert.Equal("https://example.com/photo.jpg", finder.ThumbnailUrl(articles[1000], ThumbnailMode.Small));
+        Assert.Equal(1001, (await database.FetchArticleThumbnailsAsync(articles.Select(article => article.ArticleID))).Count);
     }
 
     [Fact]
