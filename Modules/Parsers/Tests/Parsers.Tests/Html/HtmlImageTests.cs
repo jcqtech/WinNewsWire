@@ -111,6 +111,13 @@ public class HtmlImageTests
     public void TriesLazySourcesAndRejectsPlaceholdersBeforeFallback(string html)
         => Assert.Equal("https://example.com/photo.jpg", First(html)?.Url);
 
+    [Theory]
+    [InlineData("""<img data-lazy-srcset="/small.jpg 300w, /photo.jpg 1024w" data-src="/other.jpg">""")]
+    [InlineData("""<img data-srcset="/small.jpg 300w, /photo.jpg 1024w" src="/other.jpg">""")]
+    [InlineData("""<img data-original="/photo.jpg" src="/other.jpg">""")]
+    public void FindsLazySrcsetsAndOriginalSources(string html)
+        => Assert.Equal("https://example.com/photo.jpg", First(html)?.Url);
+
     [Fact]
     public void MultipleCandidatesRemainUniqueAndInDocumentOrderWithinLimit()
     {

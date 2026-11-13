@@ -60,8 +60,11 @@ public static class HtmlImageParser
 
         private static IEnumerable<string?> ImageSources(HtmlAttributes attributes)
         {
+            yield return LargestSrcsetCandidate(attributes["data-lazy-srcset"]);
+            yield return LargestSrcsetCandidate(attributes["data-srcset"]);
             yield return attributes["data-lazy-src"];
             yield return attributes["data-src"];
+            yield return attributes["data-original"];
             yield return LargestSrcsetCandidate(attributes["srcset"]);
             yield return attributes["src"];
         }
