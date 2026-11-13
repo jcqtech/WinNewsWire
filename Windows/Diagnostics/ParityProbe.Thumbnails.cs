@@ -1,6 +1,7 @@
 #if PARITY_PROBE
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -267,6 +268,7 @@ internal static partial class ParityProbe
         }
         finally { account.RemoveFeed(baseFeed); }
         Require(failureOnUI && failures == 4, "Permanent thumbnail failures were not dispatched once to the UI.");
+        await CheckThumbnailDecodeQueueAsync(window);
         await CheckChangedFeedIconsAsync(window);
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
@@ -276,6 +278,8 @@ internal static partial class ParityProbe
         Require(stopped, "A disposed thumbnail service accepted another request.");
         return new { InitializationOffUI = true, DecodingOffUI = true, NotificationsOnUI = true,
             CoalescedDiscoveryAndDecode = true, SeparateModes = true, DecodedLRUBudget = true,
+            BoundedDecodeQueue = true, VisibleDecodePromotion = true, DroppedDecodesCanRetry = true,
+            QueuedDecodesDrainAtShutdown = true,
             DisplaySizeDecode = true, ExifOrientation = true, NativeDimensionRejection = true,
             LargestFrameDecode = true,
             ChangedFeedIconsReloadNativeAndReaderImages = true,
@@ -300,6 +304,114 @@ internal static partial class ParityProbe
             FailedPreferenceWritesRestoreSelectionAndReport = true,
             FeedIconsAlwaysNeverAutomatic = true, FeedIconsColumnException = true,
             FeedIconsSharedSettingsOnUI = true, FeedIconsFailedWriteRecovery = true };
+    }
+
+    private static async Task CheckThumbnailDecodeQueueAsync(MainWindow window)
+    {
+        Article fixtureFor(string filename) => new("account", filename, "feed", filename, "Decode queue fixture",
+            $"<img src='https://thumbnail.test/{filename}'>", null, null, "https://thumbnail.test/article",
+            null, null, null, null, null, null, null, new ArticleStatus(filename, false, false, DateTime.UnixEpoch));
+        var imageData = ThumbnailBitmap(128, 128);
+        using var http = new HttpClient(new ThumbnailHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(imageData) })));
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "decode-queue.db"));
+        using var permits = new SemaphoreSlim(0);
+        var started = new ConcurrentQueue<(string Url, ThumbnailMode Mode)>();
+        int running = 0, failures = 0;
+        await using var service = new ArticleThumbnailService(window.DispatcherQueue,
+            () => (new ArticleThumbnailFinder(database),
+                new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "decode-queue-cache"),
+                    () => true, new Downloader(http))), networkAllowsDownloads: () => true,
+            networkAllowsPrefetch: () => true);
+        service.ThumbnailDownloadFailed += (_, _) => failures++;
+        service.ProbeDecoding = async (url, mode, ct) =>
+        {
+            int count = Interlocked.Increment(ref running);
+            try
+            {
+                Require(count <= 4, "More than four native thumbnail decodes ran simultaneously.");
+                started.Enqueue((url, mode));
+                await permits.WaitAsync(ct);
+            }
+            finally { Interlocked.Decrement(ref running); }
+        };
+        async Task<Task[]> HoldFourAsync(string prefix)
+        {
+            int before = started.Count;
+            var tasks = Enumerable.Range(0, 4)
+                .Select(index => service.ThumbnailAsync(fixtureFor($"{prefix}-{index}.bmp"), ThumbnailMode.Small)).ToArray();
+            await WaitFor(() => Task.FromResult(started.Count == before + 4), "Four independent native decode slots");
+            return tasks;
+        }
+        async Task WaitForQueuedAsync(int count)
+        {
+            await WaitFor(() => Task.FromResult(service.ProbeWaitingDecodeCount == count), "Bounded native decode admission");
+            Require(running == 4, "Queued decode work did not preserve the four active slots.");
+        }
+        var active = await HoldFourAsync("decode-order");
+        var older = fixtureFor("decode-older-prefetch.bmp");
+        var olderPrefetch = service.PrefetchThumbnailAsync(older, ThumbnailMode.Small);
+        await WaitForQueuedAsync(1);
+        var olderVisible = service.ThumbnailAsync(fixtureFor("decode-older-visible.bmp"), ThumbnailMode.Small);
+        await WaitForQueuedAsync(2);
+        var newerPrefetch = service.PrefetchThumbnailAsync(fixtureFor("decode-newer-prefetch.bmp"), ThumbnailMode.Small);
+        await WaitForQueuedAsync(3);
+        var newerVisible = service.ThumbnailAsync(fixtureFor("decode-newer-visible.bmp"), ThumbnailMode.Small);
+        await WaitForQueuedAsync(4);
+        var sameUrlOtherMode = service.ThumbnailAsync(fixtureFor("decode-order-0.bmp"), ThumbnailMode.Large);
+        await WaitForQueuedAsync(5);
+        var promoted = service.ThumbnailAsync(older, ThumbnailMode.Small);
+        const string promotedUrl = "https://thumbnail.test/decode-older-prefetch.bmp";
+        await WaitFor(() => Task.FromResult(service.ProbePendingPriority(promotedUrl, ThumbnailMode.Small)
+            == ThumbnailPriority.Visible), "A visible join promotes its pending native decode");
+        var expected = new[]
+        {
+            (promotedUrl, ThumbnailMode.Small),
+            ("https://thumbnail.test/decode-order-0.bmp", ThumbnailMode.Large),
+            ("https://thumbnail.test/decode-newer-visible.bmp", ThumbnailMode.Small),
+            ("https://thumbnail.test/decode-older-visible.bmp", ThumbnailMode.Small),
+            ("https://thumbnail.test/decode-newer-prefetch.bmp", ThumbnailMode.Small)
+        };
+        for (int index = 0; index < expected.Length; index++)
+        {
+            permits.Release();
+            await WaitFor(() => Task.FromResult(started.Count == 5 + index), "Visible-first newest-first native decode order");
+            Require(started.Last() == expected[index], "A queued decode lost its visible promotion or priority order.");
+        }
+        permits.Release(4);
+        await Task.WhenAll(active.Concat([olderPrefetch, olderVisible, newerPrefetch, newerVisible, sameUrlOtherMode, promoted]));
+        Require(started.Count == 9 && promoted.Result is not null && sameUrlOtherMode.Result is not null,
+            "Coalesced native decodes or independent URL/mode requests were lost or duplicated.");
+
+        active = await HoldFourAsync("decode-overflow-active");
+        var queued = new List<Task>();
+        for (int index = 0; index < 61; index++)
+        {
+            queued.Add(service.PrefetchThumbnailAsync(fixtureFor($"decode-overflow-{index}.bmp"), ThumbnailMode.Small));
+            await WaitForQueuedAsync(Math.Min(index + 1, 60));
+            if (index == 60) await queued[0].WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        Require(started.Count == 13 && failures == 0,
+            "Overflow started a fifth decode or incorrectly reported a dropped task as a failed image.");
+        permits.Release(64);
+        await Task.WhenAll(active.Concat(queued));
+        permits.Release();
+        Require(await service.ThumbnailAsync(fixtureFor("decode-overflow-0.bmp"), ThumbnailMode.Small) is not null
+            && failures == 0, "A dropped decode could not retry from its saved original.");
+
+        active = await HoldFourAsync("decode-shutdown");
+        var pendingShutdown = service.ThumbnailAsync(fixtureFor("decode-shutdown-waiting.bmp"), ThumbnailMode.Small);
+        await WaitForQueuedAsync(1);
+        await service.DisposeAsync();
+        foreach (var task in active.Append(pendingShutdown))
+        {
+            bool canceled = false;
+            try { await task; }
+            catch (OperationCanceledException) { canceled = true; }
+            Require(canceled, "A pending native decode was not canceled and drained at shutdown.");
+        }
+        Require(running == 0 && service.ProbeWaitingDecodeCount == 0,
+            "Shutdown retained an active decode or a queued lease.");
     }
 
     private static async Task CheckChangedFeedIconsAsync(MainWindow window)

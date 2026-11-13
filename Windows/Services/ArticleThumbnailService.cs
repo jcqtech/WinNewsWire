@@ -26,6 +26,16 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     private const int SmallThumbnailMaxPixelSize = 256;
     private const int LargeThumbnailMaxPixelSize = 1200;
     private sealed record CachedThumbnail(string Url, ThumbnailMode Mode, SoftwareBitmapSource Source, long ByteCount);
+    private sealed class PendingThumbnail
+    {
+        internal ThumbnailPriority Priority { get; set; }
+        internal Lazy<Task<SoftwareBitmapSource?>> Work { get; }
+        internal PendingThumbnail(ThumbnailPriority priority, Func<PendingThumbnail, Task<SoftwareBitmapSource?>> load)
+        {
+            Priority = priority;
+            Work = new(() => load(this));
+        }
+    }
     private sealed class InsignificantThumbnailDimensionsException(uint width, uint height)
         : Exception($"Thumbnail dimensions are too small or too narrow ({width}x{height}).");
     private readonly DispatcherQueue _dispatcher;
@@ -36,7 +46,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     private readonly Func<bool> _networkAllowsPrefetch;
     private readonly Dictionary<(string Url, ThumbnailMode Mode), LinkedListNode<CachedThumbnail>> _cache = [];
     private readonly LinkedList<CachedThumbnail> _cacheOrder = [];
-    private readonly ConcurrentDictionary<(string Url, ThumbnailMode Mode), Lazy<Task<SoftwareBitmapSource?>>> _pending = [];
+    private readonly Dictionary<(string Url, ThumbnailMode Mode), PendingThumbnail> _pending = [];
+    private readonly ThumbnailTaskQueue _decodeQueue = new(4, 60);
     private readonly ConcurrentDictionary<string, Lazy<Task>> _discovering = new(StringComparer.Ordinal);
     private readonly object _gate = new();
     private readonly HashSet<Task> _operations = [];
@@ -59,6 +70,12 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal int ProbeDecodeError;
     internal int ProbeUrlResolutions;
     internal Action? ProbeLoadingSavedUrls;
+    internal Func<string, ThumbnailMode, CancellationToken, Task>? ProbeDecoding;
+    internal int ProbeWaitingDecodeCount => _decodeQueue.WaitingCount;
+    internal ThumbnailPriority? ProbePendingPriority(string url, ThumbnailMode mode)
+    {
+        lock (_gate) return _pending.TryGetValue((url, mode), out var pending) ? pending.Priority : null;
+    }
     internal readonly ConcurrentDictionary<string, ThumbnailPriority> ProbeDownloadPriorities = new(StringComparer.Ordinal);
 #endif
 
@@ -243,14 +260,32 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             var backend = await _backend.Value.ConfigureAwait(false);
             string imageUrl = url;
             var key = (imageUrl, mode);
-            var pending = _pending.GetOrAdd(key, _ => new(() => LoadImageAsync(imageUrl, mode, article.Title,
-                backend.Finder, backend.Downloads, priority, ct)));
+            PendingThumbnail pending;
+            lock (_gate)
+            {
+                if (_pending.TryGetValue(key, out var existing)) pending = existing;
+                else
+                {
+                    pending = new(priority, work => LoadImageAsync(imageUrl, mode, article.Title,
+                        backend.Finder, backend.Downloads, work, ct));
+                    _pending.Add(key, pending);
+                }
+                if (priority == ThumbnailPriority.Visible)
+                {
+                    pending.Priority = priority;
+                    _decodeQueue.Prioritize(DecodeKey(imageUrl, mode));
+                }
+            }
             if (priority == ThumbnailPriority.Visible) backend.Downloads.PrioritizeDownload(url);
             try
             {
-                if (await pending.Value.ConfigureAwait(false) is { } image) return image;
+                if (await pending.Work.Value.ConfigureAwait(false) is { } image) return image;
             }
-            finally { _pending.TryRemove(new KeyValuePair<(string, ThumbnailMode), Lazy<Task<SoftwareBitmapSource?>>>(key, pending)); }
+            finally
+            {
+                lock (_gate)
+                    if (_pending.TryGetValue(key, out var current) && ReferenceEquals(current, pending)) _pending.Remove(key);
+            }
             url = await ResolveUrlAsync(article, mode, baseUrl, ct).ConfigureAwait(false);
         }
         return null;
@@ -278,8 +313,10 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             throw new InvalidOperationException("The thumbnail UI dispatcher is unavailable.");
     }
 
+    private static string DecodeKey(string url, ThumbnailMode mode) => $"{(int)mode}:{url}";
+
     private async Task<SoftwareBitmapSource?> LoadImageAsync(string url, ThumbnailMode mode, string? title,
-        ArticleThumbnailFinder finder, ThumbnailDownloader downloads, ThumbnailPriority priority, CancellationToken ct)
+        ArticleThumbnailFinder finder, ThumbnailDownloader downloads, PendingThumbnail pending, CancellationToken ct)
     {
         var cached = await OnDispatcherAsync(() =>
         {
@@ -294,11 +331,20 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             await downloads.ImageWasUsedAsync(url, ct).ConfigureAwait(false);
             return cached;
         }
+        ThumbnailPriority priority;
+        lock (_gate) priority = pending.Priority;
 #if PARITY_PROBE
         ProbeDownloadPriorities[url] = priority;
 #endif
         var downloaded = await downloads.SourceAsync(url, ct, title, priority).ConfigureAwait(false);
         if (downloaded is null) return null;
+        ValueTask<IDisposable?> admission;
+        lock (_gate) admission = _decodeQueue.AcquireAsync(ct, DecodeKey(url, mode), pending.Priority);
+        using var lease = await admission.ConfigureAwait(false);
+        if (lease is null) return null;
+#if PARITY_PROBE
+        if (ProbeDecoding is { } decoding) await decoding(url, mode, ct).ConfigureAwait(false);
+#endif
         SoftwareBitmap decoded;
         try { decoded = await DecodeAsync(downloaded.Data, mode, ct).ConfigureAwait(false); }
         catch (Exception error) when (error is InsignificantThumbnailDimensionsException || IsImageDecodingError(error))

@@ -2,16 +2,16 @@ namespace WinNewsWire.Images;
 
 public enum ThumbnailPriority { Visible, Prefetch }
 
-internal sealed class ThumbnailTaskQueue
+public sealed class ThumbnailTaskQueue
 {
     private readonly object _gate = new();
     private readonly int _maximumRunningCount;
     private readonly int _maximumWaitingCount;
     private readonly LinkedList<Waiter> _waiting = [];
     private int _running;
-    internal int WaitingCount { get { lock (_gate) return _waiting.Count; } }
+    public int WaitingCount { get { lock (_gate) return _waiting.Count; } }
 
-    internal ThumbnailTaskQueue(int maximumRunningCount, int maximumWaitingCount = 60)
+    public ThumbnailTaskQueue(int maximumRunningCount, int maximumWaitingCount = 60)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumRunningCount);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumWaitingCount);
@@ -19,7 +19,7 @@ internal sealed class ThumbnailTaskQueue
         _maximumWaitingCount = maximumWaitingCount;
     }
 
-    internal ValueTask<IDisposable?> AcquireAsync(CancellationToken ct = default, string? key = null,
+    public ValueTask<IDisposable?> AcquireAsync(CancellationToken ct = default, string? key = null,
         ThumbnailPriority priority = ThumbnailPriority.Visible)
     {
         if (priority is not (ThumbnailPriority.Visible or ThumbnailPriority.Prefetch))
@@ -52,7 +52,7 @@ internal sealed class ThumbnailTaskQueue
         }
     }
 
-    internal void Prioritize(string key)
+    public void Prioritize(string key)
     {
         lock (_gate)
         {
