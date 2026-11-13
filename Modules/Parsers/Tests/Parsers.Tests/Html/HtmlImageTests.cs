@@ -1,4 +1,3 @@
-using System.Text;
 using WinNewsWire.Parsers;
 using Xunit;
 
@@ -119,10 +118,10 @@ public class HtmlImageTests
             <img src="/first.jpg"><img src="https://example.com/first.jpg">
             <img src="/tiny.gif" width="1" height="1"><img src="/second.jpg"><img src="/third.jpg">
             """;
-        var images = HtmlImageParser.SignificantImages(new ParserData("https://example.com/", Encoding.UTF8.GetBytes(html)), 2);
+        var images = HtmlImageParser.SignificantImages(html, new Uri("https://example.com/"), 2);
         Assert.Equal(["https://example.com/first.jpg", "https://example.com/second.jpg"], images.Select(image => image.Url));
     }
 
     private static HtmlImage? First(string html)
-        => HtmlImageParser.SignificantImages(new ParserData("https://example.com/posts/1", Encoding.UTF8.GetBytes(html)), 1).FirstOrDefault();
+        => HtmlImageParser.SignificantImages(html, new Uri("https://example.com/posts/1"), 1).FirstOrDefault();
 }

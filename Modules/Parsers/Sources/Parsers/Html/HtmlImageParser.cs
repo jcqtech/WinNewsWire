@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using WinNewsWire.Parsers.Xml;
 
 namespace WinNewsWire.Parsers;
@@ -7,12 +8,12 @@ public sealed record HtmlImage(string Url, int? Width, int? Height);
 
 public static class HtmlImageParser
 {
-    public static IReadOnlyList<HtmlImage> SignificantImages(ParserData parserData, int maximumCount)
+    public static IReadOnlyList<HtmlImage> SignificantImages(string html, Uri? baseUrl, int maximumCount)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maximumCount);
         if (maximumCount == 0) return [];
-        var receiver = new ImageParserDelegate(Uri.TryCreate(parserData.Url, UriKind.Absolute, out var baseUrl) ? baseUrl : null, maximumCount);
-        new HtmlScanner(receiver).Parse(parserData.Data);
+        var receiver = new ImageParserDelegate(baseUrl, maximumCount);
+        new HtmlScanner(receiver).Parse(Encoding.UTF8.GetBytes(html));
         return receiver.Images;
     }
 
