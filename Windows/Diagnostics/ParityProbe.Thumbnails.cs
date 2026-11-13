@@ -34,6 +34,7 @@ internal static partial class ParityProbe
         var requested = new ConcurrentQueue<string>();
         var heldStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseMissing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var http = new HttpClient(new ThumbnailHandler(async (request, ct) =>
         {
             Interlocked.Increment(ref requests);
@@ -43,6 +44,8 @@ internal static partial class ParityProbe
                 heldStarted.TrySetResult();
                 await releaseHeld.Task.WaitAsync(ct);
             }
+            if (request.RequestUri.AbsolutePath == "/missing.bmp")
+                await releaseMissing.Task.WaitAsync(ct);
             return new HttpResponseMessage(request.RequestUri.AbsolutePath == "/missing.bmp"
                 ? HttpStatusCode.NotFound : HttpStatusCode.OK) { Content = new ByteArrayContent(imageData) };
         }));
@@ -130,7 +133,7 @@ internal static partial class ParityProbe
         Require(await service.ThumbnailAsync(article, ThumbnailMode.Small) is not null && requests == downloaded,
             "Offline thumbnail display did not reuse disk data.");
         networkAllowed = true;
-        await CheckTimelineThumbnailsAsync(window, service, requested, heldStarted, releaseHeld);
+        await CheckTimelineThumbnailsAsync(window, service, requested, heldStarted, releaseHeld, releaseMissing);
         Require(failureOnUI && failures == 1, "Permanent thumbnail failures were not dispatched once to the UI.");
         await service.DisposeAsync();
         Require(service.ProbeCacheBytes == 0, "Shutdown retained the decoded thumbnail cache.");
@@ -143,17 +146,22 @@ internal static partial class ParityProbe
             VisibleNativePixels = true, AspectFill = true, RoundedClipping = true, ThemedPlaceholder = true,
             RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
             TimelineRows = true, HTMLDiscovery = true, FailedCandidateFallback = true, FailureNotificationsOnUI = true, BoundedLookahead = true,
-            RecycledRowRejectsLateImage = true, ColumnLayoutExcludesThumbnails = true };
+            RecycledRowRejectsLateImage = true, ColumnLayoutExcludesThumbnails = true,
+            LargeRows = true, LargeModePersists = true, SharedModeNotificationsOnUI = true,
+            LargeMenuState = true, WidthDependentLargeRows = true, ImagelessRowsStayCompact = true,
+            ModeChangesPreserveSelection = true, FailureRefreshTargetsAffectedRows = true };
     }
 
     private static async Task CheckTimelineThumbnailsAsync(MainWindow window, ArticleThumbnailService service,
-        ConcurrentQueue<string> requests, TaskCompletionSource heldStarted, TaskCompletionSource releaseHeld)
+        ConcurrentQueue<string> requests, TaskCompletionSource heldStarted, TaskCompletionSource releaseHeld,
+        TaskCompletionSource releaseMissing)
     {
         var content = window.ProbeContent;
         var model = content.ViewModel;
         var previousItems = model.ArticleItems;
         var previousSelection = model.SelectedArticle;
         bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
+        bool previousLarge = Core.AppDefaults.Shared.TimelineShowsLargeThumbnails;
         bool previousUnified = model.IsUnifiedLayout;
         var list = (ListView)content.FindName("ArticleListView");
         Article ArticleFor(int index, string? image, string? html = null) =>
@@ -166,13 +174,14 @@ internal static partial class ParityProbe
             FeedTitle = "Thumbnail fixtures", IsRead = true
         };
         var articles = Enumerable.Range(0, 80).Select(index => ArticleFor(index,
-            index == 0 ? "https://thumbnail.test/held.bmp" : index == 1 ? null
+            index == 0 ? "https://thumbnail.test/held.bmp" : index is 1 or 3 ? null
                 : index == 2 ? "https://thumbnail.test/missing.bmp" : $"https://thumbnail.test/timeline-photo-{index}.bmp",
             index is 1 or 2 ? $"<img src='https://thumbnail.test/timeline-photo-{index}.bmp'>" : null)).ToArray();
         var rows = new ObservableCollection<Models.FeedItem>(articles.Select(Row));
         try
         {
             Core.AppDefaults.Shared.UseColumnLayout = false;
+            Core.AppDefaults.Shared.TimelineShowsLargeThumbnails = false;
             model.IsUnifiedLayout = false;
             model.SelectedArticle = null;
             content.ProbeSetThumbnailService(service);
@@ -182,9 +191,15 @@ internal static partial class ParityProbe
             await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>()
                 .Any(view => view.Tag is Article { ArticleID: "timeline-thumbnail-1" } && view.ImageSource is not null)),
                 "HTML-only timeline thumbnail");
+            var heldView = Descendants(list).OfType<ThumbnailView>().Single(view =>
+                view.Tag is Article { ArticleID: "timeline-thumbnail-0" });
+            var heldRequest = content.ProbeThumbnailRequestToken(heldView);
+            releaseMissing.TrySetResult();
             await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>()
                 .Any(view => view.Tag is Article { ArticleID: "timeline-thumbnail-2" } && view.ImageSource is not null)),
                 "Failed provided thumbnail fallback");
+            Require(!heldRequest.IsCancellationRequested,
+                "A failed thumbnail canceled an unrelated visible row's pending request.");
             var panel = (ItemsStackPanel)list.ItemsPanelRoot;
             int visibleCount = panel.LastVisibleIndex - panel.FirstVisibleIndex + 1;
             int lookaheadEnd = panel.LastVisibleIndex + 1 + visibleCount;
@@ -195,8 +210,6 @@ internal static partial class ParityProbe
             Require(fetched.All(index => index < lookaheadEnd) && fetched.Length < rows.Count,
                 "Thumbnail prefetch downloaded beyond the next screenful.");
 
-            var heldView = Descendants(list).OfType<ThumbnailView>().Single(view =>
-                view.Tag is Article { ArticleID: "timeline-thumbnail-0" });
             Require(heldView.Visibility == Visibility.Visible && heldView.ImageSource is null
                 && heldView.Width > 0 && heldView.Width <= 76,
                 "A pending timeline thumbnail did not reserve a bounded square placeholder.");
@@ -235,13 +248,73 @@ internal static partial class ParityProbe
                         Requests = requests.ToArray() }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
                 throw;
             }
+
+            var largeMenu = Descendants(window.Content).OfType<MenuBar>().SelectMany(bar => bar.Items)
+                .OfType<MenuBarItem>().SelectMany(item => item.Items).OfType<ToggleMenuFlyoutItem>()
+                .Single(item => item.Name == "MenuLargeThumbnails");
+            using var peer = new ViewModels.MainViewModel();
+            int modeNotifications = 0;
+            bool modeNotificationsOnUI = true;
+            peer.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName != nameof(peer.TimelineShowsLargeThumbnails)) return;
+                modeNotifications++;
+                modeNotificationsOnUI &= window.DispatcherQueue.HasThreadAccess;
+            };
+            model.SelectedArticle = rows[0];
+            list.ScrollIntoView(rows[0], ScrollIntoViewAlignment.Leading);
+            await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>()
+                .Any(view => view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && view.ImageSource is not null)),
+                "Small row before mode change");
+            var originalSmall = Descendants(list).OfType<ThumbnailView>().Single(view =>
+                view.Tag is Article { ArticleID: "timeline-thumbnail-0" }).ImageSource;
+            await Task.Run(() => Core.AppDefaults.Shared.TimelineShowsLargeThumbnails = true);
+            await WaitFor(() => Task.FromResult(modeNotifications > 0 && peer.TimelineShowsLargeThumbnails
+                && largeMenu.IsChecked && largeMenu.IsEnabled), "Shared large-thumbnail mode");
+            Require(modeNotificationsOnUI && new Core.AppDefaults().TimelineShowsLargeThumbnails,
+                "Large-thumbnail mode was not persisted or a peer notification ran off the UI thread.");
+            await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>().Any(view =>
+                view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && Grid.GetRow(view) == 1
+                && Grid.GetColumnSpan(view) == 4 && view.ActualHeight > 76 && view.ImageSource is not null
+                && !ReferenceEquals(view.ImageSource, originalSmall))), "Large thumbnail below row text");
+            Require(ReferenceEquals(model.SelectedArticle, rows[0]), "Changing thumbnail mode lost article selection.");
+            var largeView = Descendants(list).OfType<ThumbnailView>().Single(view =>
+                view.Tag is Article { ArticleID: "timeline-thumbnail-0" });
+            var largeRow = (Grid)largeView.Parent;
+            double previousWidth = largeRow.Width;
+            try
+            {
+                largeRow.Width = 300;
+                await WaitFor(() => Task.FromResult(Math.Abs(largeView.ActualWidth - 300) < 1
+                    && Math.Abs(largeView.ActualHeight - 150) < 1), "Large thumbnail responds to row width");
+            }
+            finally { largeRow.Width = previousWidth; }
+
+            list.ScrollIntoView(rows[3], ScrollIntoViewAlignment.Leading);
+            await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>().Any(view =>
+                view.Tag is Article { ArticleID: "timeline-thumbnail-3" } && view.Visibility == Visibility.Collapsed
+                && ((Grid)view.Parent).ActualHeight < 100)), "Image-less large-mode row remains compact");
+            Core.AppDefaults.Shared.UseColumnLayout = true;
+            await WaitFor(() => Task.FromResult(!largeMenu.IsEnabled && largeMenu.IsChecked
+                && !Descendants(list).OfType<ThumbnailView>().Any()), "Large thumbnails disabled in columns");
+            Core.AppDefaults.Shared.UseColumnLayout = false;
+            await Task.Run(() => Core.AppDefaults.Shared.TimelineShowsLargeThumbnails = false);
+            list.ScrollIntoView(rows[0], ScrollIntoViewAlignment.Leading);
+            await WaitFor(() => Task.FromResult(modeNotifications == 2 && !peer.TimelineShowsLargeThumbnails
+                && !largeMenu.IsChecked && largeMenu.IsEnabled && Descendants(list).OfType<ThumbnailView>().Any(view =>
+                    view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && Grid.GetRow(view) == 0
+                    && Grid.GetColumn(view) == 3 && view.ActualHeight <= 76 && view.ImageSource is not null)),
+                "Return to small thumbnails without reopening the window");
+            Require(ReferenceEquals(model.SelectedArticle, rows[0]), "Restoring small mode lost article selection.");
         }
         finally
         {
             releaseHeld.TrySetResult();
+            releaseMissing.TrySetResult();
             model.ArticleItems = previousItems;
             model.SelectedArticle = previousSelection;
             Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
+            Core.AppDefaults.Shared.TimelineShowsLargeThumbnails = previousLarge;
             model.IsUnifiedLayout = previousUnified;
             content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
         }

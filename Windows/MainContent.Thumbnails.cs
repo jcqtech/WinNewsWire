@@ -26,6 +26,8 @@ public sealed partial class MainContent
         internal Article? Article { get; set; }
         internal bool HasThumbnail { get; set; }
         internal bool ImageRequested { get; set; }
+        internal string? Url { get; set; }
+        internal ThumbnailMode Mode { get; set; }
     }
 
     private readonly Dictionary<ThumbnailView, ThumbnailBinding> _timelineThumbnails = [];
@@ -37,7 +39,12 @@ public sealed partial class MainContent
     private bool _visibleThumbnailRefreshQueued;
     private (int Start, int End)? _thumbnailLookahead;
     private bool ShowsTimelineThumbnails => !_shuttingDown && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout;
+    private ThumbnailMode TimelineThumbnailMode => ViewModel.TimelineShowsLargeThumbnails ? ThumbnailMode.Large : ThumbnailMode.Small;
 #if PARITY_PROBE
+    internal CancellationToken ProbeThumbnailRequestToken(ThumbnailView view)
+        => _timelineThumbnails[view].Request?.Token
+            ?? throw new InvalidOperationException("The thumbnail view has no active request.");
+
     internal object ProbeTimelineThumbnailState => new
     {
         ShowsTimelineThumbnails,
@@ -103,7 +110,7 @@ public sealed partial class MainContent
             if (!ShowsTimelineThumbnails) return;
             var articles = ViewModel.ArticleItems.Select(item => item.SourceArticle).OfType<Article>().ToArray();
             if (articles.Length > 0) TrackThumbnailTask(() => _thumbnailService.DiscoverAsync(articles, _thumbnailLifetime.Token));
-            PrefetchTimelineThumbnails();
+            QueueVisibleThumbnailRefresh();
         }))
         {
             _thumbnailRefreshQueued = false;
@@ -118,9 +125,12 @@ public sealed partial class MainContent
             RefreshTimelineThumbnail((ThumbnailView)element));
         _timelineThumbnails.Add(view, new(callback));
         if (view.Parent is Grid grid && grid.Children.OfType<StackPanel>().FirstOrDefault() is { } text)
+        {
             text.SizeChanged += ThumbnailTextSizeChanged;
+            grid.SizeChanged += ThumbnailRowSizeChanged;
+        }
         RefreshTimelineThumbnail(view);
-        PrefetchTimelineThumbnails();
+        QueueVisibleThumbnailRefresh();
     }
 
     private void TimelineThumbnail_Unloaded(object sender, RoutedEventArgs args)
@@ -135,7 +145,10 @@ public sealed partial class MainContent
         binding.Request?.Dispose();
         view.UnregisterPropertyChangedCallback(FrameworkElement.TagProperty, binding.TagCallback);
         if (view.Parent is Grid grid && grid.Children.OfType<StackPanel>().FirstOrDefault() is { } text)
+        {
             text.SizeChanged -= ThumbnailTextSizeChanged;
+            grid.SizeChanged -= ThumbnailRowSizeChanged;
+        }
         view.ImageSource = null;
         view.Visibility = Visibility.Collapsed;
     }
@@ -151,6 +164,7 @@ public sealed partial class MainContent
         {
             binding.Article = null;
             binding.HasThumbnail = false;
+            binding.Url = null;
             view.ImageSource = null;
             view.Visibility = Visibility.Collapsed;
             return;
@@ -159,8 +173,14 @@ public sealed partial class MainContent
         {
             binding.Article = article;
             binding.HasThumbnail = false;
+            binding.Url = null;
             view.ImageSource = null;
             view.Visibility = Visibility.Collapsed;
+        }
+        if (binding.Mode != TimelineThumbnailMode)
+        {
+            binding.Mode = TimelineThumbnailMode;
+            view.ImageSource = null;
         }
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_thumbnailLifetime.Token);
         binding.Request = cancellation;
@@ -185,10 +205,12 @@ public sealed partial class MainContent
 
     private async Task LoadTimelineThumbnailAsync(ThumbnailView view, ThumbnailBinding binding, Article article, CancellationToken ct)
     {
+        var mode = TimelineThumbnailMode;
         bool IsCurrent() => !ct.IsCancellationRequested && ShowsTimelineThumbnails && ReferenceEquals(view.Tag, article)
-            && _timelineThumbnails.TryGetValue(view, out var current) && ReferenceEquals(current, binding);
-        var url = await _thumbnailService!.ThumbnailUrlAsync(article, ThumbnailMode.Small, ct);
+            && mode == TimelineThumbnailMode && _timelineThumbnails.TryGetValue(view, out var current) && ReferenceEquals(current, binding);
+        var url = await _thumbnailService!.ThumbnailUrlAsync(article, mode, ct);
         if (!IsCurrent()) return;
+        binding.Url = url;
         binding.HasThumbnail = url is not null;
         if (url is null)
         {
@@ -200,16 +222,27 @@ public sealed partial class MainContent
         UpdateThumbnailSize(view);
         if (!IsVisibleTimelineThumbnail(view)) return;
         binding.ImageRequested = true;
-        var image = await _thumbnailService.ThumbnailAsync(article, ThumbnailMode.Small, ct);
+        var image = await _thumbnailService.ThumbnailAsync(article, mode, ct);
         if (!IsCurrent()) return;
         view.ImageSource = image;
-        if (image is null && await _thumbnailService.ThumbnailUrlAsync(article, ThumbnailMode.Small, ct) is null && IsCurrent())
+        if (image is null && await _thumbnailService.ThumbnailUrlAsync(article, mode, ct) is null && IsCurrent())
             view.Visibility = Visibility.Collapsed;
     }
 
-    private static void UpdateThumbnailSize(ThumbnailView view)
+    private void UpdateThumbnailSize(ThumbnailView view)
     {
         if (view.Visibility != Visibility.Visible || view.Parent is not Grid grid) return;
+        bool large = TimelineThumbnailMode == ThumbnailMode.Large;
+        Grid.SetColumn(view, large ? 0 : 3);
+        Grid.SetColumnSpan(view, large ? 4 : 1);
+        Grid.SetRow(view, large ? 1 : 0);
+        view.Margin = large ? new Thickness(0, 8, 0, 0) : new Thickness(0);
+        if (large)
+        {
+            view.Width = double.NaN;
+            view.Height = Math.Floor(grid.ActualWidth / 2);
+            return;
+        }
         double iconHeight = grid.Children.OfType<IconView>().FirstOrDefault()?.ActualHeight ?? 0;
         double textHeight = grid.Children.OfType<StackPanel>().FirstOrDefault()?.ActualHeight ?? 0;
         double dimension = Math.Min(76, Math.Max(iconHeight, textHeight));
@@ -222,22 +255,28 @@ public sealed partial class MainContent
             foreach (var view in grid.Children.OfType<ThumbnailView>()) UpdateThumbnailSize(view);
     }
 
+    private void ThumbnailRowSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        if (sender is Grid grid)
+            foreach (var view in grid.Children.OfType<ThumbnailView>()) UpdateThumbnailSize(view);
+    }
+
     private void TimelineThumbnailUrlsAvailable(object? sender, IReadOnlySet<string> ids)
     {
         if (!ShowsTimelineThumbnails) return;
         foreach (var view in _timelineThumbnails.Keys.ToArray())
             if (view.Tag is Article article && ids.Contains(article.ArticleID)) RefreshTimelineThumbnail(view);
         _thumbnailLookahead = null;
-        PrefetchTimelineThumbnails();
+        QueueVisibleThumbnailRefresh();
     }
 
     private void TimelineThumbnailDownloadFailed(object? sender, string url)
     {
         if (!ShowsTimelineThumbnails) return;
-        foreach (var view in _timelineThumbnails.Keys.ToArray())
-            if (IsVisibleTimelineThumbnail(view)) RefreshTimelineThumbnail(view);
+        foreach (var pair in _timelineThumbnails.ToArray())
+            if (string.Equals(pair.Value.Url, url, StringComparison.Ordinal)) RefreshTimelineThumbnail(pair.Key);
         _thumbnailLookahead = null;
-        PrefetchTimelineThumbnails();
+        QueueVisibleThumbnailRefresh();
     }
 
     private bool IsVisibleTimelineThumbnail(ThumbnailView view)
@@ -252,7 +291,6 @@ public sealed partial class MainContent
     private void TimelineThumbnailsViewChanged(object? sender, ScrollViewerViewChangedEventArgs args)
     {
         QueueVisibleThumbnailRefresh();
-        PrefetchTimelineThumbnails();
     }
 
     private void QueueVisibleThumbnailRefresh()
@@ -287,7 +325,7 @@ public sealed partial class MainContent
         _thumbnailLookahead = (start, end);
         for (int index = start; index < end; index++)
             if (ViewModel.ArticleItems[index].SourceArticle is { } article)
-                TrackThumbnailTask(async () => { await _thumbnailService.ThumbnailAsync(article, ThumbnailMode.Small, _thumbnailLifetime.Token); });
+                TrackThumbnailTask(async () => { await _thumbnailService.ThumbnailAsync(article, TimelineThumbnailMode, _thumbnailLifetime.Token); });
     }
 
     private void TrackThumbnailTask(Func<Task> work)

@@ -466,6 +466,16 @@ public sealed partial class MainWindow : Window
     private void Menu_ToggleSidebar(object sender, RoutedEventArgs e)
         => MainContentControl.ViewModel.IsSidebarVisible = MenuShowSidebar.IsChecked;
 
+    private void Menu_ToggleLargeThumbnails(object sender, RoutedEventArgs e)
+    {
+        try { Core.AppDefaults.Shared.TimelineShowsLargeThumbnails = MenuLargeThumbnails.IsChecked; }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
+        {
+            ReportStateError("Save timeline thumbnail mode", error);
+            SyncMenuToggles();
+        }
+    }
+
     private void Menu_ToggleStatusBar(object sender, RoutedEventArgs e)
     {
         MainContentControl.SetStatusBarVisible(MenuShowStatusBar.IsChecked);
@@ -851,6 +861,9 @@ public sealed partial class MainWindow : Window
         if (MenuUnifiedLayout is not null) MenuUnifiedLayout.IsChecked = vm.IsUnifiedLayout;
         MenuFullScreen.IsChecked = IsFullScreen;
         MenuColumnLayout.IsChecked = vm.UseColumnLayout;
+        MenuLargeThumbnails.Text = AppStrings.Get("TimelineShowLargeThumbnails");
+        MenuLargeThumbnails.IsChecked = vm.TimelineShowsLargeThumbnails;
+        MenuLargeThumbnails.IsEnabled = !vm.UseColumnLayout;
         if (MenuShowSidebar is not null) MenuShowSidebar.IsChecked = vm.IsSidebarVisible;
         if (MenuReaderMode is not null) MenuReaderMode.IsChecked = vm.IsReaderMode;
         MenuSortDate.IsChecked = vm.SortParameters.Key == ArticleSortKey.Date;
@@ -887,7 +900,8 @@ public sealed partial class MainWindow : Window
         vm.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName is nameof(vm.SortParameters) or nameof(vm.IsReaderMode) or nameof(vm.IsSidebarVisible)
-                or nameof(vm.IsUnifiedLayout) or nameof(vm.UseColumnLayout) or nameof(vm.SelectedSidebarItem) or nameof(vm.SelectedSidebarItems)
+                or nameof(vm.IsUnifiedLayout) or nameof(vm.UseColumnLayout) or nameof(vm.TimelineShowsLargeThumbnails)
+                or nameof(vm.SelectedSidebarItem) or nameof(vm.SelectedSidebarItems)
                 or nameof(vm.IsReadFiltered) or nameof(vm.IsSidebarReadFiltered) or nameof(vm.CanToggleReadFilter) or nameof(vm.SearchAllAccounts)
                 or nameof(vm.SelectedArticles) or nameof(vm.SelectedArticle)
                 or nameof(vm.ArticleListUnreadCount) or nameof(vm.ArticleItems)

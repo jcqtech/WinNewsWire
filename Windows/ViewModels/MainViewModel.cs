@@ -78,6 +78,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     internal event EventHandler? SelectionNavigationStarting;
     public ArticleSortParameters SortParameters { get; private set; }
     public bool UseColumnLayout => AppDefaults.Shared.UseColumnLayout;
+    public bool TimelineShowsLargeThumbnails => AppDefaults.Shared.TimelineShowsLargeThumbnails;
     public UnreadCountDisplay UnreadDisplayMode => _unreadDisplayMode;
     public bool ShowHeaderUnreadCount => _unreadDisplayMode == UnreadCountDisplay.Count && ArticleListUnreadCount > 0;
     public string HeaderUnreadCountText => ShowHeaderUnreadCount ? _unreadDisplayMode.TextFor(ArticleListUnreadCount)! : "";
@@ -204,6 +205,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (key is WinNewsWire.Core.AppDefaults.Key.ArticleTextSize or WinNewsWire.Core.AppDefaults.Key.CurrentThemeName)
             RefreshArticleHtml();
         if (key == AppDefaults.Key.UseColumnLayout) OnPropertyChanged(nameof(UseColumnLayout));
+        if (key == AppDefaults.Key.TimelineShowsLargeThumbnails) OnPropertyChanged(nameof(TimelineShowsLargeThumbnails));
         if (key == AppShared.Sidebar.SidebarFeedOrder.PreferenceKey) BuildSidebar();
         if (key == AppDefaultsSharedExtensions.UnreadCountDisplayKey)
         {

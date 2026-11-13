@@ -1005,7 +1005,8 @@ public sealed partial class MainContent : UserControl
     {
         if (_shuttingDown) return;
         if (e.PropertyName == nameof(ViewModel.ArticleItems)) ObserveThumbnailItems();
-        if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout))
+        if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout)
+            or nameof(ViewModel.TimelineShowsLargeThumbnails))
             QueueTimelineThumbnailRefresh();
         if (e.PropertyName is nameof(ViewModel.SidebarStatus) or nameof(ViewModel.SelectedArticle)
             or nameof(ViewModel.HoveredLink) or nameof(ViewModel.IsSidebarVisible) or nameof(ViewModel.IsUnifiedLayout))

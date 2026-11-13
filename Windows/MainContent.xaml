@@ -509,6 +509,10 @@
                                 <DataTemplate x:DataType="models:FeedItem">
                                     <Grid ColumnSpacing="10"
                                           ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
