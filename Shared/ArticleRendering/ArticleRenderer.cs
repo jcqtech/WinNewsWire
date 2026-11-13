@@ -13,7 +13,7 @@ public enum ArticleTextSize { Small, Medium, Large, XLarge, XXLarge }
 public sealed record ExtractedArticle(string? Title, string? Author, string? DatePublished, string? Content, string? Url);
 public sealed record ArticleRendering(string Style, string Html, string Title, string BaseUrl, string? ThemeFolder = null);
 
-public static class ArticleRenderer
+public static partial class ArticleRenderer
 {
     private static readonly Regex LegacyMacro = new(@"\[\[\[([A-Za-z_]+)\]\]\]", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex AppleFontFamily = new(@"(font-family\s*:\s*)-apple-system(?=\s*[,;])", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -72,6 +72,10 @@ public static class ArticleRenderer
             ["styleSheet"] = style
         };
         AddDateSubstitutions(substitutions, article.LogicalDatePublished());
+        var enclosures = EnclosuresHtml(article.Attachments, body, article.RawImageLink, baseUrl);
+        if (theme.TemplateHtml.Contains("[[enclosures]]", StringComparison.Ordinal))
+            substitutions["enclosures"] = enclosures;
+        else substitutions["body"] = body + enclosures;
         var template = LegacyMacro.Replace(theme.TemplateHtml, match => substitutions.ContainsKey(match.Groups[1].Value)
             ? "[[" + match.Groups[1].Value + "]]" : match.Value);
         return new(style, MacroProcessor.RenderedTextWith(template, substitutions), title, baseUrl, ThemeFolder(theme));

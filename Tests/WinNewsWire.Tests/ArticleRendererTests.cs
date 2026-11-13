@@ -8,6 +8,42 @@ namespace WinNewsWire.AppShared.Tests;
 
 public sealed class ArticleRendererTests
 {
+    [Theory]
+    [InlineData("[[body]]")]
+    [InlineData("[[body]]|[[enclosures]]")]
+    public void EnclosuresRenderWithEscapedCaptionsAndMetadata(string template)
+    {
+        var attachments = new HashSet<Attachment>
+        {
+            Attachment.Create(null, "https://example.com/audio.mp3?a=1&b=2", "audio/mpeg", "<Episode>", 54919661, 6849)!,
+            Attachment.Create(null, "https://example.com/video.mp4", null, null, null, null, 640, 360)!,
+            Attachment.Create(null, "https://example.com/photo.jpg", "image/jpeg", null, null, null, 800, 600)!,
+            Attachment.Create(null, "https://example.com/file.exe", null, "Not playable", null, null)!
+        };
+        var rendering = ArticleRenderer.Render(Article(attachments: attachments), theme: Theme(template));
+        Assert.Contains("<audio controls preload=\"none\" src=\"https://example.com/audio.mp3?a=1&amp;b=2\"", rendering.Html);
+        Assert.Contains("&lt;Episode&gt;", rendering.Html);
+        Assert.Contains("1:54:09", rendering.Html);
+        Assert.Contains("<video controls preload=\"metadata\" playsinline src=\"https://example.com/video.mp4\" width=\"640\" height=\"360\"", rendering.Html);
+        Assert.Contains("<img src=\"https://example.com/photo.jpg\" alt=\"\" width=\"800\" height=\"600\"", rendering.Html);
+        Assert.DoesNotContain("file.exe", rendering.Html);
+        Assert.DoesNotContain("[[", rendering.Html);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(rendering.Html, "<audio "));
+    }
+
+    [Fact]
+    public void EnclosuresSkipEmbeddedMediaAndUnsafeUrls()
+    {
+        var attachments = new HashSet<Attachment>
+        {
+            Attachment.Create(null, "https://example.com/photo.jpg?a=1&b=2", "image/jpeg", null, null, null)!,
+            Attachment.Create(null, "javascript:alert(1)", "image/jpeg", null, null, null)!,
+            Attachment.Create(null, "file:///C:/private/video.mp4", "video/mp4", null, null, null)!
+        };
+        const string body = "<img src=\"https://example.com/photo.jpg?a=1&amp;b=2\">";
+        Assert.Equal(body, ArticleRenderer.Render(Article(body: body, attachments: attachments), theme: Theme()).Html);
+    }
+
     [Fact]
     public void DefaultTemplateUsesTheNativeMacroNames()
     {
@@ -201,9 +237,10 @@ public sealed class ArticleRendererTests
     private static ArticleTheme Theme(string template = "[[body]]", string style = "")
         => new("(test)", isAppTheme: true) { TemplateHtml = template, StylesheetCss = style };
     private static Feed Feed() => new("account", "feed", "https://example.com/feed") { Name = "My Feed", HomePageUrl = "https://example.com/" };
-    private static Article Article(string? title = "Article", string? body = "<p>Body</p>", string? url = "https://example.com/article", string? external = null, string? text = null)
+    private static Article Article(string? title = "Article", string? body = "<p>Body</p>", string? url = "https://example.com/article", string? external = null, string? text = null,
+        IReadOnlySet<Attachment>? attachments = null)
         => new("account", "article", "feed", "unique", title, body, text, null, url, external, null, null,
-            DateTime.UnixEpoch, null, null, null, new ArticleStatus("article", false, false, DateTime.UnixEpoch));
+            DateTime.UnixEpoch, null, null, attachments, new ArticleStatus("article", false, false, DateTime.UnixEpoch));
     private static string Resource(string name)
     {
         var assembly = typeof(ArticleRenderer).Assembly;
