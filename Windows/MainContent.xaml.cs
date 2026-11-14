@@ -483,6 +483,13 @@ public sealed partial class MainContent : UserControl
             await _backTask;
             _navigationCancellation.Dispose();
             _readerExecutionContext = null;
+            ContentWebView.SizeChanged -= ReaderSizeChanged;
+            if (_readerResizeTimer is { } resizeTimer)
+            {
+                resizeTimer.Stop();
+                resizeTimer.Tick -= ReaderResizeTimerTick;
+                _readerResizeTimer = null;
+            }
             if (_readerMessages is not null) _readerMessages.DevToolsProtocolEventReceived -= ReaderMessageReceived;
             _initialization.TrySetCanceled();
             _webViewReady = false;

@@ -214,10 +214,14 @@ internal static partial class ParityProbe
                     () => CheckViewMenuSectionsAsync(window));
                 return;
             }
-            if (Environment.GetCommandLineArgs().Contains("--reader-resize-anchor"))
+            if (Environment.GetCommandLineArgs().Contains("--reader-resize-anchor")
+                || Environment.GetCommandLineArgs().Contains("--reader-resize-fraction")
+                || Environment.GetCommandLineArgs().Contains("--reader-resize-gap"))
             {
-                await CheckAsync("Reader resize preserves the visible article paragraph and saved position",
-                    () => CheckReaderResizeAnchorAsync(window));
+                bool fractional = Environment.GetCommandLineArgs().Contains("--reader-resize-fraction");
+                bool gap = Environment.GetCommandLineArgs().Contains("--reader-resize-gap");
+                await CheckAsync($"Reader resize preserves the article paragraph and saved position with fractional={fractional}, gap={gap}",
+                    () => CheckReaderResizeAnchorAsync(window, fractional, gap));
                 return;
             }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-cache-retention"))

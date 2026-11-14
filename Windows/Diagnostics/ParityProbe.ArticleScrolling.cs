@@ -20,7 +20,7 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
-    private static async Task<object?> CheckReaderResizeAnchorAsync(MainWindow window)
+    private static async Task<object?> CheckReaderResizeAnchorAsync(MainWindow window, bool fractional = false, bool gap = false)
     {
         var content = window.ProbeContent;
         var model = content.ViewModel;
@@ -51,28 +51,48 @@ internal static partial class ParityProbe
             await WaitFor(async () => content.ProbeArticleReady && content.ProbeReaderInteractionReady
                 && await ScriptBool(content, "window.innerWidth > 700 && document.getElementById('resize-paragraph-40') !== null"),
                 "Wide reader resize fixture");
-            await content.ProbeWebView.ExecuteScriptAsync("""
-                window.scrollTo(0, window.scrollY + document.getElementById('resize-paragraph-40').getBoundingClientRect().top + 5);
-                """);
-            await WaitFor(() => ScriptBool(content,
-                "Math.abs(document.getElementById('resize-paragraph-40').getBoundingClientRect().top + 5) < 2"),
+            string distance = gap ? "-12" : fractional ? "rect.height / 2" : "5";
+            string targetRect = "const rect = document.getElementById('resize-paragraph-40').getBoundingClientRect();";
+            string atTarget = $"(() => {{{targetRect} return Math.abs(rect.top + {distance}) < 2;}})()";
+            await content.ProbeWebView.ExecuteScriptAsync(
+                $"(() => {{{targetRect} window.scrollTo(0, window.scrollY + rect.top + {distance});}})()");
+            await WaitFor(() => ScriptBool(content, atTarget),
                 "Reader starts within the target paragraph");
+            if (gap)
+                Require(await ScriptBool(content, """
+                    (() => {
+                        const hit = document.elementFromPoint(window.innerWidth / 2, 1);
+                        return hit && hit.children.length > 0 && !Array.from(hit.childNodes).some(
+                            node => node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== "");
+                    })()
+                    """), "The gap fixture did not hit a whitespace-only container.");
+            else
+            {
+                await content.ProbeWebView.ExecuteScriptAsync(
+                    $"(() => {{{targetRect} window.__resizeFixtureFraction = -rect.top / rect.height;}})()");
+                atTarget = $"(() => {{{targetRect} return Math.abs(rect.top + rect.height * window.__resizeFixtureFraction) < 2;}})()";
+            }
             await Task.Delay(250);
+            var anchors = new List<JsonElement> { await content.ProbeResizeAnchorStateAsync() };
+            if (gap)
+                Require(anchors[0].GetProperty("id").GetString() == "resize-paragraph-40",
+                    "The reader recorded a whitespace-only container instead of the next paragraph.");
             foreach (int width in new[] { 420, 740 })
             {
                 content.ProbeWebView.MaxWidth = width;
                 await WaitFor(() => ScriptBool(content, $"Math.abs(window.innerWidth - {width}) < 3"),
                     "Reader host width changes");
-                await Task.Delay(350);
-                Require(await ScriptBool(content,
-                    "Math.abs(document.getElementById('resize-paragraph-40').getBoundingClientRect().top + 5) < 2"),
-                    "Reader resize lost the visible paragraph or its top offset.");
-                using var offset = JsonDocument.Parse(await content.ProbeWebView.ExecuteScriptAsync("window.scrollY"));
-                Require(Math.Abs(window.CaptureState().Detail.ScrollY - offset.RootElement.GetDouble()) < 2,
-                    "Reader resize left a stale saved scroll position.");
+                await WaitFor(async () => !(await content.ProbeResizeAnchorStateAsync()).GetProperty("changingSize").GetBoolean(),
+                    "Reader resize restoration settles");
+                anchors.Add(await content.ProbeResizeAnchorStateAsync());
+                Require(await ScriptBool(content, atTarget),
+                    "Reader resize lost the visible paragraph or its top offset: " + JsonSerializer.Serialize(anchors));
+                await WaitFor(() => ScriptBool(content,
+                    $"Math.abs(window.scrollY - {window.CaptureState().Detail.ScrollY.ToString(System.Globalization.CultureInfo.InvariantCulture)}) < 2"),
+                    "Reader resize updates the saved scroll position");
             }
-            return new { NarrowAndWide = true, ParagraphPreserved = true, OffsetPreserved = true, SavedPositionCurrent = true,
-                PublisherScriptsDisabled = true };
+            return new { NarrowAndWide = true, ParagraphPreserved = true, OffsetPreserved = true, Fractional = fractional, Gap = gap, SavedPositionCurrent = true,
+                PublisherScriptsDisabled = true, Anchors = anchors };
         }
         finally
         {

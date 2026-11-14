@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
 
 namespace WinNewsWire;
@@ -14,11 +16,24 @@ public sealed partial class MainContent
     private int? _readerExecutionContext;
     private ulong _readerNavigation;
     private bool _readerRuntimeEnabled;
+    private DispatcherQueueTimer? _readerResizeTimer;
 
 #if PARITY_PROBE
     internal bool ProbeReaderInteractionReady => _readerExecutionContext is not null && _readerNavigation == _articleNavigationId;
     internal int ProbeReaderScrollMessages, ProbeReaderHoverMessages;
     internal long ProbeReaderMessageTicks;
+    internal async Task<JsonElement> ProbeResizeAnchorStateAsync()
+    {
+        using var result = JsonDocument.Parse(await ContentWebView.CoreWebView2.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
+            JsonSerializer.Serialize(new
+            {
+                contextId = _readerExecutionContext ?? throw new InvalidOperationException("The reader world is unavailable."),
+                expression = "globalThis.__wnwProbeResizeAnchor()", returnByValue = true
+            })));
+        if (result.RootElement.TryGetProperty("exceptionDetails", out var error))
+            throw new InvalidOperationException("Could not read the reader resize anchor: " + error);
+        return result.RootElement.GetProperty("result").GetProperty("value").Clone();
+    }
     private bool _probeReaderMessagesPaused;
     internal void ProbeEnableReaderMessages(bool enabled)
     {
@@ -38,6 +53,44 @@ public sealed partial class MainContent
         if (_shuttingDown) return;
         await core.CallDevToolsProtocolMethodAsync("Runtime.addBinding",
             JsonSerializer.Serialize(new { name = ReaderBindingName, executionContextName = ReaderWorldName }));
+        if (_shuttingDown) return;
+        // Host timing still runs when the reader disables document JavaScript timers.
+        _readerResizeTimer = DispatcherQueue.CreateTimer();
+        _readerResizeTimer.Interval = TimeSpan.FromMilliseconds(100);
+        _readerResizeTimer.IsRepeating = false;
+        _readerResizeTimer.Tick += ReaderResizeTimerTick;
+        ContentWebView.SizeChanged += ReaderSizeChanged;
+    }
+
+    private void ReaderSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        if (_shuttingDown || _readerExecutionContext is null || _readerNavigation != _articleNavigationId) return;
+        _readerResizeTimer?.Stop();
+        _readerResizeTimer?.Start();
+    }
+
+    private void ReaderResizeTimerTick(DispatcherQueueTimer sender, object args)
+        => TrackBrowserTask(RestoreReaderResizeAnchorAsync());
+
+    private async Task RestoreReaderResizeAnchorAsync()
+    {
+        if (_shuttingDown || _readerExecutionContext is not { } context || _readerNavigation != _articleNavigationId) return;
+        ulong navigation = _readerNavigation;
+        try
+        {
+            using var result = JsonDocument.Parse(await ContentWebView.CoreWebView2.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
+                JsonSerializer.Serialize(new
+                {
+                    contextId = context,
+                    expression = "globalThis.__wnwRestoreResizeAnchor(); globalThis.__wnwReportScroll();",
+                    returnByValue = true
+                })));
+            if (_shuttingDown || context != _readerExecutionContext || navigation != _articleNavigationId) return;
+            if (result.RootElement.TryGetProperty("exceptionDetails", out var error))
+                throw new InvalidOperationException("Could not restore the reader resize anchor: " + error);
+        }
+        catch (Exception error) when ((_shuttingDown || context != _readerExecutionContext || navigation != _articleNavigationId)
+            && error is System.Runtime.InteropServices.COMException or InvalidOperationException) { }
     }
 
     private async Task InstallReaderInteractionAsync(CoreWebView2 core, ulong navigation)
@@ -143,10 +196,50 @@ public sealed partial class MainContent
             });
             let scrollTimer = 0;
             let lastScroll = window.scrollY;
+            let scrollAnchorElement = null;
+            let scrollAnchorFraction = 0;
+            let scrollAnchorOffset = 0;
+            let viewportWidth = window.innerWidth;
+            let viewportHeight = window.innerHeight;
+            let changingSize = false;
+            const sizeChanged = () => changingSize || window.innerWidth !== viewportWidth || window.innerHeight !== viewportHeight;
+            const recordScrollAnchor = () => {
+                let firstHit = null;
+                let candidate = null;
+                for (let y = 1; y <= window.innerHeight / 4; y += 16) {
+                    const element = document.elementFromPoint(window.innerWidth / 2, y);
+                    if (!element) continue;
+                    if (!firstHit) firstHit = element;
+                    if (element.children.length === 0 || Array.from(element.childNodes).some(
+                        node => node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== "")) {
+                        candidate = element;
+                        break;
+                    }
+                }
+                scrollAnchorElement = candidate || firstHit;
+                if (!scrollAnchorElement) return;
+                const rect = scrollAnchorElement.getBoundingClientRect();
+                scrollAnchorFraction = rect.height > 0 ? Math.min(Math.max(-rect.top / rect.height, 0), 1) : 0;
+                scrollAnchorOffset = -(rect.top + scrollAnchorFraction * rect.height);
+            };
+        """
+#if PARITY_PROBE
+        + """
+            globalThis.__wnwProbeResizeAnchor = () => ({
+                id: scrollAnchorElement?.id, fraction: scrollAnchorFraction, offset: scrollAnchorOffset,
+                changingSize, viewportWidth, width: window.innerWidth, scrollY: window.scrollY,
+                top: scrollAnchorElement?.getBoundingClientRect().top,
+                height: scrollAnchorElement?.getBoundingClientRect().height,
+                coasting: globalThis.__wnwWheelScrolling?.coasting
+            });
+        """
+#endif
+        + """
             const reportScroll = () => {
                 clearTimeout(scrollTimer);
                 scrollTimer = 0;
-                if (globalThis.__wnwWheelScrolling?.coasting) return;
+                if (sizeChanged() || globalThis.__wnwWheelScrolling?.coasting) return;
+                recordScrollAnchor();
                 const offset = window.scrollY;
                 if (offset === lastScroll) return;
                 lastScroll = offset;
@@ -154,10 +247,22 @@ public sealed partial class MainContent
             };
             globalThis.__wnwReportScroll = reportScroll;
             window.addEventListener("scroll", () => {
-                if (globalThis.__wnwWheelScrolling?.coasting) return;
+                if (sizeChanged() || globalThis.__wnwWheelScrolling?.coasting) return;
                 if (!scrollTimer) scrollTimer = setTimeout(reportScroll, 100);
             }, { passive: true });
             window.addEventListener("scrollend", reportScroll, { passive: true });
+            globalThis.__wnwRestoreResizeAnchor = () => {
+                if (!sizeChanged()) return;
+                if (scrollAnchorElement?.isConnected && !globalThis.__wnwWheelScrolling?.coasting) {
+                    const rect = scrollAnchorElement.getBoundingClientRect();
+                    window.scrollTo(0, window.scrollY + rect.top + scrollAnchorFraction * rect.height + scrollAnchorOffset);
+                }
+                viewportWidth = window.innerWidth;
+                viewportHeight = window.innerHeight;
+                changingSize = false;
+            };
+            window.addEventListener("resize", () => { changingSize = true; }, { passive: true });
+            recordScrollAnchor();
             let hoveredLink = "";
             const reportHover = anchor => {
                 const url = anchor?.href ?? "";
