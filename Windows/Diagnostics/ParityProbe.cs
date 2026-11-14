@@ -184,6 +184,12 @@ internal static partial class ParityProbe
                     });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--hidden-feed-icon-lookups"))
+            {
+                await CheckAsync("Hidden timeline icons skip lookups while the reader and later visible rows still load",
+                    () => CheckHiddenFeedIconLookupsAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-cache-retention"))
             {
                 await CheckAsync("Thumbnail choices survive desktop display-mode changes", () => CheckThumbnailCacheRetentionAsync(window));

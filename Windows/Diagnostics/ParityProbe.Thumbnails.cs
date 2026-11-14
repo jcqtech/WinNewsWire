@@ -672,6 +672,80 @@ internal static partial class ParityProbe
         }
     }
 
+    private static async Task<object?> CheckHiddenFeedIconLookupsAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSelection = model.SelectedArticle;
+        var previousImages = model.ProbeFeedImages;
+        var previousFeeds = model.ProbeTimelineFeeds;
+        var previousDisplay = Core.AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+        int requests = 0;
+        using var http = new HttpClient(new ThumbnailHandler((_, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                { Content = new ByteArrayContent(ThumbnailBitmap(128, 128)) });
+        }));
+        var downloader = new Downloader(http);
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "hidden-icons.db"));
+        using var htmlDatabase = new HTMLMetadata.HtmlMetadataDatabase(":memory:");
+        await using var metadata = new HTMLMetadata.HtmlMetadataDownloader(htmlDatabase, downloader);
+        await using var images = new FeedImageDownloader(database, metadata, Path.Combine(OutputDirectory, "hidden-icons"),
+            downloader, maxPixelSize: 48, networkAllowsUpdates: () => true);
+        var feeds = new Dictionary<(string, string), Account.Feed>();
+        var rows = new ObservableCollection<Models.FeedItem>();
+        for (int i = 0; i < 2; i++)
+        {
+            string id = "hidden-icon-" + i;
+            var feed = new Account.Feed("hidden-icon-account", id, "https://hidden-icons.test/" + id)
+                { IconUrl = "https://hidden-icons.test/" + id + ".bmp" };
+            feeds[(feed.AccountID, feed.FeedID)] = feed;
+            var article = new Article(feed.AccountID, id, feed.FeedID, id, id,
+                "<p>Hidden icon fixture</p>", null, null, "https://hidden-icons.test/article-" + i,
+                null, null, null, null, null, null, null, new ArticleStatus(id, true, false, DateTime.UnixEpoch));
+            rows.Add(new Models.FeedItem
+            {
+                Id = id, AccountID = feed.AccountID, FeedId = feed.FeedID, SourceArticle = article,
+                FeedUrl = feed.Url, FeedIconUrl = feed.IconUrl, IsRead = true
+            });
+        }
+        try
+        {
+            model.SelectedArticle = null;
+            model.ArticleItems = rows;
+            model.ProbeFeedImages = images;
+            model.ProbeTimelineFeeds = feeds;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Never);
+            await model.ProbeDrainViewUpdatesAsync();
+            await model.ProbePopulateArticleFaviconsAsync();
+            Require(requests == 0 && rows.All(row => row.FaviconPath is null),
+                "A hidden timeline started icon lookups.");
+            model.SelectedArticle = rows[0];
+            await model.ProbeDrainViewUpdatesAsync();
+            Require(requests == 1 && rows[0].FaviconPath is not null && rows[1].FaviconPath is null,
+                "The selected reader must load only its own icon while timeline icons are hidden.");
+            await WaitFor(async () => await ScriptBool(content,
+                "window.__wnwArticleProcessed === true && document.getElementById('nnwImageIcon')?.naturalWidth === 48"),
+                "Hidden timeline reader icon");
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
+            await model.ProbeDrainViewUpdatesAsync();
+            Require(requests == 2 && rows.All(row => row.FaviconPath is not null),
+                "Showing timeline icons did not populate previously hidden rows.");
+            return new { HiddenLookups = 0, SelectedReaderRequests = 1, VisibleRequests = 2, ReaderIcon = true };
+        }
+        finally
+        {
+            model.ProbeFeedImages = previousImages;
+            model.ProbeTimelineFeeds = previousFeeds;
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousDisplay);
+            await model.ProbeDrainViewUpdatesAsync();
+        }
+    }
+
     private static async Task<object?> CheckThumbnailCacheRetentionAsync(MainWindow window)
     {
         var content = window.ProbeContent;

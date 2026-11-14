@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -45,6 +46,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly HashSet<string> _changedFeedImagePaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Images.FeedImageSource, (long Version, string Path)> _feedIconUpdates = [];
     private long _feedIconVersion;
+    private Dictionary<(string, string), AccountNs.Feed> _timelineFeeds = [];
     private int _articleLoadGeneration;
     private bool _restoringArticleSelection;
     private bool _changingSelection;
@@ -56,6 +58,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private Task _readerModeTask = Task.CompletedTask;
     private Task _automaticReadTask = Task.CompletedTask;
     private Task _timelineRefreshTask = Task.CompletedTask;
+    private Task _articleIconTask = Task.CompletedTask;
     private SidebarItemKey?[] _displayedSidebarKeys = [];
     private string? _displayedQuery;
     private bool _displayedGlobalSearch;
@@ -70,12 +73,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     internal int ProbeSubscriptionRefreshes;
     internal void ProbeObserveFeedImageSettings(AccountNs.Feed feed) => ObserveFeedImageSettings(feed);
     internal Action? ProbePreparingTimeline;
-    internal Task ProbeDrainViewUpdatesAsync()
+    internal async Task ProbeDrainViewUpdatesAsync()
     {
         var barrier = new MainThreadAsyncOperation(_ => Task.CompletedTask, "Reader regression barrier");
         if (!_dispatcher.TryEnqueue(() => _viewOperations.Add(barrier)))
             throw new InvalidOperationException("The reader dispatcher is unavailable.");
-        return barrier.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        await barrier.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        await _articleIconTask.WaitAsync(TimeSpan.FromSeconds(10));
     }
 #endif
     private readonly WinNewsWire.Core.MainThreadOperationQueue _viewOperations;
@@ -92,6 +96,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool UseColumnLayout => AppDefaults.Shared.UseColumnLayout;
     public TimelineThumbnailsDisplay TimelineThumbnailsDisplay => AppDefaults.Shared.GetTimelineThumbnailsDisplay();
     public TimelineFeedIconsDisplay TimelineFeedIconsDisplay => AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+    internal bool ShowsTimelineFeedIcons => TimelineFeedIconsDisplay.ShowsIcons(
+        SelectedSidebarItems.Count == 1 && SelectedSidebarItems[0].Tag is AccountNs.Feed
+            && !(SearchAllAccounts && !string.IsNullOrWhiteSpace(SearchQuery)),
+        ArticleItems.Select(item => item.SourceArticle).OfType<Article>());
     public UnreadCountDisplay UnreadDisplayMode => _unreadDisplayMode;
     public bool ShowHeaderUnreadCount => _unreadDisplayMode == UnreadCountDisplay.Count && ArticleListUnreadCount > 0;
     public string HeaderUnreadCountText => ShowHeaderUnreadCount ? _unreadDisplayMode.TextFor(ArticleListUnreadCount)! : "";
@@ -219,7 +227,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             RefreshArticleHtml();
         if (key == AppDefaults.Key.UseColumnLayout) OnPropertyChanged(nameof(UseColumnLayout));
         if (key == AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey) OnPropertyChanged(nameof(TimelineThumbnailsDisplay));
-        if (key == AppDefaultsSharedExtensions.TimelineFeedIconsDisplayKey) OnPropertyChanged(nameof(TimelineFeedIconsDisplay));
+        if (key == AppDefaultsSharedExtensions.TimelineFeedIconsDisplayKey)
+        {
+            OnPropertyChanged(nameof(TimelineFeedIconsDisplay));
+            QueueArticleIconLoads(ArticleItems.ToArray());
+        }
         if (key == AppShared.Sidebar.SidebarFeedOrder.PreferenceKey) BuildSidebar();
         if (key == AppDefaultsSharedExtensions.UnreadCountDisplayKey)
         {
@@ -501,6 +513,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         _readerModeExtracted = null;
         ArticleHtml = BuildArticleHtml(value);
+        if (!ShowsTimelineFeedIcons) QueueArticleIconLoads([value]);
         // Per-feed "Always Use Reader View" matches the global default in priority —
         // either trumps the existing in-session toggle and forces reader mode on.
         var feedReaderAlways = AppService.Shared.Accounts.Accounts
@@ -1221,7 +1234,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ArticleListUnreadCount = items.Count(i => !i.IsRead);
         UpdateSectionStatus();
         TimelineArticlesChanged?.Invoke(this, EventArgs.Empty);
-        _ = PopulateArticleFaviconsAsync(items, feedMap);
+        _timelineFeeds = feedMap;
+        QueueArticleIconLoads(items);
     }
 
     private void MergeArticleItems(IReadOnlyList<FeedItem> items, IReadOnlyDictionary<ArticleIdentityKey, FeedItem> previous)
@@ -1287,16 +1301,44 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }).ConfigureAwait(false);
     }
 
+    private void QueueArticleIconLoads(IReadOnlyList<FeedItem> items)
+    {
+        if (_disposed || items.Count == 0) return;
+        var feeds = _timelineFeeds;
+        var loading = PopulateArticleFaviconsAsync(items, feeds);
+        _articleIconTask = _articleIconTask.IsCompleted ? loading : Task.WhenAll(_articleIconTask, loading);
+        _ = loading.ContinueWith(completed =>
+        {
+            if (completed.IsFaulted)
+                System.Diagnostics.Trace.TraceError($"Could not populate timeline feed icons: {completed.Exception}");
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+#if PARITY_PROBE
+    internal Dictionary<(string, string), AccountNs.Feed> ProbeTimelineFeeds
+    {
+        get => _timelineFeeds;
+        set => _timelineFeeds = value;
+    }
+    internal Task ProbePopulateArticleFaviconsAsync()
+        => PopulateArticleFaviconsAsync(ArticleItems.ToArray(), _timelineFeeds);
+#endif
+
     private async Task PopulateArticleFaviconsAsync(
         IReadOnlyList<FeedItem> items,
         Dictionary<(string, string), AccountNs.Feed> feedMap)
     {
+        bool showsIcons = ShowsTimelineFeedIcons;
+        if (!showsIcons && !items.Any(item => ReferenceEquals(item, SelectedArticle))) return;
         try
         {
             await EnsureFeedImageObserverAsync();
+            if (_disposed || _feedImages is not { } service) return;
             var cache = new Dictionary<(string, string), (string? Path, long Version, Images.FeedImageSource? Source)>();
             foreach (var item in items)
             {
+                if (_disposed) return;
+                if (!showsIcons && !ReferenceEquals(item, SelectedArticle)) continue;
                 var key = (item.AccountID, item.FeedId);
                 if (!cache.TryGetValue(key, out var cached))
                 {
@@ -1304,10 +1346,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (feedMap.TryGetValue(key, out var feed))
                     {
                         cached.Source = FeedImageSourceFor(feed);
-                        cached.Path = await FaviconDownloader.Shared.ImagePathAsync(feed);
+                        cached.Path = (await service.PreferredIconAsync(cached.Source))?.Path;
                     }
                     cache[key] = cached;
                 }
+                if (_disposed) return;
                 var path = cached.Path;
                 // A background upgrade can arrive while this or another feed's request is awaited.
                 if (cached.Source is { } source && _feedIconUpdates.TryGetValue(source, out var updated)
@@ -1319,7 +1362,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
             }
         }
-        catch { /* favicons are best-effort */ }
+        catch (OperationCanceledException) when (_disposed) { }
+        catch (Exception error) when (error is HttpRequestException or System.IO.IOException
+            or InvalidOperationException or ArgumentException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            App.LogException("Load timeline feed icons", error);
+        }
     }
 
     private async Task EnsureFeedImageObserverAsync()

@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.UI.Xaml;
-using WinNewsWire.AppShared;
-using WinNewsWire.Articles;
 using WinNewsWire.Helpers;
 
 namespace WinNewsWire;
@@ -36,11 +34,7 @@ public sealed partial class MainContent
         {
             _timelineFeedIconsQueued = false;
             if (_shuttingDown) return;
-            bool singleFeed = ViewModel.SelectedSidebarItems.Count == 1
-                && ViewModel.SelectedSidebarItems[0].Tag is Account.Feed
-                && !(ViewModel.SearchAllAccounts && !string.IsNullOrWhiteSpace(ViewModel.SearchQuery));
-            var articles = ViewModel.ArticleItems.Select(item => item.SourceArticle).OfType<Article>();
-            _showsTimelineFeedIcons = ViewModel.TimelineFeedIconsDisplay.ShowsIcons(singleFeed, articles);
+            _showsTimelineFeedIcons = ViewModel.ShowsTimelineFeedIcons;
             foreach (var icon in _timelineFeedIcons.ToArray())
                 icon.Visibility = _showsTimelineFeedIcons ? Visibility.Visible : Visibility.Collapsed;
             foreach (var view in _timelineThumbnails.Keys.ToArray()) UpdateThumbnailSize(view);
