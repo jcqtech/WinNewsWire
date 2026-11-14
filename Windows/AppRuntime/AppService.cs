@@ -48,6 +48,16 @@ public sealed partial class AppService
     private readonly object _maintenanceGate = new();
     private Task _maintenance = Task.CompletedTask;
     private Services.ArticleThumbnailService? _thumbnailImages;
+    private Helpers.GrayscaleIconCache? _grayscaleIconImages;
+    internal Helpers.GrayscaleIconCache GrayscaleIconImages
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_shutdown is not null, this);
+            return _grayscaleIconImages ??= new(_dispatcher
+                ?? throw new InvalidOperationException("Icon images require the application UI dispatcher."));
+        }
+    }
     internal Services.ArticleThumbnailService ThumbnailImages
     {
         get
@@ -139,7 +149,8 @@ public sealed partial class AppService
         {
             try
             {
-                if (_thumbnailImages is not null) await _thumbnailImages.DisposeAsync();
+                await Task.WhenAll(_grayscaleIconImages?.DisposeAsync().AsTask() ?? Task.CompletedTask,
+                    _thumbnailImages?.DisposeAsync().AsTask() ?? Task.CompletedTask);
             }
             finally { await Images.FeedImageDownloader.DisposeSharedAsync(); }
         }
@@ -183,6 +194,7 @@ public sealed partial class AppService
         Helpers.SingleLineTextFieldSizer.EmptyCache();
         Helpers.MultilineTextFieldSizer.EmptyCache();
         Helpers.IconView.EmptyCache();
+        _grayscaleIconImages?.EmptyCache();
         ArticleStringFormatter.Shared.EmptyCaches();
         FaviconDownloader.Shared.EmptyCache();
         _thumbnailImages?.EmptyCache();

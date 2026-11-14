@@ -963,6 +963,13 @@ public sealed partial class MainContent : UserControl
                 }
                 if (article.FaviconPath is { } iconPath)
                 {
+                    if (Core.AppDefaults.Shared.GetGrayscaleIcons() && !iconPath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var deferral = args.GetDeferral();
+                        TrackBrowserTask(ServeGrayscaleArticleIconAsync(sender, args, iconPath,
+                            article.FaviconSource.Revision, deferral, _articleNavigationId));
+                        return;
+                    }
                     var contentType = System.IO.Path.GetExtension(iconPath).ToLowerInvariant() switch
                     {
                         ".svg" => "image/svg+xml", ".ico" => "image/x-icon", ".jpg" or ".jpeg" => "image/jpeg",

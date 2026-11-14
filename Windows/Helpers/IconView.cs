@@ -118,12 +118,14 @@ public sealed class IconView : UserControl
             _image.MaxHeight = bitmap.PixelHeight;
         }
         var fileUri = (ImageSource as BitmapImage)?.UriSource is { IsFile: true } uri ? uri : null;
-        if (fileUri is null && (_image.ActualWidth <= 0 || _image.ActualHeight <= 0)) return;
+        bool hasGrayscaleLuminance = GrayscaleIconCache.TryGetLuminance(ImageSource, out var grayscaleLuminance);
+        if (fileUri is null && !hasGrayscaleLuminance && (_image.ActualWidth <= 0 || _image.ActualHeight <= 0)) return;
         _measuringGeneration = generation;
         try
         {
             ImageLuminanceType luminance;
-            if (fileUri is not null) luminance = await FileLuminanceAsync(fileUri);
+            if (hasGrayscaleLuminance) luminance = grayscaleLuminance;
+            else if (fileUri is not null) luminance = await FileLuminanceAsync(fileUri);
             else
             {
 #if PARITY_PROBE

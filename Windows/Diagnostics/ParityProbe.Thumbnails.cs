@@ -29,6 +29,61 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckGrayscaleIconSourcesAsync(MainWindow window)
+    {
+        bool saved = Core.AppDefaults.Shared.GetGrayscaleIcons();
+        var bytes = ThumbnailBitmap(64, 32);
+        string path = Path.Combine(OutputDirectory, "grayscale-icon.bmp");
+        File.WriteAllBytes(path, bytes);
+        try
+        {
+            Core.AppDefaults.Shared.SetGrayscaleIcons(true);
+            return await WithAppearanceTimelineAsync(window, async (_, list, rows, _) =>
+            {
+                int readbacks = IconView.ProbeRenderReadbacks;
+                rows[0].FaviconPath = rows[1].FaviconPath = path;
+                IconView Icon(int index) => Descendants((DependencyObject)list.ContainerFromIndex(index)).OfType<IconView>().Single();
+                await WaitFor(() => Task.FromResult(Icon(0).ImageSource is BitmapImage { PixelWidth: 64, PixelHeight: 32 }
+                    && Icon(1).ImageSource is BitmapImage { PixelWidth: 64, PixelHeight: 32 }), "Grayscale native image sources");
+                var raster = new RenderTargetBitmap();
+                byte[] pixels = [];
+                int offset = 0;
+                await WaitFor(async () =>
+                {
+                    await raster.RenderAsync(Icon(0), 48, 48);
+                    pixels = (await raster.GetPixelsAsync()).ToArray();
+                    offset = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+                    return pixels.Length > offset + 3 && pixels[offset + 3] == 255;
+                }, "Grayscale icon composition");
+                Require(pixels[offset] == pixels[offset + 1] && pixels[offset + 1] == pixels[offset + 2]
+                    && pixels[offset + 3] == 255, $"The feed icon retained color with grayscale enabled: "
+                        + $"BGRA={string.Join(',', pixels.Skip(offset).Take(4))}, source={(Icon(0).ImageSource as BitmapImage)?.UriSource}, "
+                        + $"luminanceReady={Icon(0).ProbeLuminanceReady}.");
+                Require(ReferenceEquals(Icon(0).ImageSource, Icon(1).ImageSource),
+                    "The same grayscale icon was decoded into separate native sources for each row.");
+                Require(File.ReadAllBytes(path).SequenceEqual(bytes), "Grayscale display modified the original image file.");
+                await WaitFor(() => Task.FromResult(Icon(0).ProbeLuminanceReady && Icon(1).ProbeLuminanceReady), "Cached grayscale luminance");
+                Require(IconView.ProbeRenderReadbacks == readbacks, "Grayscale icons performed per-view screen readbacks for luminance.");
+                var host = Descendants(window.ProbeContent).OfType<Grid>().First();
+                var thumbnail = new ThumbnailView { Width = 80, Height = 80, ImageSource = new BitmapImage(new Uri(path)) };
+                var backing = new Border { Width = 80, Height = 80, Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), Child = thumbnail };
+                host.Children.Add(backing);
+                try
+                {
+                    await WaitFor(() => Task.FromResult(thumbnail.IsLoaded && thumbnail.ImageSource is BitmapImage { PixelWidth: 64 }), "Color thumbnail under grayscale setting");
+                    await raster.RenderAsync(backing, 80, 80);
+                    pixels = (await raster.GetPixelsAsync()).ToArray();
+                    offset = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+                    Require(pixels[offset + 2] > 200 && pixels[offset] < 20 && pixels[offset + 1] < 20,
+                        "The grayscale icon preference desaturated thumbnails.");
+                }
+                finally { host.Children.Remove(backing); }
+                return new { NativeGrayPixels = true, SharedVariant = true, OriginalPreserved = true, ThumbnailColor = true, CachedLuminance = true };
+            });
+        }
+        finally { Core.AppDefaults.Shared.SetGrayscaleIcons(saved); }
+    }
+
     private static Task<object?> CheckVariableTimelineHeightsAsync(MainWindow window, bool byline = false) =>
         WithAppearanceTimelineAsync(window, async (content, list, rows, _) =>
         {

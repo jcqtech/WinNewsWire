@@ -8,6 +8,25 @@ namespace WinNewsWire;
 
 public sealed partial class MainContent
 {
+    private async Task ServeGrayscaleArticleIconAsync(CoreWebView2 sender, CoreWebView2WebResourceRequestedEventArgs args,
+        string path, long revision, Windows.Foundation.Deferral deferral, ulong navigation)
+    {
+        bool IsCurrent() => !_shuttingDown && navigation == _articleNavigationId;
+        try
+        {
+            var bytes = await AppRuntime.AppService.Shared.GrayscaleIconImages.DataForAsync(path, revision, _thumbnailLifetime.Token);
+            if (IsCurrent()) SetWebResource(sender, args, bytes, "image/png");
+        }
+        catch (OperationCanceledException) when (_shuttingDown || _thumbnailLifetime.IsCancellationRequested) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+            or System.Runtime.InteropServices.COMException)
+        {
+            App.LogException("Load grayscale article icon", error);
+            if (IsCurrent()) SetWebResource(sender, args, [], "text/plain", 500);
+        }
+        finally { deferral.Complete(); }
+    }
+
     private async Task ServeArticleImageAsync(CoreWebView2 sender, CoreWebView2WebResourceRequestedEventArgs args,
         Uri requestUrl, Windows.Foundation.Deferral deferral, ulong navigation)
     {

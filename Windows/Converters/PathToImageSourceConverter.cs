@@ -1,6 +1,7 @@
 using System;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media.Imaging;
+using WinNewsWire.AppShared;
 
 namespace WinNewsWire.Converters;
 
@@ -19,6 +20,8 @@ public class PathToImageSourceConverter : IValueConverter
         {
             var uri = Uri.TryCreate(s, UriKind.Absolute, out var u) ? u : new Uri(s, UriKind.RelativeOrAbsolute);
             if (s.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return new SvgImageSource(uri);
+            if (value is Models.FeedImageReference && uri.IsAbsoluteUri && uri.IsFile && Core.AppDefaults.Shared.GetGrayscaleIcons())
+                return AppRuntime.AppService.Shared.GrayscaleIconImages.SourceFor(uri.LocalPath, reference.Revision);
             return new BitmapImage
             {
                 CreateOptions = reference.Revision > 0 ? BitmapCreateOptions.IgnoreImageCache : BitmapCreateOptions.None,
