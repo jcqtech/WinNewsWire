@@ -246,6 +246,38 @@ internal static partial class ParityProbe
         finally { AppDefaults.Shared.SetValue(key, saved); }
     }
 
+    private static async Task<object?> CheckTimelineBylineLayoutAsync(MainWindow window)
+    {
+        const string key = "timelineFeedNameAndDateAboveTitle";
+        bool saved = AppDefaults.Shared.GetValue(key, false);
+        try
+        {
+            return await WithAppearanceTimelineAsync(window, async (_, list, rows, preferences) =>
+            {
+                var toggle = Descendants(preferences.Content).OfType<ToggleSwitch>()
+                    .SingleOrDefault(control => control.Name == "TimelineFeedNameAndDateAboveTitleToggle");
+                Require(toggle is not null, "Preferences have no byline placement control.");
+                rows[0].PublishedDate = DateTimeOffset.UtcNow.AddHours(-1);
+                TextBlock Text(string name) => Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<TextBlock>()
+                    .Single(block => block.Name == name);
+                double Top(FrameworkElement element) => element.TransformToVisual(list).TransformPoint(default).Y;
+                foreach (bool above in new[] { true, false, true })
+                {
+                    toggle!.IsOn = above;
+                    await WaitFor(() => Task.FromResult(above
+                        ? Top(Text("TimelineDate")) + Text("TimelineDate").ActualHeight <= Top(Text("TimelineTitle"))
+                        : Top(Text("TimelineDate")) >= Top(Text("TimelineTitle")) + Text("TimelineTitle").ActualHeight),
+                        "Byline placement reaches its native layout");
+                    Require(Math.Abs(Top(Text("TimelineBylineText")) - Top(Text("TimelineDate"))) < 1,
+                        "The byline and date do not share a line.");
+                    Require(new AppDefaults().GetValue(key, false) == above, "Byline placement did not persist.");
+                }
+                return new { Above = true, Below = true, DateAligned = true, Persisted = true };
+            });
+        }
+        finally { AppDefaults.Shared.SetValue(key, saved); }
+    }
+
     private static async Task SettleAppearanceAsync(MainWindow window, ListView list)
     {
         list.UpdateLayout();

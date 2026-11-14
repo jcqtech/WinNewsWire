@@ -223,6 +223,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineReadFadingAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-byline"))
+            {
+                await CheckAsync("Timeline byline and date move together above or below the title",
+                    () => CheckTimelineBylineLayoutAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);

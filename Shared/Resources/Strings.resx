@@ -253,4 +253,5 @@
   <data name="TimelineShowSeparators" xml:space="preserve"><value>Show separators between articles</value></data>
   <data name="TimelineShowFullTitles" xml:space="preserve"><value>Show full titles without previews</value></data>
   <data name="TimelineFadeReadArticles" xml:space="preserve"><value>Fade read articles</value></data>
+  <data name="TimelineFeedNameAndDateAboveTitle" xml:space="preserve"><value>Feed name and date above title</value></data>
 </root>

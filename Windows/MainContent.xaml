@@ -530,7 +530,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <Grid Grid.Column="0" Width="12" VerticalAlignment="Top" Margin="0,4,0,0">
+                                        <Grid x:Name="TimelineStatusIndicators" Grid.Column="0" Width="12" VerticalAlignment="Top" Margin="0,4,0,0">
                                             <Ellipse Width="8" Height="8"
                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
                                                      Fill="{ThemeResource AccentFillColorDefaultBrush}"
@@ -546,8 +546,8 @@
                                                           Loaded="TimelineFeedIcon_Loaded" Unloaded="TimelineFeedIcon_Unloaded"
                                                           ImageSource="{x:Bind FaviconSource, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                                           AutomationProperties.AccessibilityView="Raw" />
-                                        <StackPanel Grid.Column="2" Spacing="3"
-                                                    VerticalAlignment="Center"
+                                        <StackPanel x:Name="TimelineTextContent" Grid.Column="2" Spacing="3"
+                                                    VerticalAlignment="Top"
                                                     AutomationProperties.Name="{x:Bind Tooltip, Mode=OneWay}">
                                             <helpers:TimelineTextPanel NumberOfLines="{x:Bind TimelineNumberOfLines, Mode=OneWay}"
                                                                        ShowFullTitles="{x:Bind TimelineShowFullTitles, Mode=OneWay}">
@@ -561,17 +561,24 @@
                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                        TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
                                             </helpers:TimelineTextPanel>
-                                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                                <TextBlock Text="{x:Bind FeedTitle, Mode=OneWay}"
+                                            <Grid x:Name="TimelineMetadata" ColumnSpacing="8" VerticalAlignment="Top"
+                                                  SizeChanged="TimelineMetadata_SizeChanged">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock x:Name="TimelineBylineText" Text="{x:Bind TimelineByline, Mode=OneWay}"
+                                                           TextTrimming="CharacterEllipsis"
                                                            FontSize="{x:Bind TimelineMetadataFontSize, Mode=OneWay}"
                                                            Style="{StaticResource CaptionTextBlockStyle}"
                                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                                            FontWeight="SemiBold" />
-                                                <TextBlock Text="{x:Bind PublishedDate, Mode=OneWay, Converter={StaticResource RelativeTime}}"
+                                                <TextBlock x:Name="TimelineDate" Grid.Column="1"
+                                                           Text="{x:Bind PublishedDate, Mode=OneWay, Converter={StaticResource RelativeTime}}"
                                                            FontSize="{x:Bind TimelineMetadataFontSize, Mode=OneWay}"
                                                            Style="{StaticResource CaptionTextBlockStyle}"
                                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                                            </StackPanel>
+                                            </Grid>
                                         </StackPanel>
                                         <helpers:ThumbnailView Grid.Column="3" Width="0" Height="0" CornerRadius="4"
                                                                VerticalAlignment="Top" Visibility="Collapsed"

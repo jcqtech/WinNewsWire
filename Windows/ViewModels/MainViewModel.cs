@@ -96,9 +96,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool UseColumnLayout => AppDefaults.Shared.UseColumnLayout;
     public TimelineThumbnailsDisplay TimelineThumbnailsDisplay => AppDefaults.Shared.GetTimelineThumbnailsDisplay();
     public TimelineFeedIconsDisplay TimelineFeedIconsDisplay => AppDefaults.Shared.GetTimelineFeedIconsDisplay();
-    internal bool ShowsTimelineFeedIcons => TimelineFeedIconsDisplay.ShowsIcons(
-        !UseColumnLayout && SelectedSidebarItems.Count == 1 && SelectedSidebarItems[0].Tag is AccountNs.Feed
-            && !(SearchAllAccounts && !string.IsNullOrWhiteSpace(SearchQuery)),
+    internal bool TimelineUsesAuthorByline => SelectedSidebarItems.Count == 1 && SelectedSidebarItems[0].Tag is AccountNs.Feed
+        && !(SearchAllAccounts && !string.IsNullOrWhiteSpace(SearchQuery));
+    internal bool ShowsTimelineFeedIcons => TimelineFeedIconsDisplay.ShowsIcons(!UseColumnLayout && TimelineUsesAuthorByline,
         ArticleItems.Select(item => item.SourceArticle).OfType<Article>());
     public UnreadCountDisplay UnreadDisplayMode => _unreadDisplayMode;
     public bool ShowHeaderUnreadCount => _unreadDisplayMode == UnreadCountDisplay.Count && ArticleListUnreadCount > 0;

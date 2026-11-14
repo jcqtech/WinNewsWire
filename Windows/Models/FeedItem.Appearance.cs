@@ -6,6 +6,16 @@ namespace WinNewsWire.Models;
 
 public partial class FeedItem
 {
+    private bool _timelineUsesAuthor;
+    public string TimelineByline => _timelineUsesAuthor && !string.IsNullOrWhiteSpace(Author) ? Author : FeedTitle;
+
+    internal void UpdateTimelineByline(bool useAuthor)
+    {
+        if (_timelineUsesAuthor == useAuthor) return;
+        _timelineUsesAuthor = useAuthor;
+        OnPropertyChanged(nameof(TimelineByline));
+    }
+
     private TimelineTextSize _timelineTextSize = AppDefaults.Shared.GetTimelineTextSize();
     public double TimelineFontSize => _timelineTextSize.PointSize();
     public double TimelineMetadataFontSize => Math.Floor(TimelineFontSize * 0.9);

@@ -887,7 +887,8 @@ public sealed partial class MainContent : UserControl
                 throw new InvalidOperationException("The timeline icon-size dispatcher is unavailable.");
             return;
         }
-        if (key is AppDefaultsSharedExtensions.TimelineShowSeparatorsKey or AppDefaultsSharedExtensions.TimelineFadeReadArticlesKey && !_shuttingDown)
+        if (key is AppDefaultsSharedExtensions.TimelineShowSeparatorsKey or AppDefaultsSharedExtensions.TimelineFadeReadArticlesKey
+            or AppDefaultsSharedExtensions.TimelineFeedNameAndDateAboveTitleKey && !_shuttingDown)
         {
             if (DispatcherQueue.HasThreadAccess) QueueTimelineAppearanceUpdate();
             else if (!DispatcherQueue.TryEnqueue(QueueTimelineAppearanceUpdate))
@@ -1055,7 +1056,8 @@ public sealed partial class MainContent : UserControl
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (_shuttingDown) return;
-        if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout))
+        if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout)
+            or nameof(ViewModel.SelectedSidebarItems) or nameof(ViewModel.SearchQuery) or nameof(ViewModel.SearchAllAccounts))
             QueueTimelineAppearanceUpdate();
         if (e.PropertyName is nameof(ViewModel.TimelineFeedIconsDisplay) or nameof(ViewModel.SelectedSidebarItems)
             or nameof(ViewModel.SearchQuery) or nameof(ViewModel.SearchAllAccounts)

@@ -63,6 +63,7 @@ public partial class FeedItem : ObservableObject
     private string _externalLink = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TimelineByline))]
     private string _author = string.Empty;
 
     [ObservableProperty]
@@ -85,6 +86,7 @@ public partial class FeedItem : ObservableObject
     private string _imageUrl = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TimelineByline))]
     private string _feedTitle = string.Empty;
 
     [ObservableProperty]

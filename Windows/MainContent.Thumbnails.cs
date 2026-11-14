@@ -249,7 +249,10 @@ public sealed partial class MainContent
         Grid.SetColumn(view, large ? largeColumn : 3);
         Grid.SetColumnSpan(view, large ? 4 - largeColumn : 1);
         Grid.SetRow(view, large ? 1 : 0);
-        view.Margin = large ? new Thickness(0, 8, 0, 0) : new Thickness(0);
+        view.Margin = large ? new Thickness(0, 8, 0, 0)
+            : new Thickness(0, Core.AppDefaults.Shared.GetTimelineFeedNameAndDateAboveTitle()
+                && grid.Children.OfType<Grid>().FirstOrDefault(child => child.Name == "TimelineMetadata") is { } metadata
+                    ? Math.Max(metadata.ActualHeight, metadata.DesiredSize.Height) + 2 : 0, 0, 0);
         if (large)
         {
             view.Width = double.NaN;
