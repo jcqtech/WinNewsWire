@@ -187,6 +187,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineIconPolicyAsync(window, server.Url, recheck: true));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-icon-size"))
+            {
+                await CheckAsync("Timeline icon sizes update native rows and preserve compact columns",
+                    () => CheckTimelineIconSizeAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);

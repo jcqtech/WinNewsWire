@@ -13,6 +13,88 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static Models.FeedItem AppearanceRow(string id, string title, string body = "Preview text.", bool read = true)
+    {
+        var article = new Articles.Article("appearance", id, "appearance-feed", id, title, body, null, null,
+            "https://appearance.test/" + id, null, null, null, null, null, null, null,
+            new Articles.ArticleStatus(id, read, false, DateTime.UnixEpoch));
+        return new Models.FeedItem { Id = id, AccountID = article.AccountID, SourceArticle = article,
+            FeedTitle = "Appearance feed", IsRead = read };
+    }
+
+    private static async Task<object?> WithAppearanceTimelineAsync(MainWindow window,
+        Func<MainContent, ListView, ObservableCollection<Models.FeedItem>, AppWindows.PreferencesWindow, Task<object?>> check)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSelection = model.SelectedArticles.ToArray();
+        bool previousColumns = AppDefaults.Shared.UseColumnLayout, previousUnified = model.IsUnifiedLayout;
+        var previousIcons = AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+        var previousThumbnails = AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        var list = (ListView)content.FindName("ArticleListView");
+        double previousWidth = list.MaxWidth;
+        AppWindows.PreferencesWindow? preferences = null;
+        try
+        {
+            model.SelectedArticle = null;
+            AppDefaults.Shared.UseColumnLayout = false;
+            model.IsUnifiedLayout = false;
+            AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
+            AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.None);
+            list.MaxWidth = 340;
+            var rows = new ObservableCollection<Models.FeedItem>
+                { AppearanceRow("short", "Short title"), AppearanceRow("long", string.Concat(Enumerable.Repeat("Long wrapped title ", 15))) };
+            model.ArticleItems = rows;
+            preferences = new AppWindows.PreferencesWindow();
+            preferences.Activate();
+            await WaitFor(() => Task.FromResult(((FrameworkElement)preferences.Content).IsLoaded
+                && list.ContainerFromIndex(1) is ListViewItem { IsLoaded: true }), "Timeline appearance fixture");
+            return await check(content, list, rows, preferences);
+        }
+        finally
+        {
+            preferences?.Close();
+            model.SelectedArticle = null;
+            list.MaxWidth = previousWidth;
+            model.ArticleItems = previousItems;
+            model.SetSelectedArticles(previousSelection);
+            AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousIcons);
+            AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousThumbnails);
+            AppDefaults.Shared.UseColumnLayout = previousColumns;
+            model.IsUnifiedLayout = previousUnified;
+            window.Activate();
+        }
+    }
+
+    private static async Task<object?> CheckTimelineIconSizeAsync(MainWindow window)
+    {
+        const string key = "timelineIconSize";
+        int saved = AppDefaults.Shared.GetValue(key, 3);
+        try
+        {
+            return await WithAppearanceTimelineAsync(window, async (_, list, _, preferences) =>
+            {
+                var choice = Descendants(preferences.Content).OfType<ComboBox>().SingleOrDefault(combo => combo.Name == "TimelineIconSizeCombo");
+                Require(choice is not null, "Preferences have no timeline icon-size choice.");
+                foreach (var (value, dimension) in new[] { (1, 24.0), (2, 36.0), (3, 48.0) })
+                {
+                    choice!.SelectedItem = choice.Items.OfType<ComboBoxItem>().Single(item => Convert.ToInt32(item.Tag) == value);
+                    await SettleAppearanceAsync(window, list);
+                    var icon = Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<IconView>().Single();
+                    Require(icon.ActualWidth == dimension && icon.ActualHeight == dimension, "The timeline icon did not resize.");
+                    Require(new AppDefaults().GetValue(key, 3) == value, "Timeline icon size did not persist.");
+                }
+                AppDefaults.Shared.UseColumnLayout = true;
+                await SettleAppearanceAsync(window, list);
+                Require(Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<IconView>().Single().Width == 16,
+                    "The standard icon size enlarged column-layout feed icons.");
+                return new { Small = 24, Medium = 36, Large = 48, ColumnSize = 16, Persisted = true };
+            });
+        }
+        finally { AppDefaults.Shared.SetValue(key, saved); }
+    }
+
     private static async Task SettleAppearanceAsync(MainWindow window, ListView list)
     {
         list.UpdateLayout();

@@ -247,4 +247,5 @@
   <data name="ShowUnreadFeed" xml:space="preserve"><value>Show All Unread</value></data>
   <data name="ShowStarredFeed" xml:space="preserve"><value>Show Starred</value></data>
   <data name="SmartFeedHidden" xml:space="preserve"><value>This smart feed is hidden in Preferences.</value></data>
+  <data name="TimelineIconSize" xml:space="preserve"><value>Timeline icon size</value></data>
 </root>

@@ -14,6 +14,21 @@ public static class AppDefaultsSharedExtensions
     public const string ShowTodayFeedKey = "showTodayFeed";
     public const string ShowUnreadFeedKey = "showUnreadFeed";
     public const string ShowStarredFeedKey = "showStarredFeed";
+    public const string TimelineIconSizeKey = "timelineIconSize";
+
+    public static TimelineIconSize GetTimelineIconSize(this AppDefaults defaults)
+    {
+        var value = (TimelineIconSize)defaults.GetValue(TimelineIconSizeKey, (int)TimelineIconSize.Large);
+        if (Enum.IsDefined(value)) return value;
+        Trace.TraceWarning($"Unknown timeline icon size {(int)value}; using medium.");
+        return TimelineIconSize.Medium;
+    }
+
+    public static void SetTimelineIconSize(this AppDefaults defaults, TimelineIconSize size)
+    {
+        if (!Enum.IsDefined(size)) throw new ArgumentOutOfRangeException(nameof(size));
+        defaults.SetValue(TimelineIconSizeKey, (int)size);
+    }
 
     public static bool GetShowTodayFeed(this AppDefaults defaults) => defaults.GetValue(ShowTodayFeedKey, true);
     public static bool GetShowUnreadFeed(this AppDefaults defaults) => defaults.GetValue(ShowUnreadFeedKey, true);

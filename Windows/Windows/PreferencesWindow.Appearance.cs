@@ -31,6 +31,9 @@ public sealed partial class PreferencesWindow
             () => AppDefaults.Shared.GetShowUnreadFeed(), value => AppDefaults.Shared.SetShowUnreadFeed(value));
         AddAppearanceToggle(AppearanceOptions, AppDefaultsSharedExtensions.ShowStarredFeedKey, "ShowStarredFeed", "ShowStarredFeedToggle",
             () => AppDefaults.Shared.GetShowStarredFeed(), value => AppDefaults.Shared.SetShowStarredFeed(value));
+        AddAppearanceChoice(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineIconSizeKey, "TimelineIconSize", "TimelineIconSizeCombo",
+            Enum.GetValues<TimelineIconSize>().Select(size => (size.ToString(), size)),
+            () => AppDefaults.Shared.GetTimelineIconSize(), value => AppDefaults.Shared.SetTimelineIconSize(value));
     }
 
     private void AddAppearanceChoice<T>(StackPanel panel, string key, string labelKey, string name,

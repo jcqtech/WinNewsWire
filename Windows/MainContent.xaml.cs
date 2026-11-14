@@ -880,6 +880,13 @@ public sealed partial class MainContent : UserControl
 
     private void OnArticlePreferencesChanged(object? sender, string key)
     {
+        if (key == AppDefaultsSharedExtensions.TimelineIconSizeKey && !_shuttingDown)
+        {
+            if (DispatcherQueue.HasThreadAccess) QueueTimelineFeedIconsUpdate();
+            else if (!DispatcherQueue.TryEnqueue(QueueTimelineFeedIconsUpdate))
+                throw new InvalidOperationException("The timeline icon-size dispatcher is unavailable.");
+            return;
+        }
         if (key == AppDefaultsSharedExtensions.TimelineShowSeparatorsKey && !_shuttingDown)
         {
             if (DispatcherQueue.HasThreadAccess) QueueTimelineAppearanceUpdate();
