@@ -190,6 +190,12 @@ internal static partial class ParityProbe
                     () => CheckHiddenFeedIconLookupsAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-network-heights"))
+            {
+                await CheckAsync("Network changes update large thumbnail heights without moving the viewport",
+                    () => CheckThumbnailNetworkHeightsAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-cache-retention"))
             {
                 await CheckAsync("Thumbnail choices survive desktop display-mode changes", () => CheckThumbnailCacheRetentionAsync(window));

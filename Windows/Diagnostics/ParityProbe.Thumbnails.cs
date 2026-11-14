@@ -551,7 +551,9 @@ internal static partial class ParityProbe
                 var fetched = requests.Where(path => path.StartsWith("/visible-only-", StringComparison.Ordinal))
                     .Select(path => int.Parse(path["/visible-only-".Length..^4])).ToArray();
                 Require(fetched.All(index => visibleRanges.Any(range => index >= range.First && index <= range.Last)),
-                    "Timeline thumbnail loading downloaded an offscreen lookahead row.");
+                    "Timeline thumbnail loading downloaded an offscreen lookahead row. Target=" + target
+                    + "; fetched=" + string.Join(",", fetched)
+                    + "; visible=" + string.Join(",", visibleRanges.Distinct().Select(range => $"{range.First}-{range.Last}")));
                 int before = requests.Count;
                 list.UpdateLayout();
                 var pulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -669,6 +671,89 @@ internal static partial class ParityProbe
             model.SelectedArticle = previousSelection;
             Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
             Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousIcons);
+        }
+    }
+
+    private static async Task<object?> CheckThumbnailNetworkHeightsAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSelection = model.SelectedArticle;
+        bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
+        bool previousUnified = model.IsUnifiedLayout;
+        var previousDisplay = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        int requests = 0;
+        using var http = new HttpClient(new ThumbnailHandler((_, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            throw new InvalidOperationException("Offline height updates must not download images.");
+        }));
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "network-heights.db"));
+        var finder = new ArticleThumbnailFinder(database);
+        await using var service = new ArticleThumbnailService(window.DispatcherQueue,
+            () => (finder, new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "network-heights"),
+                () => false, new Downloader(http))), networkAllowsDownloads: () => false);
+        int notifications = 0;
+        service.NetworkStatusChanged += (_, _) => notifications++;
+        var rows = new ObservableCollection<Models.FeedItem>(Enumerable.Range(0, 100).Select(index =>
+        {
+            string id = "network-height-" + index;
+            string url = "https://thumbnail.test/" + id + ".bmp";
+            finder.RecordDecodingFailure(url);
+            var article = new Article("account", id, "feed", id, "Network height fixture " + index,
+                null, null, null, "https://thumbnail.test/article/" + index, null, "Short preview.",
+                url, null, null, null, null, new ArticleStatus(id, true, false, DateTime.UnixEpoch));
+            return new Models.FeedItem { Id = id, AccountID = article.AccountID, SourceArticle = article, IsRead = true };
+        }));
+        var list = (ListView)content.FindName("ArticleListView");
+        try
+        {
+            model.SelectedArticle = null;
+            Core.AppDefaults.Shared.UseColumnLayout = false;
+            model.IsUnifiedLayout = false;
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large);
+            content.ProbeSetThumbnailService(service);
+            await service.FindAsync(rows.Select(row => row.SourceArticle!));
+            model.ArticleItems = rows;
+            list.ScrollIntoView(rows[40], ScrollIntoViewAlignment.Leading);
+            await WaitFor(() => Task.FromResult(list.ItemsPanelRoot is ItemsStackPanel { FirstVisibleIndex: >= 39 and <= 40 }
+                && content.ProbeThumbnailWorkIsIdle && Descendants(list).OfType<ThumbnailView>()
+                    .All(view => view.Visibility == Visibility.Collapsed)), "Compact offline thumbnail rows");
+            int anchorIndex = ((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex;
+            double AnchorTop() => ((FrameworkElement)list.ContainerFromItem(rows[anchorIndex]))
+                .TransformToVisual(list).TransformPoint(new Windows.Foundation.Point()).Y;
+            double before = AnchorTop();
+            service.ProbeNotifyNetworkStatusChanged();
+            await WaitFor(() => Task.FromResult(notifications > 0),
+                "Network notification with unchanged download permission");
+            await WaitFor(() => Task.FromResult(content.ProbeThumbnailWorkIsIdle
+                && Descendants(list).OfType<ThumbnailView>().Any(view => view.Visibility == Visibility.Visible && view.Height == 180)),
+                "Large rows gain thumbnail height after an offline network notification");
+            Require(Math.Abs(AnchorTop() - before) <= 1, "Gaining thumbnail height moved the top visible article.");
+            double largeHeight = ((FrameworkElement)list.ContainerFromItem(rows[anchorIndex])).ActualHeight;
+            foreach (var row in rows) await database.RecordFailureAsync(row.SourceArticle!.RawImageLink!);
+            int previousNotifications = notifications;
+            service.ProbeNotifyNetworkStatusChanged();
+            await WaitFor(() => Task.FromResult(notifications > previousNotifications),
+                "Second network notification with unchanged download permission");
+            await WaitFor(() => Task.FromResult(content.ProbeThumbnailWorkIsIdle
+                && Descendants(list).OfType<ThumbnailView>().All(view => view.Visibility == Visibility.Collapsed)),
+                "Large rows lose thumbnail height after another offline network notification");
+            Require(Math.Abs(AnchorTop() - before) <= 1
+                && ((FrameworkElement)list.ContainerFromItem(rows[anchorIndex])).ActualHeight < largeHeight,
+                "Losing thumbnail height moved the top visible article or left its large row height.");
+            Require(requests == 0 && !service.NetworkDownloadsAllowed, "Offline geometry refresh used the network.");
+            return new { GainedHeight = true, LostHeight = true, AnchorPreserved = true, Requests = requests };
+        }
+        finally
+        {
+            content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            model.IsUnifiedLayout = previousUnified;
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
+            Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
         }
     }
 

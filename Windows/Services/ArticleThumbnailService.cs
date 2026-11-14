@@ -93,7 +93,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         {
             _finder?.ResetDecodingFailures();
             bool allowed = _networkAllowsDownloads();
-            if (NetworkDownloadsAllowed == allowed) return;
             NetworkDownloadsAllowed = allowed;
             NetworkStatusChanged?.Invoke(this, EventArgs.Empty);
         });

@@ -282,10 +282,8 @@ public sealed partial class MainContent
 
     private void TimelineThumbnailNetworkStatusChanged(object? sender, EventArgs args)
     {
-        if (!ShowsTimelineThumbnails || _thumbnailService?.NetworkDownloadsAllowed != true) return;
-        foreach (var pair in _timelineThumbnails.ToArray())
-            if (pair.Key.ImageSource is null && !pair.Value.Loading) RefreshTimelineThumbnail(pair.Key);
-        QueueVisibleThumbnailRefresh();
+        if (!ShowsTimelineThumbnails) return;
+        QueueTimelineThumbnailRefresh();
     }
 
     private void TimelineThumbnailDownloadFailed(object? sender, ThumbnailUrlFailure failure)
