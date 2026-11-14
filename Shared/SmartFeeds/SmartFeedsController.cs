@@ -24,6 +24,7 @@ public sealed class SmartFeedsController
             return feeds;
         }
     }
+    public bool IsShown(IPseudoFeed feed) => ShownSmartFeeds.Any(shown => shown.SidebarItemID == feed.SidebarItemID);
 
     private SmartFeedsController()
     {

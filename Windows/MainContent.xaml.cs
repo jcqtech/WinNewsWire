@@ -2807,14 +2807,15 @@ public sealed partial class MainContent : UserControl
 
     public async Task GoToSmartFeedAsync(WinNewsWire.AppShared.SmartFeeds.IPseudoFeed feed)
     {
-        if (!WinNewsWire.AppShared.SmartFeeds.SmartFeedsController.Shared.ShownSmartFeeds.Contains(feed))
+        if (!WinNewsWire.AppShared.SmartFeeds.SmartFeedsController.Shared.IsShown(feed))
         {
             ViewModel.StatusMessage = AppStrings.Get("SmartFeedHidden");
             return;
         }
         await ViewModel.RunSidebarActionAsync("Select timeline", async () =>
         {
-            var item = ViewModel.SidebarItems.SelectMany(section => section.Children).FirstOrDefault(item => ReferenceEquals(item.Tag, feed))
+            var item = ViewModel.SidebarItems.SelectMany(section => section.Children)
+                .FirstOrDefault(item => item.Tag is WinNewsWire.AppShared.SmartFeeds.IPseudoFeed candidate && candidate.SidebarItemID == feed.SidebarItemID)
                 ?? throw new InvalidOperationException("The requested smart feed is no longer available.");
             ViewModel.SetSelectedSidebarItems([item]);
             ViewModel.SearchQuery = "";

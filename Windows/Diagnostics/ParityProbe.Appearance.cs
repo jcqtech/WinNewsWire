@@ -383,6 +383,10 @@ internal static partial class ParityProbe
                 .SelectMany(item => item.Items).OfType<MenuFlyoutItem>()
                 .Where(item => item.Name is "MenuGoToday" or "MenuGoUnread" or "MenuGoStarred").ToArray();
             Require(menus.Length == 3, "Smart-feed navigation commands are missing.");
+            model.SelectedSidebarItem = null;
+            await content.GoToSmartFeedAsync(new AppShared.SmartFeeds.SmartFeed(new AppShared.SmartFeeds.TodayFeedDelegate()));
+            Require(ReferenceEquals(model.SelectedSidebarItem?.Tag, controller.TodayFeed),
+                "Smart-feed visibility and navigation did not recognize a matching stable identity.");
             for (int i = 0; i < toggles.Length; i++)
             {
                 toggles[i]!.IsOn = false;
@@ -390,6 +394,7 @@ internal static partial class ParityProbe
                 await WaitFor(() => Task.FromResult(!list.Items.OfType<Models.SidebarItem>()
                     .Any(row => ReferenceEquals(row.Tag, smartFeeds[hidden]))), "Hidden smart feed removed from native outline");
                 Require(!new AppDefaults().GetValue(keys[i], true), "Smart-feed visibility did not persist.");
+                if (i == 0) Require(model.SelectedSidebarItem is null, "Hiding the selected smart feed did not clear its selection.");
             }
             Require(menus.All(menu => !menu.IsEnabled) && !list.Items.OfType<Models.SidebarItem>().Any(row => row.Title == controller.NameForDisplay),
                 "Hidden smart feeds retained Go commands or an empty sidebar group.");
