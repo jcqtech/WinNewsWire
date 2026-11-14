@@ -14,6 +14,41 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckStatusBarInvalidationScopeAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        bool saved = AppDefaults.Shared.ShowStatusBar;
+        string? hovered = model.HoveredLink;
+        var list = (ListView)content.FindName("ArticleListView");
+        try
+        {
+            await content.Initialization.WaitAsync(TimeSpan.FromSeconds(30));
+            AppDefaults.Shared.ShowStatusBar = true;
+            model.HoveredLink = "https://status-layout.test/initial";
+            await SettleAppearanceAsync(window, list);
+            var before = content.ProbeToolbarPerformance;
+            for (int i = 0; i < 10; i++)
+            {
+                model.HoveredLink = "https://status-layout.test/item/" + i;
+                await SettleAppearanceAsync(window, list);
+            }
+            var after = content.ProbeToolbarPerformance;
+            Require(after.Layout == before.Layout && after.Presentation == before.Presentation,
+                "Status-bar link changes repeatedly relaid out the unrelated command headers.");
+            var refresh = (Button)content.FindName("ReloadButton");
+            var begin = typeof(CombinedRefreshProgress).GetMethod("BeginRefresh",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("The account refresh-session entry point is missing.");
+            using (var session = (IDisposable)begin.Invoke(CombinedRefreshProgress.Shared,
+                [AccountManager.Shared.DefaultAccount.AccountID, null])!)
+                await WaitFor(() => Task.FromResult(!refresh.IsEnabled), "Active refresh still disables toolbar command");
+            await WaitFor(() => Task.FromResult(refresh.IsEnabled), "Completed refresh still enables toolbar command");
+            return new { LinkChanges = 10, ExtraHeaderLayouts = after.Layout - before.Layout, RefreshAvailabilityPreserved = true };
+        }
+        finally { model.HoveredLink = hovered; AppDefaults.Shared.ShowStatusBar = saved; }
+    }
+
     private static async Task<object?> CheckStatusBarAsync(MainWindow window)
     {
         var content = window.ProbeContent;

@@ -19,6 +19,7 @@ public sealed partial class MainContent
     private int _statusBarUpdateQueued;
     private string _statusBarLink = "";
     private int _statusBarClockInvalidated;
+    private bool? _statusBarCanRefresh;
     private DispatcherQueueTimer? _statusBarMidnightTimer;
 
     private void InitializeStatusBar()
@@ -96,8 +97,13 @@ public sealed partial class MainContent
                 ScheduleStatusBarMidnight();
             }
             UpdateStatusBar();
-            QueueToolbarUpdate();
-            (App.WindowForXamlRoot(XamlRoot) as MainWindow)?.UpdateRefreshAvailability();
+            bool canRefresh = !ViewModel.IsLoading && AppRuntime.AppService.Shared.Accounts.CanRefresh;
+            if (_statusBarCanRefresh != canRefresh)
+            {
+                _statusBarCanRefresh = canRefresh;
+                QueueToolbarUpdate();
+                (App.WindowForXamlRoot(XamlRoot) as MainWindow)?.UpdateRefreshAvailability();
+            }
         })) Interlocked.Exchange(ref _statusBarUpdateQueued, 0);
     }
 

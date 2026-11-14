@@ -209,7 +209,7 @@ try {
         'Compatibility rendering preference, restart boundary and shared browser',
         'Direct scrolling preference and restart boundary',
         'Article renderer, native scripts and five text sizes',
-        'Memory-pressure registration and derived-cache cleanup',
+        'Explicit derived-cache cleanup preserves live article identity',
         'Native browser arrow keys and scrollbar dragging',
         'Unrequested data documents cannot replace the article',
         'Trusted page processing with article JavaScript disabled',

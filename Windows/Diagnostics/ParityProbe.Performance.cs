@@ -103,12 +103,12 @@ internal static partial class ParityProbe
             await WaitFor(() => Task.FromResult(icons.All(icon => icon.ProbeLuminanceReady)), "Raster icon luminance");
             Require(icons[0].ProbeLuminance == ImageLuminanceType.Bright && icons[1].ProbeLuminance == ImageLuminanceType.Dark
                 && icons[2].ProbeLuminance == ImageLuminanceType.Regular, "Native raster sampling changed icon luminance classifications.");
-            Require(icons[0].ProbeBackground is SolidColorBrush { Color.R: 242 } && icons[1].ProbeBackground is null
+            Require(icons[0].ProbeBackground is SolidColorBrush { Color.A: > 0 and < 255 } && icons[1].ProbeBackground is null
                 && icons[2].ProbeBackground is null, "Light-theme icon contrast changed.");
             int decodes = Helpers.IconView.ProbePixelDecodes;
             Require(decodes - before == 3, "The duplicate icon was decoded more than once.");
             foreach (var icon in icons) icon.RequestedTheme = ElementTheme.Dark;
-            await WaitFor(() => Task.FromResult(icons[1].ProbeBackground is SolidColorBrush { Color.R: 56 }), "Dark icon background");
+            await WaitFor(() => Task.FromResult(icons[1].ProbeBackground is SolidColorBrush { Color.A: > 0 and < 255 }), "Dark icon background");
             Require(icons[0].ProbeBackground is null && Helpers.IconView.ProbePixelDecodes == decodes,
                 "A theme change re-decoded icons or lost dark-theme contrast.");
             await WriteIcon(white, 0, 255);

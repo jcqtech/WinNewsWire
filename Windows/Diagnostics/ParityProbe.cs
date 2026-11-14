@@ -187,6 +187,22 @@ internal static partial class ParityProbe
                     CheckTimelineMeasurementRetentionAsync);
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--icon-contrast"))
+            {
+                await CheckAsync("Cached icon luminance, system fills and file invalidation", () => CheckIconContrastAsync(window));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--performance-only"))
+            {
+                await CheckAsync("Reader responsiveness and bounded header work", () => CheckPerformanceAsync(window, server.Url));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--statusbar-invalidation"))
+            {
+                await CheckAsync("Status-bar text updates do not invalidate unrelated toolbar layout",
+                    () => CheckStatusBarInvalidationScopeAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--icon-retention"))
             {
                 await CheckAsync("Desktop icon variants remain cached without the removed automatic memory monitor", async () =>
@@ -462,7 +478,7 @@ internal static partial class ParityProbe
                 await CheckAsync("Compatibility rendering preference, restart boundary and shared browser", () => CheckRenderingPreferenceAsync(window));
                 await CheckAsync("Direct scrolling preference and restart boundary", () => CheckRenderingPreferenceAsync(window, scrolling: true));
                 await CheckAsync("Article renderer, native scripts and five text sizes", () => CheckArticleAsync(window));
-                await CheckAsync("Memory-pressure registration and derived-cache cleanup", () => CheckMemoryCleanupAsync(window));
+                await CheckAsync("Explicit derived-cache cleanup preserves live article identity", () => CheckMemoryCleanupAsync(window));
                 await CheckAsync("Native browser arrow keys and scrollbar dragging", () => CheckBrowserScrollInputsAsync(window, server.Url));
                 await CheckAsync("Unrequested data documents cannot replace the article", () => CheckArticleNavigationPolicyAsync(window));
                 await CheckAsync("Trusted page processing with article JavaScript disabled", () => CheckScriptPolicyAsync(window));
@@ -537,7 +553,7 @@ internal static partial class ParityProbe
             await CheckAsync("Decoded feed-image cache, bitmap binding and visible icon pixels", () => CheckFeedImageAsync(window, feed));
             await CheckAsync("Add-feed dialog destination, normalization and cancellation", () => CheckAddFeedDialogAsync(window));
             await CheckAsync("Independent main windows share statuses without sharing selection or undo", () => CheckMultipleWindowsAsync(window));
-            await CheckAsync("Memory-pressure registration and derived-cache cleanup", () => CheckMemoryCleanupAsync(window));
+            await CheckAsync("Explicit derived-cache cleanup preserves live article identity", () => CheckMemoryCleanupAsync(window));
             await CheckAsync("Account statistics, accessible column resizing, sorting and database vacuum", () => CheckAccountStatsAsync(window, server.Url));
             await CheckAsync("Static sidebar headings, folder icons and fade-down disclosure", () => CheckSidebarPresentationAsync(window));
             await CheckAsync("Independent sidebar selection, scope filters, rebuild and batch undo", () => CheckSidebarSelectionAsync(window, server.Url));
