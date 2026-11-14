@@ -175,6 +175,16 @@ internal static partial class ParityProbe
                     () => CheckLiveGrayscaleIconsAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--icon-retention"))
+            {
+                await CheckAsync("Desktop icon variants remain cached without the removed automatic memory monitor", async () =>
+                {
+                    Require(typeof(AppRuntime.AppService).Assembly.GetType("WinNewsWire.AppRuntime.MemoryPressureMonitor") is null,
+                        "The automatic desktop memory-pressure monitor is still present.");
+                    return await CheckGrayscaleIconSourcesAsync(window);
+                });
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--sidebar-icons"))
             {
                 await CheckAsync("Sidebar feed, folder and smart-feed icons follow preferences without replacing rows",
@@ -1606,14 +1616,13 @@ internal static partial class ParityProbe
         var formatter = ArticleStringFormatter.Shared;
         var title = formatter.AttributedTruncatedTitle(article);
         var measured = SingleLineTextFieldSizer.SizeFor("Memory pressure", new TextFont(14));
-        AppRuntime.AppService.Shared.StartMemoryMonitoring();
         AppRuntime.AppService.Shared.ReleaseMemoryCaches();
         Require(!ReferenceEquals(title, formatter.AttributedTruncatedTitle(article)), "The derived article-title cache was not released.");
         Require(measured == SingleLineTextFieldSizer.SizeFor("Memory pressure", new TextFont(14)), "Text measurement changed after cache cleanup.");
         var reloaded = (await account.Database.FetchArticlesByIDsAsync([article.ArticleID])).Single();
         Require(ReferenceEquals(article, reloaded), "Memory cleanup duplicated an article still retained by a reading window.");
         Require(ReferenceEquals(article.Status, reloaded.Status), "Memory cleanup discarded a live canonical article status.");
-        return new { NotificationsRegistered = true, DerivedCacheReleased = true, LiveStatusPreserved = true };
+        return new { ExplicitCleanup = true, DerivedCacheReleased = true, LiveStatusPreserved = true };
     }
 
     private static async Task<object?> CheckMultipleWindowsAsync(MainWindow window)

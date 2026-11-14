@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -44,7 +43,6 @@ public sealed partial class AppService
     private Task? _shutdown;
     private bool _started;
     private readonly DispatcherQueue? _dispatcher = DispatcherQueue.GetForCurrentThread();
-    private MemoryPressureMonitor? _memoryMonitor;
     private readonly object _maintenanceGate = new();
     private Task _maintenance = Task.CompletedTask;
     private Services.ArticleThumbnailService? _thumbnailImages;
@@ -83,26 +81,19 @@ public sealed partial class AppService
         if (_shutdown is not null) throw new InvalidOperationException("The application runtime is stopping.");
         if (_started) return;
         _started = true;
-        var errors = new List<(string Operation, Exception Error)>();
-        try { StartMemoryMonitoring(); }
-        catch (Exception error) when (error is Win32Exception or InvalidOperationException)
-        {
-            errors.Add(("Start memory monitoring", error));
-        }
         _refreshTimer.Start();
         _syncTimer.Start();
         QueueAutomationUpdate();
-        _startup = RefreshInitiallyAsync(_lifetime.Token, errors);
+        _startup = RefreshInitiallyAsync(_lifetime.Token);
     }
 
-    private async Task RefreshInitiallyAsync(CancellationToken ct, IReadOnlyList<(string Operation, Exception Error)> errors)
+    private async Task RefreshInitiallyAsync(CancellationToken ct)
     {
         try { await Task.Run(() => CacheCleaner.PurgeIfNecessary(Defaults)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             await LogAsync("Purge image caches", error);
         }
-        foreach (var (operation, error) in errors) await LogAsync(operation, error);
         if (ct.IsCancellationRequested) return;
         await _notifier.StartAsync();
         if (ct.IsCancellationRequested) return;
@@ -162,20 +153,11 @@ public sealed partial class AppService
 
     public void Stop()
     {
-        _memoryMonitor?.Dispose();
-        _memoryMonitor = null;
         _lifetime.Cancel();
         _refreshTimer.Stop();
         _syncTimer.Stop();
         _ = _notifier.StopAsync();
         if (_automation is not null) _ = _automation.StopAsync();
-    }
-
-    internal void StartMemoryMonitoring()
-    {
-        if (_dispatcher is null) throw new InvalidOperationException("Memory-pressure handling requires the application's UI dispatcher.");
-        _memoryMonitor ??= new(_dispatcher, ReleaseMemoryCaches);
-        _memoryMonitor.Start();
     }
 
     internal void ReleaseMemoryCaches()
