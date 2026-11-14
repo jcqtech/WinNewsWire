@@ -18,10 +18,11 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`cd6dd9ab29ec27ec99dc23ec48e6ceea54f266e7`**. This synchronization is in progress.
+`0aa620ff13b857971c7093baf586ed421c838d47`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is changing the separator default, `0aa620ff13b857971c7093baf586ed421c838d47`;
+is suppressing separators below the final timeline row,
+`7203d7a5d64a8f19689ce16b4b4b224e2dfc86ce`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -431,8 +432,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **238 Ported, 88 Covered, 118 Skipped, and 61 Pending**
-source commits, backed by **255 source-attributed Windows port commits**.
+The inventory currently has **239 Ported, 88 Covered, 123 Skipped, and 55 Pending**
+source commits, backed by **256 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -444,6 +445,12 @@ and UIKit-only contextual-preview behavior. The FreshRSS merge resolution was
 reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
 These counts do not imply that the remaining changes have been fully assessed.
+The temporary true Mac hidden-separator default and its immediate reversal are
+not reproduced in Windows. Actual enabled-row separators and their final exposed
+preference remain pending; drawing no separators is not evidence that final-row
+suppression is implemented. The case-insensitive XML lookup rename is ported
+with unchanged parser behavior. Apple's Swift/Foundation beta Date-comparison
+workaround is skipped, preserving Windows' safe inclusive timestamp boundaries.
 Reviewed cache-specific platform adaptations retain the Windows binary-cache
 semaphore: atomic replacement alone does not prevent Windows file-sharing errors
 while managed reads are open. Foundation's `Data(mappedIfSafe:)` has no direct
