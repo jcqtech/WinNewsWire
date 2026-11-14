@@ -94,6 +94,7 @@ public sealed partial class MainContent
         _thumbnailService.ThumbnailDownloadFailed += TimelineThumbnailDownloadFailed;
         _thumbnailService.NetworkStatusChanged += TimelineThumbnailNetworkStatusChanged;
         _articleScrollViewer!.ViewChanged += TimelineThumbnailsViewChanged;
+        ArticleListView.LayoutUpdated += TimelineThumbnailsLayoutUpdated;
         ObserveThumbnailItems();
     }
 
@@ -145,8 +146,6 @@ public sealed partial class MainContent
             RefreshTimelineThumbnail((ThumbnailView)element);
         });
         _timelineThumbnails.Add(view, new(callback));
-        if (view.Parent is Grid grid && grid.Children.OfType<StackPanel>().FirstOrDefault() is { } text)
-            text.SizeChanged += ThumbnailTextSizeChanged;
         RefreshTimelineThumbnail(view);
         QueueVisibleThumbnailRefresh();
     }
@@ -162,8 +161,6 @@ public sealed partial class MainContent
         binding.Request?.Cancel();
         binding.Request?.Dispose();
         view.UnregisterPropertyChangedCallback(FrameworkElement.TagProperty, binding.TagCallback);
-        if (view.Parent is Grid grid && grid.Children.OfType<StackPanel>().FirstOrDefault() is { } text)
-            text.SizeChanged -= ThumbnailTextSizeChanged;
         view.ImageSource = null;
         view.Visibility = Visibility.Collapsed;
     }
@@ -259,16 +256,7 @@ public sealed partial class MainContent
             view.Height = 180;
             return;
         }
-        double iconHeight = grid.Children.OfType<IconView>().FirstOrDefault(icon => icon.Visibility == Visibility.Visible)?.ActualHeight ?? 0;
-        double textHeight = grid.Children.OfType<StackPanel>().FirstOrDefault()?.ActualHeight ?? 0;
-        double dimension = Math.Min(76, Math.Max(iconHeight, textHeight));
-        view.Width = view.Height = dimension;
-    }
-
-    private void ThumbnailTextSizeChanged(object sender, SizeChangedEventArgs args)
-    {
-        if (sender is StackPanel { Parent: Grid grid })
-            foreach (var view in grid.Children.OfType<ThumbnailView>()) UpdateThumbnailSize(view);
+        view.Width = view.Height = 76;
     }
 
     private void TimelineThumbnailAvailable(object? sender, string url)
@@ -308,6 +296,15 @@ public sealed partial class MainContent
     private void TimelineThumbnailsViewChanged(object? sender, ScrollViewerViewChangedEventArgs args)
     {
         QueueVisibleThumbnailRefresh();
+    }
+
+    private void TimelineThumbnailsLayoutUpdated(object? sender, object args)
+    {
+        if (!ShowsTimelineThumbnails || _visibleThumbnailRefreshQueued) return;
+        // Replacement rows can acquire their visible index after the first queued refresh.
+        if (_timelineThumbnails.Any(pair => pair.Value.HasThumbnail && !pair.Value.Loading && !pair.Value.ImageRequested
+            && pair.Key.ImageSource is null && IsVisibleTimelineThumbnail(pair.Key)))
+            QueueVisibleThumbnailRefresh();
     }
 
     private void QueueVisibleThumbnailRefresh()
@@ -357,6 +354,7 @@ public sealed partial class MainContent
     private async Task StopTimelineThumbnailsAsync()
     {
         ViewModel.TimelineArticlesChanged -= TimelineFeedIconArticlesChanged;
+        ArticleListView.LayoutUpdated -= TimelineThumbnailsLayoutUpdated;
         _thumbnailLifetime.Cancel();
         if (_thumbnailItems is not null) _thumbnailItems.CollectionChanged -= ThumbnailItemsChanged;
         if (_thumbnailService is not null)

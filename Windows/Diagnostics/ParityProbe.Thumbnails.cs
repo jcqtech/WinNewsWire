@@ -29,6 +29,55 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static Task<object?> CheckVariableTimelineHeightsAsync(MainWindow window) =>
+        WithAppearanceTimelineAsync(window, async (content, list, rows, _) =>
+        {
+            using var http = new HttpClient(new ThumbnailHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                { Content = new ByteArrayContent(ThumbnailBitmap(128, 128)) })));
+            using var database = new ImageDatabase(Path.Combine(OutputDirectory, "row-heights.db"));
+            await using var service = new ArticleThumbnailService(window.DispatcherQueue,
+                () => (new ArticleThumbnailFinder(database), new ThumbnailDownloader(database,
+                    Path.Combine(OutputDirectory, "row-height-cache"), () => true, new Downloader(http))),
+                networkAllowsDownloads: () => true);
+            content.ProbeSetThumbnailService(service);
+            try
+            {
+                Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Never);
+                rows[0] = AppearanceRow("image-height", "Short", "", thumbnail: "https://row-height.test/image.bmp");
+                rows[1] = AppearanceRow("text-height", "Short", "");
+                await service.FindAsync(rows.Select(row => row.SourceArticle!));
+                Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small);
+                ThumbnailView Thumbnail() => Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<ThumbnailView>().Single();
+                await WaitFor(() => Task.FromResult(Thumbnail().Visibility == Visibility.Visible), "Variable-height thumbnail placeholder");
+                await SettleAppearanceAsync(window, list);
+                var imageRow = (ListViewItem)list.ContainerFromIndex(0);
+                var textRow = (ListViewItem)list.ContainerFromIndex(1);
+                Require(Thumbnail().ActualHeight == 76 && imageRow.ActualHeight > textRow.ActualHeight,
+                    "A short article row did not reserve the full small-thumbnail height.");
+                try { await WaitFor(() => Task.FromResult(Thumbnail().ImageSource is not null), "Variable-height thumbnail"); }
+                catch (TimeoutException error)
+                {
+                    throw new InvalidOperationException(System.Text.Json.JsonSerializer.Serialize(content.ProbeTimelineThumbnailState), error);
+                }
+                rows[0] = AppearanceRow("image-height", "Short", "");
+                await WaitFor(() => Task.FromResult(Thumbnail().Visibility == Visibility.Collapsed), "Removed thumbnail shrinks row");
+                await SettleAppearanceAsync(window, list);
+                await WaitFor(() => Task.FromResult(Math.Abs(((ListViewItem)list.ContainerFromIndex(0)).ActualHeight
+                    - ((ListViewItem)list.ContainerFromIndex(1)).ActualHeight) < 1), "Replacement rows reach their text-only height");
+                rows[1] = AppearanceRow("text-height", "A much longer title that wraps onto more than one line in this narrow timeline", "");
+                await SettleAppearanceAsync(window, list);
+                await WaitFor(() => Task.FromResult(((ListViewItem)list.ContainerFromIndex(1)).ActualHeight
+                    > ((ListViewItem)list.ContainerFromIndex(0)).ActualHeight), "Different text lengths produce independent row heights");
+                return new { SmallThumbnailHeight = 76, TextSizedIndependently = true, ReplacementShrinks = true };
+            }
+            finally
+            {
+                Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.None);
+                await WaitFor(() => Task.FromResult(content.ProbeThumbnailWorkIsIdle), "Variable-height thumbnail shutdown");
+                content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
+            }
+        });
+
     private static async Task<object?> CheckThumbnailPresentationAsync(MainWindow window, bool checkPlaceholder = true)
     {
         var host = Descendants(window.ProbeContent).OfType<Grid>().First();

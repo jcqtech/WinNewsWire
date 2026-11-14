@@ -13,11 +13,11 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
-    private static Models.FeedItem AppearanceRow(string id, string title, string body = "Preview text.", bool read = true)
+    private static Models.FeedItem AppearanceRow(string id, string title, string body = "Preview text.", bool read = true, string? thumbnail = null)
     {
         var article = new Articles.Article("appearance", id, "appearance-feed", id, title, body, null, null,
             "https://appearance.test/" + id, null, null, null, null, null, null, null,
-            new Articles.ArticleStatus(id, read, false, DateTime.UnixEpoch));
+            new Articles.ArticleStatus(id, read, false, DateTime.UnixEpoch), thumbnailURL: thumbnail);
         return new Models.FeedItem { Id = id, AccountID = article.AccountID, SourceArticle = article,
             FeedTitle = "Appearance feed", IsRead = read };
     }

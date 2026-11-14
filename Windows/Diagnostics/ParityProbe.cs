@@ -205,6 +205,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineLinesAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-row-heights"))
+            {
+                await CheckAsync("Timeline rows size independently and reserve the full small-thumbnail height",
+                    () => CheckVariableTimelineHeightsAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);
