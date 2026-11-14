@@ -99,6 +99,7 @@ public sealed partial class MainContent
 
     private void ObserveThumbnailItems()
     {
+        QueueTimelineAppearanceUpdate();
         QueueTimelineFeedIconsUpdate();
         if (_thumbnailItems is not null) _thumbnailItems.CollectionChanged -= ThumbnailItemsChanged;
         _thumbnailItems = ViewModel.ArticleItems;
@@ -108,6 +109,7 @@ public sealed partial class MainContent
 
     private void ThumbnailItemsChanged(object? sender, NotifyCollectionChangedEventArgs args)
     {
+        QueueTimelineAppearanceUpdate();
         QueueTimelineFeedIconsUpdate();
         QueueTimelineThumbnailRefresh();
     }

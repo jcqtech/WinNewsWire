@@ -561,6 +561,11 @@
                                                                VerticalAlignment="Top" Visibility="Collapsed"
                                                                Tag="{x:Bind SourceArticle, Mode=OneWay}"
                                                                Loaded="TimelineThumbnail_Loaded" Unloaded="TimelineThumbnail_Unloaded" />
+                                        <Border x:Name="TimelineRowSeparator" Grid.RowSpan="2" Grid.ColumnSpan="4"
+                                                Height="1" VerticalAlignment="Bottom" Margin="20,0,4,0"
+                                                Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                                Visibility="Collapsed" IsHitTestVisible="False"
+                                                Loaded="TimelineRowSeparator_Loaded" Unloaded="TimelineRowSeparator_Unloaded" />
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>

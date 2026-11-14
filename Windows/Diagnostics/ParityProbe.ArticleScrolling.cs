@@ -20,6 +20,82 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckTimelineSeparatorsAsync(MainWindow window)
+    {
+        const string key = "timelineShowSeparators";
+        var model = window.ProbeContent.ViewModel;
+        var list = (ListView)window.ProbeContent.FindName("ArticleListView");
+        var previousItems = model.ArticleItems;
+        var previousSelection = model.SelectedArticle;
+        bool previousColumns = AppDefaults.Shared.UseColumnLayout;
+        bool previousUnified = model.IsUnifiedLayout;
+        bool previousSeparators = AppDefaults.Shared.GetValue(key, false);
+        var previousDisplay = AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        Models.FeedItem Row(string id)
+        {
+            var article = new Article("account", id, "feed", id, "Separator " + id,
+                "<p>Separator fixture.</p>", null, null, "https://separator.test/" + id,
+                null, null, null, null, null, null, null, new ArticleStatus(id, true, false, DateTime.UnixEpoch));
+            return new Models.FeedItem { Id = id, AccountID = article.AccountID, SourceArticle = article, IsRead = true };
+        }
+        var rows = new System.Collections.ObjectModel.ObservableCollection<Models.FeedItem>
+            { Row("first"), Row("second") };
+        Border? Separator(int index) => list.ContainerFromIndex(index) is DependencyObject container
+            ? Descendants(container).OfType<Border>().SingleOrDefault(border => border.Name == "TimelineRowSeparator") : null;
+        async Task SettleAsync()
+        {
+            list.UpdateLayout();
+            var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Require(window.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () => settled.TrySetResult()),
+                "The separator layout dispatcher was unavailable.");
+            await settled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        try
+        {
+            AppDefaults.Shared.UseColumnLayout = false;
+            AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.None);
+            model.IsUnifiedLayout = false;
+            model.SelectedArticle = null;
+            model.ArticleItems = rows;
+            await WaitFor(() => Task.FromResult(list.ContainerFromIndex(1) is not null), "Separator fixture rows");
+            AppDefaults.Shared.SetValue(key, true);
+            await SettleAsync();
+            Require(Separator(0)?.Visibility == Visibility.Visible, "Enabled standard rows have no native separator.");
+            Require(Separator(1)?.Visibility == Visibility.Collapsed, "The final row retained a separator below it.");
+            rows.Add(Row("third"));
+            await SettleAsync();
+            Require(Separator(1)?.Visibility == Visibility.Visible && Separator(2)?.Visibility == Visibility.Collapsed,
+                "Appending an article left the former final row's separator stale.");
+            list.SelectedItem = rows[0];
+            await SettleAsync();
+            Require(Separator(0)?.Visibility == Visibility.Collapsed, "A selected row retained its separator.");
+            list.SelectedItems.Clear();
+            rows.RemoveAt(2);
+            await SettleAsync();
+            Require(Separator(0)?.Visibility == Visibility.Visible && Separator(1)?.Visibility == Visibility.Collapsed,
+                "Removing the final article did not update the new final separator.");
+            AppDefaults.Shared.UseColumnLayout = true;
+            await SettleAsync();
+            Require(!Descendants(list).OfType<Border>().Any(border => border.Name == "TimelineRowSeparator"
+                && border.Visibility == Visibility.Visible), "Column layout displayed standard-row separators.");
+            AppDefaults.Shared.UseColumnLayout = false;
+            AppDefaults.Shared.SetValue(key, false);
+            await SettleAsync();
+            Require(!Descendants(list).OfType<Border>().Any(border => border.Name == "TimelineRowSeparator"
+                && border.Visibility == Visibility.Visible), "Disabled separators remained visible.");
+            return new { FinalRow = true, SelectedRow = true, Append = true, Remove = true, Columns = true, Preference = true };
+        }
+        finally
+        {
+            AppDefaults.Shared.SetValue(key, previousSeparators);
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            model.IsUnifiedLayout = previousUnified;
+            AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
+            AppDefaults.Shared.UseColumnLayout = previousColumns;
+        }
+    }
+
     private static async Task<object?> CheckReaderResizeAnchorAsync(MainWindow window, bool fractional = false, bool gap = false)
     {
         var content = window.ProbeContent;

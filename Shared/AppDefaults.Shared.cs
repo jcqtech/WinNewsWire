@@ -8,6 +8,13 @@ public static class AppDefaultsSharedExtensions
     public const string UnreadCountDisplayKey = "unreadCountDisplay";
     public const string TimelineThumbnailsDisplayKey = "timelineThumbnailsDisplay";
     public const string TimelineFeedIconsDisplayKey = "timelineFeedIconsDisplay";
+    public const string TimelineShowSeparatorsKey = "timelineShowSeparators";
+
+    public static bool GetTimelineShowSeparators(this AppDefaults defaults) =>
+        defaults.GetValue(TimelineShowSeparatorsKey, false);
+
+    public static void SetTimelineShowSeparators(this AppDefaults defaults, bool show) =>
+        defaults.SetValue(TimelineShowSeparatorsKey, show);
 
     public static TimelineFeedIconsDisplay GetTimelineFeedIconsDisplay(this AppDefaults defaults)
     {

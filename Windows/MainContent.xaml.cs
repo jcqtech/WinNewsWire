@@ -195,6 +195,7 @@ public sealed partial class MainContent : UserControl
 
     private void ArticleListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        QueueTimelineAppearanceUpdate();
         if (_syncingArticleSelection || ViewModel.IsRestoringArticleSelection) return;
         _syncingArticleSelection = true;
         try { ViewModel.SetSelectedArticles(ArticleListView.SelectedItems.OfType<FeedItem>()); }
@@ -459,6 +460,7 @@ public sealed partial class MainContent : UserControl
         try
         {
             _shuttingDown = true;
+            DisposeTimelineAppearance();
             _timelineFeedIcons.Clear();
             await StopTimelineThumbnailsAsync();
             DisposeStatusBar();
@@ -878,6 +880,13 @@ public sealed partial class MainContent : UserControl
 
     private void OnArticlePreferencesChanged(object? sender, string key)
     {
+        if (key == AppDefaultsSharedExtensions.TimelineShowSeparatorsKey && !_shuttingDown)
+        {
+            if (DispatcherQueue.HasThreadAccess) QueueTimelineAppearanceUpdate();
+            else if (!DispatcherQueue.TryEnqueue(QueueTimelineAppearanceUpdate))
+                throw new InvalidOperationException("The timeline preference dispatcher is unavailable.");
+            return;
+        }
         if (key is not (WinNewsWire.Core.AppDefaults.Key.ArticleContentJavascriptEnabled
             or AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey) || !_webViewReady || _shuttingDown) return;
         if (!DispatcherQueue.HasThreadAccess)
@@ -1039,6 +1048,8 @@ public sealed partial class MainContent : UserControl
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (_shuttingDown) return;
+        if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout))
+            QueueTimelineAppearanceUpdate();
         if (e.PropertyName is nameof(ViewModel.TimelineFeedIconsDisplay) or nameof(ViewModel.SelectedSidebarItems)
             or nameof(ViewModel.SearchQuery) or nameof(ViewModel.SearchAllAccounts))
             QueueTimelineFeedIconsUpdate();

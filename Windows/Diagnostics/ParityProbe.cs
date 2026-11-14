@@ -145,6 +145,12 @@ internal static partial class ParityProbe
                 });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-separators"))
+            {
+                await CheckAsync("Timeline separators suppress selected and final rows across item changes",
+                    () => CheckTimelineSeparatorsAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);
