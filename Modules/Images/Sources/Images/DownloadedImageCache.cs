@@ -226,7 +226,8 @@ public sealed class DownloadedImageCache : IAsyncDisposable
                     if (await IsStoredImageAsync(url, data, ct).ConfigureAwait(false))
                     {
                         await _database.SaveDownloadedImageNextCheckAsync(url,
-                            CalculateNextCheck(response.CacheMaxAge, validation.ConditionalGet is not null, _clock.GetUtcNow()))
+                            CalculateNextCheck(response.CacheMaxAge, response.ConditionalGet is not null
+                                || validation.ConditionalGet is not null, _clock.GetUtcNow()), response.ConditionalGet)
                             .ConfigureAwait(false);
                         return;
                     }
@@ -248,8 +249,10 @@ public sealed class DownloadedImageCache : IAsyncDisposable
                 _downloads.NoteTransientFailure(url, response.RetryAfter, (int)response.StatusCode);
             if (!response.NotModified)
                 Trace.TraceWarning($"Image revalidation for {url} returned HTTP {(int)response.StatusCode}; keeping the cached image.");
+            var conditionalGet = response.NotModified ? response.ConditionalGet : null;
             await _database.SaveDownloadedImageNextCheckAsync(url,
-                CalculateNextCheck(response.CacheMaxAge, validation.ConditionalGet is not null, _clock.GetUtcNow()))
+                CalculateNextCheck(response.CacheMaxAge, conditionalGet is not null
+                    || validation.ConditionalGet is not null, _clock.GetUtcNow()), conditionalGet)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }

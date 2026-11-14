@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using WinNewsWire.Core;
 using WinNewsWire.Database;
 using WinNewsWire.Parsers;
+using WinNewsWire.Web;
 
 namespace WinNewsWire.Images;
 
@@ -199,12 +200,12 @@ public sealed class ImageDatabase : IDisposable
         return _queue.RunAsync(connection => Task.FromResult(DownloadedImageTable.FetchValidation(connection, url)));
     }
 
-    public Task SaveDownloadedImageNextCheckAsync(string url, DateTimeOffset nextCheck)
+    public Task SaveDownloadedImageNextCheckAsync(string url, DateTimeOffset nextCheck, ConditionalGetInfo? conditionalGet = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         return _queue.RunAsync(connection =>
         {
-            DownloadedImageTable.SaveNextCheck(connection, url, nextCheck);
+            DownloadedImageTable.SaveNextCheck(connection, url, nextCheck, conditionalGet);
             return Task.CompletedTask;
         });
     }

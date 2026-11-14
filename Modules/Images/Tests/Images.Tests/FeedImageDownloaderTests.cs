@@ -1210,6 +1210,21 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
+    public async Task AThumbnailSizeRejectionStillAllowsTheSameUrlToBecomeAFeedIcon()
+    {
+        byte[] source = Bitmap(128, 128);
+        Array.Resize(ref source, 25 * 1024 * 1024 + 1);
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, source)), maxPixelSize: 48);
+        const string url = Home + "rejected-thumbnail-icon.bmp";
+        Assert.Null(await fixture.Thumbnails.SourceAsync(url));
+        Assert.True(fixture.ImageDatabase.IsUnsuitableForThumbnail(url));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+        var icon = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(new(Feed, Home, IconUrl: url)));
+        AssertPngSize(icon.Data, 48, 48);
+        Assert.Equal(2, fixture.Requests.Count);
+    }
+
+    [Fact]
     public async Task AReaderJoiningALimitedDownloadStillReceivesALargeSourceWithoutDuplicateHttp()
     {
         byte[] source = Bitmap(128, 128);

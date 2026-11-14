@@ -159,6 +159,59 @@ public sealed class DownloadedImageCacheTests
     }
 
     [Theory]
+    [InlineData(HttpStatusCode.OK, false)]
+    [InlineData(HttpStatusCode.OK, true)]
+    [InlineData(HttpStatusCode.NotModified, true)]
+    public async Task UnchangedImagesAdoptNewValidatorsAndKeepThemWhenLaterResponsesOmitThem(
+        HttpStatusCode status, bool initiallyValidated)
+    {
+        int requests = 0;
+        const string modified = "Tue, 03 Nov 2026 12:00:00 GMT";
+        await using var fixture = new Fixture((request, _) =>
+        {
+            int count = ++requests;
+            if (count == 1)
+            {
+                var initial = ValidatedResponse(HttpStatusCode.OK, Fixture.Image);
+                if (!initiallyValidated) initial.Headers.Remove("ETag");
+                return Task.FromResult(initial);
+            }
+            string expectedTag = count switch { 2 => initiallyValidated ? "\"v1\"" : "", 3 => "\"v2\"", _ => "\"v3\"" };
+            Assert.Equal(expectedTag, request.Headers.IfNoneMatch.ToString());
+            Assert.Equal(count == 3 ? modified : "", request.Headers.IfModifiedSince?.ToString("R") ?? "");
+            var response = new HttpResponseMessage(count == 2 ? status : HttpStatusCode.NotModified)
+            {
+                Content = new ByteArrayContent(Fixture.Image)
+            };
+            if (count < 4) response.Headers.TryAddWithoutValidation("ETag", count == 2 ? "\"v2\"" : "\"v3\"");
+            if (count == 2) response.Content.Headers.TryAddWithoutValidation("Last-Modified", modified);
+            response.Headers.TryAddWithoutValidation("Cache-Control", "max-age=60");
+            return Task.FromResult(response);
+        });
+        await using var cache = fixture.CreateCache(10);
+        var changes = new List<string>();
+        cache.DownloadedImageChanged += (_, url) => changes.Add(url);
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
+        var written = File.GetLastWriteTimeUtc(fixture.PathFor("icon"));
+        for (int count = 2; count <= 4; count++)
+        {
+            fixture.Clock.Advance(TimeSpan.FromDays(40));
+            Assert.NotNull(await fixture.FetchAsync(cache, "icon", checksForUpdates: true));
+            await cache.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            var validation = Assert.IsType<DownloadedImageValidation>(
+                await fixture.Database.FetchDownloadedImageValidationAsync(Url("icon")));
+            Assert.Equal(count == 2 ? "\"v2\"" : "\"v3\"", validation.ConditionalGet?.ETag);
+            Assert.Equal(count == 2 ? modified : null, validation.ConditionalGet?.LastModified);
+            Assert.InRange(validation.NextCheck, fixture.Clock.GetUtcNow().AddDays(2.4),
+                fixture.Clock.GetUtcNow().AddDays(3.6));
+            Assert.Equal(count, requests);
+        }
+        Assert.Equal(written, File.GetLastWriteTimeUtc(fixture.PathFor("icon")));
+        Assert.Equal(Fixture.Image, await File.ReadAllBytesAsync(fixture.PathFor("icon")));
+        Assert.Empty(changes);
+    }
+
+    [Theory]
     [InlineData(200, false)]
     [InlineData(200, true)]
     [InlineData(404, false)]

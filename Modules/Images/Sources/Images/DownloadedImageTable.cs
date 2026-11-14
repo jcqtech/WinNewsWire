@@ -44,12 +44,19 @@ internal static class DownloadedImageTable
             modified is null && etag is null ? null : new(modified, etag));
     }
 
-    internal static void SaveNextCheck(SqliteConnection connection, string url, DateTimeOffset nextCheck)
+    internal static void SaveNextCheck(SqliteConnection connection, string url, DateTimeOffset nextCheck, ConditionalGetInfo? conditionalGet)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE downloadedImage SET nextCheck=$next WHERE url=$url;";
+        command.CommandText = conditionalGet is null
+            ? "UPDATE downloadedImage SET nextCheck=$next WHERE url=$url;"
+            : "UPDATE downloadedImage SET nextCheck=$next,etag=$etag,lastModified=$modified WHERE url=$url;";
         command.Parameters.AddWithValue("$url", url);
         command.Parameters.AddWithValue("$next", (nextCheck - DateTimeOffset.UnixEpoch).TotalSeconds);
+        if (conditionalGet is not null)
+        {
+            command.Parameters.AddWithValue("$etag", (object?)conditionalGet.ETag ?? DBNull.Value);
+            command.Parameters.AddWithValue("$modified", (object?)conditionalGet.LastModified ?? DBNull.Value);
+        }
         command.ExecuteNonQuery();
     }
 
