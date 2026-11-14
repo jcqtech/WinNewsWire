@@ -101,7 +101,7 @@ public sealed partial class MainContent
             text.Children.Remove(metadata);
             row.Children.Add(metadata);
             Grid.SetColumn(metadata, 2);
-            Grid.SetColumnSpan(metadata, 1);
+            Grid.SetColumnSpan(metadata, 2);
         }
         else if (!above && ReferenceEquals(metadata.Parent, row))
         {

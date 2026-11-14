@@ -217,6 +217,12 @@ internal static partial class ParityProbe
                     () => CheckVariableTimelineHeightsAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-byline"))
+            {
+                await CheckAsync("The top date spans small thumbnails while the thumbnail aligns with the title",
+                    () => CheckVariableTimelineHeightsAsync(window, byline: true));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--timeline-full-titles"))
             {
                 await CheckAsync("Full-title mode hides previews, caps titles and restores the saved normal line budget",

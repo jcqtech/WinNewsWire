@@ -29,7 +29,7 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
-    private static Task<object?> CheckVariableTimelineHeightsAsync(MainWindow window) =>
+    private static Task<object?> CheckVariableTimelineHeightsAsync(MainWindow window, bool byline = false) =>
         WithAppearanceTimelineAsync(window, async (content, list, rows, _) =>
         {
             using var http = new HttpClient(new ThumbnailHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -40,11 +40,17 @@ internal static partial class ParityProbe
                     Path.Combine(OutputDirectory, "row-height-cache"), () => true, new Downloader(http))),
                 networkAllowsDownloads: () => true);
             content.ProbeSetThumbnailService(service);
+            bool previousAbove = Core.AppDefaults.Shared.GetTimelineFeedNameAndDateAboveTitle();
             try
             {
                 Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Never);
                 rows[0] = AppearanceRow("image-height", "Short", "", thumbnail: "https://row-height.test/image.bmp");
                 rows[1] = AppearanceRow("text-height", "Short", "");
+                if (byline)
+                {
+                    rows[0].PublishedDate = DateTimeOffset.UtcNow.AddHours(-1);
+                    Core.AppDefaults.Shared.SetTimelineFeedNameAndDateAboveTitle(true);
+                }
                 await service.FindAsync(rows.Select(row => row.SourceArticle!));
                 Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small);
                 ThumbnailView Thumbnail() => Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<ThumbnailView>().Single();
@@ -58,6 +64,18 @@ internal static partial class ParityProbe
                 catch (TimeoutException error)
                 {
                     throw new InvalidOperationException(System.Text.Json.JsonSerializer.Serialize(content.ProbeTimelineThumbnailState), error);
+                }
+                if (byline)
+                {
+                    TextBlock Text(string name) => Descendants((DependencyObject)list.ContainerFromIndex(0))
+                        .OfType<TextBlock>().Single(block => block.Name == name);
+                    double Top(FrameworkElement element) => element.TransformToVisual(list).TransformPoint(default).Y;
+                    double Right(FrameworkElement element) => element.TransformToVisual(list).TransformPoint(default).X + element.ActualWidth;
+                    await WaitFor(() => Task.FromResult(Math.Abs(Top(Thumbnail()) - Top(Text("TimelineTitle"))) < 1
+                        && Top(Text("TimelineDate")) + Text("TimelineDate").ActualHeight <= Top(Thumbnail())),
+                        "Thumbnail starts at the title below the byline");
+                    Require(Math.Abs(Right(Text("TimelineDate")) - Right(Thumbnail())) < 1,
+                        "The top date does not span the small-thumbnail column.");
                 }
                 rows[0] = AppearanceRow("image-height", "Short", "");
                 await WaitFor(() => Task.FromResult(Thumbnail().Visibility == Visibility.Collapsed), "Removed thumbnail shrinks row");
@@ -75,6 +93,7 @@ internal static partial class ParityProbe
                 Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.None);
                 await WaitFor(() => Task.FromResult(content.ProbeThumbnailWorkIsIdle), "Variable-height thumbnail shutdown");
                 content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
+                Core.AppDefaults.Shared.SetTimelineFeedNameAndDateAboveTitle(previousAbove);
             }
         });
 
