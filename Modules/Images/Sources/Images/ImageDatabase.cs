@@ -18,7 +18,7 @@ public sealed class ImageDatabase : IDisposable
     private readonly TimeProvider _clock;
     private volatile bool _disposed;
     private readonly ConcurrentDictionary<string, HomePageFaviconRecord> _favicons = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, string> _feedIcons = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, HomePageIconRecord> _homePageIcons = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _failures = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _unsuitableThumbnails = new(StringComparer.Ordinal);
     public string DatabasePath { get; }
@@ -40,19 +40,20 @@ public sealed class ImageDatabase : IDisposable
                 command.CommandText = """
                     CREATE TABLE IF NOT EXISTS downloadFailure (url TEXT PRIMARY KEY NOT NULL, lastChecked REAL NOT NULL);
                     CREATE TABLE IF NOT EXISTS homePageFavicon (homePageURL TEXT PRIMARY KEY NOT NULL, faviconURL TEXT, lastChecked REAL NOT NULL);
-                    CREATE TABLE IF NOT EXISTS feedIconURL (feedURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT NOT NULL);
+                    CREATE TABLE IF NOT EXISTS homePageIcon (homePageURL TEXT PRIMARY KEY NOT NULL, iconURL TEXT, lastChecked REAL NOT NULL);
+                    DROP TABLE IF EXISTS feedIconURL;
                     DROP TABLE IF EXISTS articleThumbnailURLs;
                     CREATE TABLE IF NOT EXISTS downloadedImage (url TEXT PRIMARY KEY NOT NULL, pixelWidth INTEGER, pixelHeight INTEGER, lastAccessed REAL NOT NULL, etag TEXT, lastModified TEXT, nextCheck REAL NOT NULL DEFAULT 0, isIcon INTEGER NOT NULL DEFAULT 0);
                     """;
                 command.ExecuteNonQuery();
-                foreach (var (table, column) in new[] { ("downloadFailure", "statusCode"), ("feedIconURL", "lastChecked"), ("downloadedImage", "byteCount") })
+                foreach (var (table, column) in new[] { ("downloadFailure", "statusCode"), ("downloadedImage", "byteCount") })
                     if (connection.Query($"PRAGMA table_info({table});", row => row.GetString(1)).Contains(column, StringComparer.OrdinalIgnoreCase))
                         connection.Execute($"ALTER TABLE {table} DROP COLUMN {column};");
                 DownloadedImageTable.EnsureColumns(connection);
                 bool imported = legacyDatabasePath is not null && ImportLegacyDatabase(connection, legacyDatabasePath);
                 DownloadFailureTable.RemoveExpired(connection, _clock.GetUtcNow() - FailureRetry);
                 foreach (var row in HomePageFaviconTable.FetchAll(connection)) _favicons[row.HomePageUrl] = row;
-                foreach (var pair in FeedIconUrlTable.FetchAll(connection)) _feedIcons[pair.Key] = pair.Value;
+                foreach (var row in HomePageIconTable.FetchAll(connection)) _homePageIcons[row.HomePageUrl] = row;
                 foreach (var pair in DownloadFailureTable.FetchAll(connection)) _failures[pair.Key] = pair.Value;
                 foreach (var row in DownloadedImageTable.FetchPixelSizes(connection))
                     UpdateThumbnailSuitability(row.Url, row.PixelSize);
@@ -78,7 +79,7 @@ public sealed class ImageDatabase : IDisposable
             (string Table, string Columns, bool Optional)[] tables = [
                 ("downloadFailure", "url,lastChecked", false),
                 ("homePageFavicon", "homePageURL,faviconURL,lastChecked", false),
-                ("feedIconURL", "feedURL,iconURL", false),
+                ("homePageIcon", "homePageURL,iconURL,lastChecked", true),
                 ("downloadedImage", "url,pixelWidth,pixelHeight,lastAccessed,etag,lastModified,nextCheck,isIcon", true)
             ];
             foreach (var (table, columns, optional) in tables)
@@ -125,10 +126,15 @@ public sealed class ImageDatabase : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         return _favicons.TryGetValue(homePageUrl, out var row) && row.FaviconUrl is null && _clock.GetUtcNow() - row.LastChecked < FailureRetry;
     }
-    public string? IconUrl(string feedUrl)
+    public string? HomePageIconUrl(string homePageUrl)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _feedIcons.TryGetValue(feedUrl, out var url) ? url : null;
+        return _homePageIcons.TryGetValue(homePageUrl, out var row) ? row.IconUrl : null;
+    }
+    public bool HomePageHasNoIcon(string homePageUrl)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _homePageIcons.TryGetValue(homePageUrl, out var row) && row.IconUrl is null && _clock.GetUtcNow() - row.LastChecked < FailureRetry;
     }
     public bool RecentlyFailed(string url)
     {
@@ -231,14 +237,14 @@ public sealed class ImageDatabase : IDisposable
         });
     }
 
-    public Task SaveFeedIconUrlAsync(string feedUrl, string iconUrl)
+    public Task SaveHomePageIconAsync(string homePageUrl, string? iconUrl)
     {
-        ArgumentException.ThrowIfNullOrEmpty(feedUrl);
-        ArgumentException.ThrowIfNullOrEmpty(iconUrl);
+        ArgumentException.ThrowIfNullOrEmpty(homePageUrl);
         return _queue.RunAsync(connection =>
         {
-            FeedIconUrlTable.Save(connection, feedUrl, iconUrl);
-            _feedIcons[feedUrl] = iconUrl;
+            var row = new HomePageIconRecord(homePageUrl, iconUrl, _clock.GetUtcNow());
+            HomePageIconTable.Save(connection, row);
+            _homePageIcons[homePageUrl] = row;
             return Task.CompletedTask;
         });
     }
@@ -281,7 +287,7 @@ public sealed class ImageDatabase : IDisposable
         _queue.Dispose();
         _disposed = true;
         _favicons.Clear();
-        _feedIcons.Clear();
+        _homePageIcons.Clear();
         _failures.Clear();
         _unsuitableThumbnails.Clear();
     }

@@ -40,7 +40,7 @@ public sealed class HtmlMetadataRecord
     public sealed record OpenGraphImage(string? Url, [property: JsonPropertyName("secureURL")] string? SecureUrl,
         string? MimeType, double Width, double Height, string? AltText);
 
-    public string? BestWebsiteIconUrl() => LargestAppleTouchIcon() ?? LargestOpenGraphImageUrl() ?? TwitterImageUrl;
+    public string? BestHomePageIconUrl() => LargestAppleTouchIcon() ?? LargestOpenGraphImageUrl() ?? TwitterImageUrl;
 
     public string? LargestAppleTouchIcon()
     {

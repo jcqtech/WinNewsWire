@@ -624,7 +624,7 @@ internal static partial class ParityProbe
         var feed = new FeedImageSource("https://thumbnail.test/recovered-feed", "https://thumbnail.test/",
             IconUrl: newHomepageIcon ? null : "https://thumbnail.test/own.bmp");
         if (newHomepageIcon)
-            await database.SaveFeedIconUrlAsync(feed.FeedUrl, "https://thumbnail.test/fallback.bmp");
+            await database.SaveHomePageIconAsync(feed.HomePageUrl!, "https://thumbnail.test/fallback.bmp");
         images.FeedIconDidBecomeAvailable += (_, update) => upgraded.TrySetResult(update.Image);
         var fallback = await images.IconAsync(feed) ?? throw new InvalidOperationException("The fallback icon did not load.");
         var row = new Models.FeedItem

@@ -20,6 +20,125 @@ public sealed class FeedImageDownloaderTests
     private static readonly byte[] Image = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZssAAAAASUVORK5CYII=");
 
     [Fact]
+    public async Task HomepageMappingAndReplacementAreSharedByEveryRequestingFeed()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var available = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var updated = new ConcurrentDictionary<string, bool>();
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/")
+            {
+                await release.Task.WaitAsync(ct);
+                return HtmlResponse("<link rel='apple-touch-icon' href='/new.png'>");
+            }
+            return Response(HttpStatusCode.OK, Image);
+        });
+        await fixture.ImageDatabase.SaveHomePageIconAsync(Home, Home + "saved.png");
+        fixture.Images.FeedIconDidBecomeAvailable += (_, image) =>
+        {
+            if (image.Image.Url != Home + "new.png") return;
+            updated[image.Feed.FeedUrl] = true;
+            if (updated.Count == 2) available.TrySetResult();
+        };
+        try
+        {
+            Assert.Equal(Home + "saved.png", (await fixture.Images.IconAsync(new(Feed, Home))
+                .WaitAsync(TimeSpan.FromSeconds(10)))?.Url);
+            Assert.Equal(Home + "saved.png", (await fixture.Images.IconAsync(new(Home + "second-feed", Home))
+                .WaitAsync(TimeSpan.FromSeconds(10)))?.Url);
+            release.TrySetResult();
+            await available.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(updated.ContainsKey(Feed));
+            Assert.True(updated.ContainsKey(Home + "second-feed"));
+            await fixture.ReopenImagesAsync();
+            Assert.Equal(Home + "new.png", (await fixture.Images.IconAsync(new(Home + "third-feed", Home)))?.Url);
+            Assert.Equal(1, fixture.Requests.Count(url => url == Home + "saved.png"));
+            Assert.Equal(1, fixture.Requests.Count(url => url == Home + "new.png"));
+            Assert.Equal(1, fixture.Requests.Count(url => url == Home));
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Fact]
+    public async Task InitialHomepageDownloadCannotOverwriteANewerMetadataReplacement()
+    {
+        int pages = 0;
+        var downloading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var available = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/")
+                return HtmlResponse($"<link rel='apple-touch-icon' href='/{(++pages == 1 ? "old" : "new")}.png'>");
+            if (request.RequestUri.AbsolutePath == "/old.png")
+            {
+                downloading.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            }
+            return Response(HttpStatusCode.OK, Image);
+        });
+        fixture.Images.FeedIconDidBecomeAvailable += (_, image) =>
+        {
+            if (image.Image.Url == Home + "new.png") available.TrySetResult();
+        };
+        Assert.NotNull(await fixture.Images.IconAsync(new(Feed, Home, IconUrl: Home + "new.png")));
+        var original = fixture.Images.IconAsync(new(Feed, Home));
+        try
+        {
+            await downloading.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            fixture.Clock.Advance(TimeSpan.FromDays(7));
+            Assert.Equal(Home + "new.png", (await fixture.Metadata.GetMetadataAsync(Home))?.BestHomePageIconUrl());
+            await available.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            release.TrySetResult();
+            await original;
+            Assert.Equal(Home + "new.png", fixture.ImageDatabase.HomePageIconUrl(Home));
+            Assert.Equal(Home + "new.png", (await fixture.Images.IconAsync(new(Feed, Home)))?.Url);
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Fact]
+    public async Task ChangingHomepageDoesNotReuseThePreviousFeedMapping()
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/"
+                ? HtmlResponse($"<link rel='apple-touch-icon' href='https://{request.RequestUri.Host}/icon.png'>")
+                : Response(HttpStatusCode.OK, Image)));
+        Assert.Equal(Home + "icon.png", (await fixture.Images.IconAsync(new(Feed, Home)))?.Url);
+        const string otherHome = "https://other.test/";
+        Assert.Equal(otherHome + "icon.png", (await fixture.Images.IconAsync(new(Feed, otherHome)))?.Url);
+        Assert.Equal(Home + "icon.png", fixture.ImageDatabase.HomePageIconUrl(Home));
+        Assert.Equal(otherHome + "icon.png", fixture.ImageDatabase.HomePageIconUrl(otherHome));
+    }
+
+    [Fact]
+    public async Task HomepageAbsenceSkipsMetadataUntilItsFiveDayDeadline()
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/"
+                ? HtmlResponse("<link rel='apple-touch-icon' href='/icon.png'>")
+                : Response(HttpStatusCode.OK, Image)));
+        await fixture.ImageDatabase.SaveHomePageIconAsync(Home, null);
+        Assert.Null(await fixture.Images.IconAsync(new(Feed, Home)));
+        Assert.Empty(fixture.Requests);
+        fixture.Clock.Advance(ImageDatabase.FailureRetry);
+        Assert.Equal(Home + "icon.png", (await fixture.Images.IconAsync(new(Feed, Home)))?.Url);
+        Assert.False(fixture.ImageDatabase.HomePageHasNoIcon(Home));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OnlyAvailableMetadataCanEstablishHomepageIconAbsence(bool available)
+    {
+        await using var fixture = new Fixture((_, _) => Task.FromResult(available
+            ? HtmlResponse("") : Response(HttpStatusCode.ServiceUnavailable)));
+        Assert.Null(await fixture.Images.IconAsync(new(Feed, Home)));
+        Assert.Equal(available, fixture.ImageDatabase.HomePageHasNoIcon(Home));
+    }
+
+    [Fact]
     public async Task FaviconNetworkRecoveryPreservesServerRetryAfter()
     {
         int attempts = 0;
@@ -413,14 +532,14 @@ public sealed class FeedImageDownloaderTests
             await release.Task.WaitAsync(ct);
             return Response(HttpStatusCode.OK, Image);
         });
-        if (hasDiscoveredIcon) await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, Home + "old.png");
+        if (hasDiscoveredIcon) await fixture.ImageDatabase.SaveHomePageIconAsync(Home, Home + "old.png");
         var pending = fixture.Images.IconAsync(new(Feed, Home, IconUrl: Home + "declared.png"));
         await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.False(pending.IsCompleted);
         Assert.Single(fixture.Requests);
         release.TrySetResult();
         Assert.Equal(Home + "declared.png", (await pending)?.Url);
-        Assert.Equal(hasDiscoveredIcon ? Home + "old.png" : null, fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(hasDiscoveredIcon ? Home + "old.png" : null, fixture.ImageDatabase.HomePageIconUrl(Home));
     }
 
     [Theory]
@@ -443,7 +562,7 @@ public sealed class FeedImageDownloaderTests
                 ? HttpStatusCode.OK : HttpStatusCode.NotFound, Image);
         });
         var feed = new FeedImageSource(Feed, Home);
-        await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, Home + "saved.png");
+        await fixture.ImageDatabase.SaveHomePageIconAsync(Home, Home + "saved.png");
         fixture.Images.FeedIconDidBecomeAvailable += (_, image) => upgraded.TrySetResult(image);
         try
         {
@@ -457,7 +576,7 @@ public sealed class FeedImageDownloaderTests
                 var replacement = await upgraded.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 Assert.Equal(feed, replacement.Feed);
                 Assert.Equal(Home + "new.png", replacement.Image.Url);
-                Assert.Equal(replacement.Image.Url, fixture.ImageDatabase.IconUrl(Feed));
+                Assert.Equal(replacement.Image.Url, fixture.ImageDatabase.HomePageIconUrl(Home));
             }
             else
             {
@@ -465,7 +584,7 @@ public sealed class FeedImageDownloaderTests
                 while (!fixture.ImageDatabase.RecentlyFailed(Home + "new.png"))
                     await Task.Delay(10, timeout.Token);
                 await fixture.Images.DisposeAsync();
-                Assert.Equal(Home + "saved.png", fixture.ImageDatabase.IconUrl(Feed));
+                Assert.Equal(Home + "saved.png", fixture.ImageDatabase.HomePageIconUrl(Home));
                 Assert.False(upgraded.Task.IsCompleted);
                 Assert.True(File.Exists(saved!.Path));
             }
@@ -496,7 +615,7 @@ public sealed class FeedImageDownloaderTests
         var discovered = await available.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(feed, discovered.Feed);
         Assert.Equal(Home + (ownRecovers ? "own.png" : "touch.png"), discovered.Image.Url);
-        Assert.Equal(ownRecovers ? null : Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(ownRecovers ? null : Home + "touch.png", fixture.ImageDatabase.HomePageIconUrl(Home));
         Assert.Equal(2, pages);
         if (declared) Assert.Equal(2, own);
         if (ownRecovers) Assert.DoesNotContain(Home + "touch.png", fixture.Requests);
@@ -521,10 +640,10 @@ public sealed class FeedImageDownloaderTests
             }
             return Response(HttpStatusCode.OK, Image);
         });
-        await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, Home + "saved.png");
+        await fixture.ImageDatabase.SaveHomePageIconAsync(Home, Home + "saved.png");
         fixture.Metadata.MetadataAvailable += (_, metadata) =>
         {
-            if (metadata.BestWebsiteIconUrl() == Home + "new.png") refreshed.TrySetResult();
+            if (metadata.BestHomePageIconUrl() == Home + "new.png") refreshed.TrySetResult();
         };
         fixture.Images.FeedIconDidBecomeAvailable += (_, image) =>
         {
@@ -539,7 +658,7 @@ public sealed class FeedImageDownloaderTests
             await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(10));
             release.TrySetResult();
             Assert.Equal(Home + "new.png", (await available.Task.WaitAsync(TimeSpan.FromSeconds(10))).Image.Url);
-            Assert.Equal(Home + "new.png", fixture.ImageDatabase.IconUrl(Feed));
+            Assert.Equal(Home + "new.png", fixture.ImageDatabase.HomePageIconUrl(Home));
         }
         finally { release.TrySetResult(); }
     }
@@ -557,11 +676,11 @@ public sealed class FeedImageDownloaderTests
             _ => throw new InvalidOperationException("Homepage metadata must not delay the saved icon.")
         }));
         Assert.NotNull(await fixture.Images.IconAsync(new(Feed, Home, IconUrl: Home + "saved.png")));
-        await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, Home + "saved.png");
+        await fixture.ImageDatabase.SaveHomePageIconAsync(Home, Home + "saved.png");
         var image = await fixture.Images.IconAsync(new(Feed, Home, IconUrl: Home + "declared.png"));
         Assert.Equal(Home + "saved.png", image?.Url);
         Assert.Equal([Home + "saved.png", Home + "declared.png"], fixture.Requests);
-        Assert.Equal(Home + "saved.png", fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(Home + "saved.png", fixture.ImageDatabase.HomePageIconUrl(Home));
     }
 
     [Theory]
@@ -577,7 +696,7 @@ public sealed class FeedImageDownloaderTests
             _ => throw new InvalidOperationException("Unexpected URL.")
         }));
         Assert.Equal(Home + "touch.png", (await fixture.Images.IconAsync(new(Feed, Home, IconUrl: Home + "declared.png")))?.Url);
-        Assert.Equal(Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(Home + "touch.png", fixture.ImageDatabase.HomePageIconUrl(Home));
         Assert.True(fixture.ImageDatabase.RecentlyFailed(Home + "declared.png"));
     }
 
@@ -597,19 +716,19 @@ public sealed class FeedImageDownloaderTests
             "/touch.png" => Response(HttpStatusCode.OK, Image),
             _ => throw new InvalidOperationException("Unexpected URL.")
         }));
-        if (!declared) await fixture.ImageDatabase.SaveFeedIconUrlAsync(Feed, icon);
+        if (!declared) await fixture.ImageDatabase.SaveHomePageIconAsync(Home, icon);
         var feed = new FeedImageSource(Feed, Home, IconUrl: declared ? icon : null);
         Assert.Equal(Home + "touch.png", (await fixture.Images.IconAsync(feed))?.Url);
         Assert.False(fixture.ImageDatabase.RecentlyFailed(icon));
         Assert.Equal(3, fixture.Requests.Count);
         Assert.Equal(Home + "touch.png", (await fixture.Images.IconAsync(feed))?.Url);
-        Assert.Equal(Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(Home + "touch.png", fixture.ImageDatabase.HomePageIconUrl(Home));
         Assert.Equal(3, fixture.Requests.Count);
         Assert.Equal(Home + "touch.png", (await fixture.Images.IconAsync(feed))?.Url);
         Assert.Equal(3, fixture.Requests.Count);
         fixture.Images.DownloadedImages.NetworkStatusChanged(null, true);
         Assert.Equal(icon, (await fixture.Images.IconAsync(feed with { IconUrl = icon }))?.Url);
-        Assert.Equal(Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
+        Assert.Equal(Home + "touch.png", fixture.ImageDatabase.HomePageIconUrl(Home));
         Assert.False(fixture.ImageDatabase.RecentlyFailed(icon));
         Assert.Equal(2, requests);
     }
@@ -791,7 +910,7 @@ public sealed class FeedImageDownloaderTests
             Assert.Equal(2, iconRequests);
             releaseFallback.TrySetResult();
             Assert.Equal(holdFallback ? icon : Home + "touch.png", (await original)?.Url);
-            Assert.Equal(Home + "touch.png", fixture.ImageDatabase.IconUrl(Feed));
+            Assert.Equal(Home + "touch.png", fixture.ImageDatabase.HomePageIconUrl(Home));
             Assert.Equal(icon, (await fixture.Images.IconAsync(feed))?.Url);
         }
         finally { releaseFallback.TrySetResult(); }

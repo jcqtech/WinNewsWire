@@ -36,7 +36,7 @@ public sealed class HtmlMetadataRecordTests
             new(null, null, 150, 100, "same-height"),
             new(null, null, 200, 200, "larger")
         ]);
-        Assert.Equal("larger", record.BestWebsiteIconUrl());
+        Assert.Equal("larger", record.BestHomePageIconUrl());
     }
 
     [Fact]
@@ -44,10 +44,10 @@ public sealed class HtmlMetadataRecordTests
     {
         var record = new HtmlMetadataRecord("https://example.test/", openGraphImages:
             [new("http://example.test/icon.png", "https://example.test/icon.png", null, 100, 100, null)]);
-        Assert.Equal("https://example.test/icon.png", record.BestWebsiteIconUrl());
+        Assert.Equal("https://example.test/icon.png", record.BestHomePageIconUrl());
         record = new("https://example.test/", openGraphImages:
             [new("https://s0.wp.com/i/blank.jpg", null, null, 100, 100, null)], twitterImageUrl: "twitter");
-        Assert.Equal("twitter", record.BestWebsiteIconUrl());
+        Assert.Equal("twitter", record.BestHomePageIconUrl());
     }
 
     [Fact]
