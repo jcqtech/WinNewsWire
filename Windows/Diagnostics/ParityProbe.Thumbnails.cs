@@ -675,6 +675,35 @@ internal static partial class ParityProbe
         }
     }
 
+    private static async Task<object?> CheckThumbnailChoiceOrderAsync(MainWindow window)
+    {
+        var saved = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        var expected = new[] { TimelineThumbnailsDisplay.None, TimelineThumbnailsDisplay.Small, TimelineThumbnailsDisplay.Large };
+        var menu = Descendants(window.Content).OfType<MenuBar>().SelectMany(bar => bar.Items)
+            .OfType<MenuBarItem>().SelectMany(item => item.Items).OfType<MenuFlyoutSubItem>()
+            .Single(item => item.Name == "MenuThumbnails");
+        Require(menu.Items.OfType<ToggleMenuFlyoutItem>().Select(item => item.Tag).SequenceEqual(expected.Cast<object>()),
+            "The View menu does not put None before Small and Large.");
+        var preferences = new AppWindows.PreferencesWindow();
+        try
+        {
+            preferences.Activate();
+            var choices = (ComboBox)((FrameworkElement)preferences.Content).FindName("TimelineThumbnailsCombo");
+            await WaitFor(() => Task.FromResult(choices.IsLoaded), "Thumbnail choice picker");
+            Require(choices.Items.OfType<ComboBoxItem>().Select(item => item.Tag).SequenceEqual(expected.Cast<object>()),
+                "Preferences does not put None before Small and Large.");
+            Require(choices.SelectedItem is ComboBoxItem { Tag: TimelineThumbnailsDisplay selected } && selected == saved
+                && new Core.AppDefaults().GetTimelineThumbnailsDisplay() == saved,
+                "Reordering choices changed the saved thumbnail display.");
+            return new { MenuNoneFirst = true, PreferencesNoneFirst = true, SavedModePreserved = true };
+        }
+        finally
+        {
+            preferences.Close();
+            window.Activate();
+        }
+    }
+
     private static async Task<object?> CheckReaderThumbnailLayoutAsync(MainWindow window)
     {
         var content = window.ProbeContent;

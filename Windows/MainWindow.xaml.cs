@@ -866,7 +866,7 @@ public sealed partial class MainWindow : Window
         MenuThumbnails.Text = AppStrings.Get("Thumbnails");
         MenuThumbnails.IsEnabled = !vm.UseColumnLayout;
         if (MenuThumbnails.Items.Count == 0)
-            foreach (var mode in Enum.GetValues<TimelineThumbnailsDisplay>())
+            foreach (var mode in new[] { TimelineThumbnailsDisplay.None, TimelineThumbnailsDisplay.Small, TimelineThumbnailsDisplay.Large })
             {
                 var item = new ToggleMenuFlyoutItem { Text = mode.DisplayString(), Tag = mode };
                 item.Click += Menu_SetTimelineThumbnails;

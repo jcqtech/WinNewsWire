@@ -58,7 +58,7 @@ public sealed partial class PreferencesWindow : Window
         TimelineHeading.Text = AppStrings.Get("Timeline");
         TimelineThumbnailsLabel.Text = AppStrings.Get("ThumbnailSize");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TimelineThumbnailsCombo, TimelineThumbnailsLabel.Text);
-        foreach (var mode in Enum.GetValues<TimelineThumbnailsDisplay>())
+        foreach (var mode in new[] { TimelineThumbnailsDisplay.None, TimelineThumbnailsDisplay.Small, TimelineThumbnailsDisplay.Large })
             TimelineThumbnailsCombo.Items.Add(new ComboBoxItem { Content = mode.DisplayString(), Tag = mode });
         SyncTimelineThumbnails();
         TimelineFeedIconsLabel.Text = AppStrings.Get("FeedIcons");

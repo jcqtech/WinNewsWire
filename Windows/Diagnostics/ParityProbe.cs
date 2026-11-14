@@ -202,6 +202,12 @@ internal static partial class ParityProbe
                     () => CheckReaderThumbnailLayoutAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-choice-order"))
+            {
+                await CheckAsync("Thumbnail choices put None first without changing the saved mode",
+                    () => CheckThumbnailChoiceOrderAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-cache-retention"))
             {
                 await CheckAsync("Thumbnail choices survive desktop display-mode changes", () => CheckThumbnailCacheRetentionAsync(window));
