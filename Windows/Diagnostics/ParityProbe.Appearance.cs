@@ -257,6 +257,8 @@ internal static partial class ParityProbe
                 var toggle = Descendants(preferences.Content).OfType<ToggleSwitch>()
                     .SingleOrDefault(control => control.Name == "TimelineFeedNameAndDateAboveTitleToggle");
                 Require(toggle is not null, "Preferences have no byline placement control.");
+                Require(AppDefaults.Shared.GetValue<bool?>(key) is not null || toggle!.IsOn,
+                    "New profiles do not default to feed name and date above the title.");
                 rows[0].PublishedDate = DateTimeOffset.UtcNow.AddHours(-1);
                 TextBlock Text(string name) => Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<TextBlock>()
                     .Single(block => block.Name == name);
@@ -270,7 +272,7 @@ internal static partial class ParityProbe
                         "Byline placement reaches its native layout");
                     Require(Math.Abs(Top(Text("TimelineBylineText")) - Top(Text("TimelineDate"))) < 1,
                         "The byline and date do not share a line.");
-                    Require(new AppDefaults().GetValue(key, false) == above, "Byline placement did not persist.");
+                    Require(new AppDefaults().GetTimelineFeedNameAndDateAboveTitle() == above, "Byline placement did not persist.");
                 }
                 return new { Above = true, Below = true, DateAligned = true, Persisted = true };
             });
