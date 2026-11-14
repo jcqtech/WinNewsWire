@@ -11,6 +11,63 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckSmartFeedVisibilityAsync(MainWindow window)
+    {
+        var keys = new[] { "showTodayFeed", "showUnreadFeed", "showStarredFeed" };
+        var saved = keys.Select(key => AppDefaults.Shared.GetValue(key, true)).ToArray();
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var original = window.CaptureState();
+        var controller = AppShared.SmartFeeds.SmartFeedsController.Shared;
+        var smartFeeds = controller.SmartFeeds.ToArray();
+        var list = SidebarList(content);
+        var preferences = new AppWindows.PreferencesWindow();
+        try
+        {
+            foreach (string key in keys) AppDefaults.Shared.SetValue(key, true);
+            model.BuildSidebar();
+            preferences.Activate();
+            await WaitFor(() => Task.FromResult(((FrameworkElement)preferences.Content).IsLoaded), "Smart-feed preferences");
+            var toggles = new[] { "ShowTodayFeedToggle", "ShowUnreadFeedToggle", "ShowStarredFeedToggle" }
+                .Select(name => Descendants(preferences.Content).OfType<ToggleSwitch>().SingleOrDefault(control => control.Name == name)).ToArray();
+            Require(toggles.All(control => control is not null), "Preferences do not expose smart-feed visibility controls.");
+            var menus = Descendants(window.Content).OfType<MenuBar>().SelectMany(bar => bar.Items)
+                .SelectMany(item => item.Items).OfType<MenuFlyoutItem>()
+                .Where(item => item.Name is "MenuGoToday" or "MenuGoUnread" or "MenuGoStarred").ToArray();
+            Require(menus.Length == 3, "Smart-feed navigation commands are missing.");
+            for (int i = 0; i < toggles.Length; i++)
+            {
+                toggles[i]!.IsOn = false;
+                int hidden = i;
+                await WaitFor(() => Task.FromResult(!list.Items.OfType<Models.SidebarItem>()
+                    .Any(row => ReferenceEquals(row.Tag, smartFeeds[hidden]))), "Hidden smart feed removed from native outline");
+                Require(!new AppDefaults().GetValue(keys[i], true), "Smart-feed visibility did not persist.");
+            }
+            Require(menus.All(menu => !menu.IsEnabled) && !list.Items.OfType<Models.SidebarItem>().Any(row => row.Title == controller.NameForDisplay),
+                "Hidden smart feeds retained Go commands or an empty sidebar group.");
+            var selection = model.SelectedSidebarItem;
+            await content.GoToSmartFeedAsync(controller.TodayFeed);
+            Require(ReferenceEquals(model.SelectedSidebarItem, selection), "Direct navigation selected a hidden smart feed.");
+            using var peer = new ViewModels.MainViewModel();
+            peer.BuildSidebar();
+            Require(!peer.SidebarItems.SelectMany(row => row.Children).Any(row => row.ItemType == Models.SidebarItemType.SmartFeed),
+                "A new timeline ignored persisted smart-feed visibility.");
+            foreach (string key in keys) await Task.Run(() => AppDefaults.Shared.SetValue(key, true));
+            await WaitFor(() => Task.FromResult(toggles.All(toggle => toggle!.IsOn)
+                && menus.All(menu => menu.IsEnabled) && list.Items.OfType<Models.SidebarItem>()
+                    .Count(row => row.ItemType == Models.SidebarItemType.SmartFeed) == 3), "Restored smart-feed outline and commands");
+            Require(smartFeeds.SequenceEqual(controller.SmartFeeds), "Hiding a smart feed destroyed its underlying identity.");
+            return new { ThreePreferences = true, EmptyGroupHidden = true, Commands = true, NewWindow = true, Identities = true };
+        }
+        finally
+        {
+            preferences.Close();
+            for (int i = 0; i < keys.Length; i++) AppDefaults.Shared.SetValue(keys[i], saved[i]);
+            await content.RestoreStateAsync(original);
+            window.Activate();
+        }
+    }
+
     private static async Task<object?> CheckSidebarTextSizeAsync(MainWindow window)
     {
         const string key = "sidebarTextSize";

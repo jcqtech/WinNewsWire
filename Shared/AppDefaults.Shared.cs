@@ -11,6 +11,16 @@ public static class AppDefaultsSharedExtensions
     public const string TimelineShowSeparatorsKey = "timelineShowSeparators";
     public const string SidebarShowsIconsKey = "sidebarShowsIcons";
     public const string SidebarTextSizeKey = "sidebarTextSize";
+    public const string ShowTodayFeedKey = "showTodayFeed";
+    public const string ShowUnreadFeedKey = "showUnreadFeed";
+    public const string ShowStarredFeedKey = "showStarredFeed";
+
+    public static bool GetShowTodayFeed(this AppDefaults defaults) => defaults.GetValue(ShowTodayFeedKey, true);
+    public static bool GetShowUnreadFeed(this AppDefaults defaults) => defaults.GetValue(ShowUnreadFeedKey, true);
+    public static bool GetShowStarredFeed(this AppDefaults defaults) => defaults.GetValue(ShowStarredFeedKey, true);
+    public static void SetShowTodayFeed(this AppDefaults defaults, bool show) => defaults.SetValue(ShowTodayFeedKey, show);
+    public static void SetShowUnreadFeed(this AppDefaults defaults, bool show) => defaults.SetValue(ShowUnreadFeedKey, show);
+    public static void SetShowStarredFeed(this AppDefaults defaults, bool show) => defaults.SetValue(ShowStarredFeedKey, show);
 
     public static SidebarTextSize GetSidebarTextSize(this AppDefaults defaults)
     {

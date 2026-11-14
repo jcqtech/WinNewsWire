@@ -243,4 +243,8 @@
   <data name="Medium" xml:space="preserve"><value>Medium</value></data>
   <data name="ExtraLarge" xml:space="preserve"><value>Extra Large</value></data>
   <data name="ExtraExtraLarge" xml:space="preserve"><value>Extra Extra Large</value></data>
+  <data name="ShowTodayFeed" xml:space="preserve"><value>Show Today</value></data>
+  <data name="ShowUnreadFeed" xml:space="preserve"><value>Show All Unread</value></data>
+  <data name="ShowStarredFeed" xml:space="preserve"><value>Show Starred</value></data>
+  <data name="SmartFeedHidden" xml:space="preserve"><value>This smart feed is hidden in Preferences.</value></data>
 </root>

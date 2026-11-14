@@ -2797,6 +2797,11 @@ public sealed partial class MainContent : UserControl
 
     public async Task GoToSmartFeedAsync(WinNewsWire.AppShared.SmartFeeds.IPseudoFeed feed)
     {
+        if (!WinNewsWire.AppShared.SmartFeeds.SmartFeedsController.Shared.ShownSmartFeeds.Contains(feed))
+        {
+            ViewModel.StatusMessage = AppStrings.Get("SmartFeedHidden");
+            return;
+        }
         await ViewModel.RunSidebarActionAsync("Select timeline", async () =>
         {
             var item = ViewModel.SidebarItems.SelectMany(section => section.Children).FirstOrDefault(item => ReferenceEquals(item.Tag, feed))

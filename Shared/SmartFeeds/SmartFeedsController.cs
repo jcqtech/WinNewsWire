@@ -13,6 +13,17 @@ public sealed class SmartFeedsController
     public SmartFeed UnreadFeed { get; }
     public SmartFeed StarredFeed { get; }
     public IReadOnlyList<IPseudoFeed> SmartFeeds { get; }
+    public IReadOnlyList<IPseudoFeed> ShownSmartFeeds
+    {
+        get
+        {
+            var feeds = new List<IPseudoFeed>(3);
+            if (Core.AppDefaults.Shared.GetShowTodayFeed()) feeds.Add(TodayFeed);
+            if (Core.AppDefaults.Shared.GetShowUnreadFeed()) feeds.Add(UnreadFeed);
+            if (Core.AppDefaults.Shared.GetShowStarredFeed()) feeds.Add(StarredFeed);
+            return feeds;
+        }
+    }
 
     private SmartFeedsController()
     {

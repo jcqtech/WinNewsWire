@@ -233,6 +233,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             QueueArticleIconLoads(ArticleItems.ToArray());
         }
         if (key == AppShared.Sidebar.SidebarFeedOrder.PreferenceKey) BuildSidebar();
+        if (key is AppDefaultsSharedExtensions.ShowTodayFeedKey or AppDefaultsSharedExtensions.ShowUnreadFeedKey
+            or AppDefaultsSharedExtensions.ShowStarredFeedKey) BuildSidebar();
         if (key == AppDefaultsSharedExtensions.SidebarShowsIconsKey)
         {
             bool show = AppDefaults.Shared.GetSidebarShowsIcons();
@@ -931,7 +933,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ItemType = SidebarItemType.SectionHeader,
             IsExpanded = true,
         };
-        foreach (var sf in SmartFeedsController.Shared.SmartFeeds)
+        foreach (var sf in SmartFeedsController.Shared.ShownSmartFeeds)
         {
             smartHeader.Children.Add(new SidebarItem
             {
@@ -948,7 +950,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 UnreadCount = sf.UnreadCount,
             });
         }
-        rebuilt.Add(smartHeader);
+        if (smartHeader.Children.Count > 0) rebuilt.Add(smartHeader);
 
         // --- Per-account sections ---
         foreach (var account in AppService.Shared.Accounts.SortedActiveAccounts)

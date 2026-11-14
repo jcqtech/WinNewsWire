@@ -328,7 +328,8 @@ public sealed partial class MainWindow : Window
             else DispatcherQueue.TryEnqueue(ApplyRequestedTheme);
         }
         else if (key is Core.AppDefaults.Key.OpenInBrowserInBackground or Core.AppDefaults.Key.ShowStatusBar
-            or Core.AppDefaults.Key.ShowStatusBarThemeMenu)
+            or Core.AppDefaults.Key.ShowStatusBarThemeMenu or AppDefaultsSharedExtensions.ShowTodayFeedKey
+            or AppDefaultsSharedExtensions.ShowUnreadFeedKey or AppDefaultsSharedExtensions.ShowStarredFeedKey)
         {
             if (DispatcherQueue.HasThreadAccess) SyncMenuToggles();
             else DispatcherQueue.TryEnqueue(SyncMenuToggles);
@@ -867,6 +868,9 @@ public sealed partial class MainWindow : Window
         MenuOpenBrowserInverted.Text = Browser.InvertedOpenTitle;
         MenuOpenWebView.IsEnabled = MainContentControl.CanOpenSelectedInWebView;
         MenuGoNextUnread.IsEnabled = MainContentControl.CanSelectNextUnread;
+        MenuGoToday.IsEnabled = Core.AppDefaults.Shared.GetShowTodayFeed();
+        MenuGoUnread.IsEnabled = Core.AppDefaults.Shared.GetShowUnreadFeed();
+        MenuGoStarred.IsEnabled = Core.AppDefaults.Shared.GetShowStarredFeed();
         MenuArticleNextUnread.IsEnabled = MenuGoNextUnread.IsEnabled;
         MenuFindArticle.IsEnabled = MenuFindNext.IsEnabled = MenuFindPrevious.IsEnabled
             = MenuUseSelectionFind.IsEnabled = MenuJumpToSelection.IsEnabled = MainContentControl.HasDisplayedDocument;

@@ -25,6 +25,12 @@ public sealed partial class PreferencesWindow
         AddAppearanceChoice(AppearanceOptions, AppDefaultsSharedExtensions.SidebarTextSizeKey, "SidebarTextSize", "SidebarTextSizeCombo",
             Enum.GetValues<SidebarTextSize>().Select(size => (size.ToString(), size)),
             () => AppDefaults.Shared.GetSidebarTextSize(), value => AppDefaults.Shared.SetSidebarTextSize(value));
+        AddAppearanceToggle(AppearanceOptions, AppDefaultsSharedExtensions.ShowTodayFeedKey, "ShowTodayFeed", "ShowTodayFeedToggle",
+            () => AppDefaults.Shared.GetShowTodayFeed(), value => AppDefaults.Shared.SetShowTodayFeed(value));
+        AddAppearanceToggle(AppearanceOptions, AppDefaultsSharedExtensions.ShowUnreadFeedKey, "ShowUnreadFeed", "ShowUnreadFeedToggle",
+            () => AppDefaults.Shared.GetShowUnreadFeed(), value => AppDefaults.Shared.SetShowUnreadFeed(value));
+        AddAppearanceToggle(AppearanceOptions, AppDefaultsSharedExtensions.ShowStarredFeedKey, "ShowStarredFeed", "ShowStarredFeedToggle",
+            () => AppDefaults.Shared.GetShowStarredFeed(), value => AppDefaults.Shared.SetShowStarredFeed(value));
     }
 
     private void AddAppearanceChoice<T>(StackPanel panel, string key, string labelKey, string name,

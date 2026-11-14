@@ -169,6 +169,12 @@ internal static partial class ParityProbe
                     () => CheckSidebarTextSizeAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--smart-feed-visibility"))
+            {
+                await CheckAsync("Smart-feed visibility updates outline, navigation and future windows without destroying feeds",
+                    () => CheckSmartFeedVisibilityAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);
