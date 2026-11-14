@@ -29,6 +29,43 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckConstrainedThumbnailPolicyAsync(MainWindow window)
+    {
+        var previous = ArticleThumbnailService.ProbeNetworkState;
+        bool connected = true, constrained = true;
+        int requests = 0;
+        try
+        {
+            ArticleThumbnailService.ProbeNetworkState = () => (connected, constrained);
+            using var http = new HttpClient(new ThumbnailHandler((_, _) =>
+            {
+                requests++;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    { Content = new ByteArrayContent(ThumbnailBitmap(128, 128)) });
+            }));
+            using var database = new ImageDatabase(Path.Combine(OutputDirectory, "constrained-images.db"));
+            await using var service = new ArticleThumbnailService(window.DispatcherQueue,
+                () => (new ArticleThumbnailFinder(database), new ThumbnailDownloader(database,
+                    Path.Combine(OutputDirectory, "constrained-image-cache"), ArticleThumbnailService.NetworkAllowsDownloads, new Downloader(http))));
+            var row = AppearanceRow("constrained", "Constrained image", "", thumbnail: "https://constrained.test/image.bmp");
+            var image = await service.ThumbnailAsync(row.SourceArticle!, ThumbnailMode.Small);
+            Require(image is not null && requests == 1, "A connected constrained network still blocked the thumbnail download.");
+            Require(!ArticleThumbnailService.NetworkAllowsRevalidation(), "A constrained connection allowed background icon revalidation.");
+            connected = false;
+            var offline = AppearanceRow("offline", "Offline image", "", thumbnail: "https://constrained.test/offline.bmp");
+            Require(await service.ThumbnailAsync(offline.SourceArticle!, ThumbnailMode.Small) is null && requests == 1
+                && !ArticleThumbnailService.NetworkAllowsRevalidation(), "Offline mode started an image request or revalidation.");
+            Require(ReferenceEquals(image, await service.ThumbnailAsync(row.SourceArticle!, ThumbnailMode.Small)),
+                "Going offline discarded an already-cached thumbnail.");
+            connected = true;
+            constrained = false;
+            Require(ArticleThumbnailService.NetworkAllowsDownloads() && ArticleThumbnailService.NetworkAllowsRevalidation(),
+                "An unrestricted connection did not permit downloads and revalidation.");
+            return new { ConstrainedDownload = true, ConstrainedRevalidationBlocked = true, OfflineBlocked = true, OfflineCache = true };
+        }
+        finally { ArticleThumbnailService.ProbeNetworkState = previous; }
+    }
+
     private static async Task<object?> CheckGrayscaleIconSourcesAsync(MainWindow window)
     {
         bool saved = Core.AppDefaults.Shared.GetGrayscaleIcons();

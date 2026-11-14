@@ -68,7 +68,7 @@ public sealed partial class AppService
 
     private AppService()
     {
-        Images.FeedImageDownloader.ConfigureSharedBackgroundNetworkPolicy(Services.ArticleThumbnailService.NetworkAllowsDownloads);
+        Images.FeedImageDownloader.ConfigureSharedBackgroundNetworkPolicy(Services.ArticleThumbnailService.NetworkAllowsRevalidation);
         ErrorLog = new ErrorLogDatabase(Path.Combine(AppConfig.LogsDirectory, "errors.sqlite3"));
         _refreshTimer = new AccountRefreshTimer(Accounts, (RefreshInterval)Defaults.RefreshIntervalRaw);
         _syncTimer = new ArticleStatusSyncTimer(Accounts, ArticleStatusSyncTimer.NormalInterval);

@@ -48,6 +48,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal event EventHandler? NetworkStatusChanged;
     internal bool NetworkDownloadsAllowed { get; private set; }
 #if PARITY_PROBE
+    internal static Func<(bool Connected, bool Constrained)>? ProbeNetworkState;
     internal void ProbeNotifyNetworkStatusChanged() => OnNetworkStatusChanged(null);
     internal int ProbeDecodes;
     internal bool ProbeDecodedOnUIThread;
@@ -107,12 +108,27 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 
     internal static bool NetworkAllowsDownloads()
     {
-        if (!NetworkMonitor.IsAvailable) return false;
+        var state = ReadNetworkState();
+        return state.Connected;
+    }
+
+    internal static bool NetworkAllowsRevalidation()
+    {
+        var state = ReadNetworkState();
+        return state.Connected && !state.Constrained;
+    }
+
+    private static (bool Connected, bool Constrained) ReadNetworkState()
+    {
+#if PARITY_PROBE
+        if (ProbeNetworkState is { } state) return state();
+#endif
+        if (!NetworkMonitor.IsAvailable) return (false, false);
         var profile = NetworkInformation.GetInternetConnectionProfile();
-        if (profile is null) return false;
+        if (profile is null) return (false, false);
         var cost = profile.GetConnectionCost();
-        return cost.NetworkCostType == NetworkCostType.Unrestricted
-            && !cost.Roaming && !cost.OverDataLimit && !cost.ApproachingDataLimit;
+        return (true, cost.NetworkCostType != NetworkCostType.Unrestricted
+            || cost.Roaming || cost.OverDataLimit || cost.ApproachingDataLimit);
     }
 
     internal Task<SoftwareBitmapSource?> ThumbnailAsync(Article article, ThumbnailMode mode, CancellationToken ct = default,

@@ -191,6 +191,12 @@ internal static partial class ParityProbe
                     () => CheckSidebarDeletionIdentityAsync(window, server.Url));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-network-policy"))
+            {
+                await CheckAsync("Connected constrained networks allow thumbnails but not background icon revalidation",
+                    () => CheckConstrainedThumbnailPolicyAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--sidebar-icons"))
             {
                 await CheckAsync("Sidebar feed, folder and smart-feed icons follow preferences without replacing rows",
