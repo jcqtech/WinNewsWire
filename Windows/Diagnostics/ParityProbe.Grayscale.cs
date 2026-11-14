@@ -17,6 +17,39 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckGrayscaleRevisionSharingAsync(MainWindow window)
+    {
+        string path = Path.Combine(OutputDirectory, "revision-sharing.bmp");
+        File.WriteAllBytes(path, ThumbnailBitmap(64, 32));
+        await using var cache = new GrayscaleIconCache(window.DispatcherQueue);
+        var first = cache.SourceFor(path, 5);
+        var second = cache.SourceFor(path, 1);
+        Require(ReferenceEquals(first, second),
+            "Per-view revision histories duplicated the same grayscale file.");
+        var data = await cache.DataForAsync(path, 5, System.Threading.CancellationToken.None);
+        Require(ReferenceEquals(data, await cache.DataForAsync(path, 1, System.Threading.CancellationToken.None)),
+            "Unchanged icon bytes were converted again for another view's revision.");
+        var icon = new IconView { Width = 48, Height = 48, ImageSource = first };
+        var host = Descendants(window.ProbeContent).OfType<Grid>().First();
+        host.Children.Add(icon);
+        try
+        {
+            await WaitFor(() => Task.FromResult(icon.ProbeLuminanceReady), "Initial shared grayscale luminance");
+            Require(icon.ProbeLuminance != ImageLuminanceType.Bright, "The grayscale revision fixture is already white.");
+            var white = ThumbnailBitmap(64, 32);
+            Array.Fill(white, (byte)255, 54, white.Length - 54);
+            File.WriteAllBytes(path, white);
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(2));
+            var changed = await cache.DataForAsync(path, 6, System.Threading.CancellationToken.None);
+            Require(!changed.SequenceEqual(data) && ReferenceEquals(first, cache.SourceFor(path, 2)),
+                "A changed icon lost its shared display source or kept stale bytes.");
+            await WaitFor(() => Task.FromResult(icon.ProbeLuminanceReady && icon.ProbeLuminance == ImageLuminanceType.Bright),
+                "Changed shared grayscale content refreshes native luminance");
+            return new { DifferentViewRevisions = true, SingleVariant = true, UnchangedBytesReused = true, ChangedBytesAndLuminance = true };
+        }
+        finally { host.Children.Remove(icon); }
+    }
+
     private static async Task<object?> CheckLiveGrayscaleIconsAsync(MainWindow window)
     {
         bool saved = AppDefaults.Shared.GetGrayscaleIcons();

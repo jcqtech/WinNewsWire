@@ -175,6 +175,12 @@ internal static partial class ParityProbe
                     () => CheckLiveGrayscaleIconsAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--grayscale-revision-sharing"))
+            {
+                await CheckAsync("Different view revisions share grayscale work while real file changes update every view",
+                    () => CheckGrayscaleRevisionSharingAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--icon-retention"))
             {
                 await CheckAsync("Desktop icon variants remain cached without the removed automatic memory monitor", async () =>

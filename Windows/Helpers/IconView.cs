@@ -49,7 +49,11 @@ public sealed class IconView : UserControl
         _backgroundStyle = (Style)Application.Current.Resources["FeedIconBackgroundStyle"];
         _border.Child = _image;
         Content = _border;
-        _image.ImageOpened += async (_, _) => await UpdateImageAsync();
+        _image.ImageOpened += async (_, _) =>
+        {
+            _generation++;
+            await UpdateImageAsync();
+        };
         _image.SizeChanged += (_, _) => UpdateBackground();
         Loaded += async (_, _) => await UpdateImageAsync();
         ActualThemeChanged += (_, _) => UpdateBackground();
