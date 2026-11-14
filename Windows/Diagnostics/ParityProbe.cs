@@ -214,6 +214,12 @@ internal static partial class ParityProbe
                     () => CheckViewMenuSectionsAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--reader-resize-anchor"))
+            {
+                await CheckAsync("Reader resize preserves the visible article paragraph and saved position",
+                    () => CheckReaderResizeAnchorAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-cache-retention"))
             {
                 await CheckAsync("Thumbnail choices survive desktop display-mode changes", () => CheckThumbnailCacheRetentionAsync(window));

@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using WinNewsWire.AppShared;
 using WinNewsWire.Articles;
 using WinNewsWire.Core;
 using WinRT.Interop;
@@ -19,6 +20,71 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckReaderResizeAnchorAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSelection = model.SelectedArticle;
+        bool previousUnified = model.IsUnifiedLayout;
+        bool previousScripts = AppDefaults.Shared.ArticleContentJavascriptEnabled;
+        double previousWidth = content.ProbeWebView.MaxWidth;
+        var previousDisplay = AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        string body = string.Concat(Enumerable.Range(0, 100).Select(index =>
+            $"<p id='resize-paragraph-{index}'>Paragraph {index}. "
+            + string.Concat(Enumerable.Repeat("Readable article text wraps differently when the reading pane changes width. ", 12))
+            + "</p>"));
+        var article = new Article("account", "resize-anchor", "feed", "resize-anchor", "Resize fixture",
+            body, null, null, "https://resize-anchor.test/article", null, null, null,
+            null, null, null, null, new ArticleStatus("resize-anchor", true, false, DateTime.UnixEpoch));
+        var row = new Models.FeedItem
+            { Id = article.ArticleID, AccountID = article.AccountID, SourceArticle = article, IsRead = true };
+        try
+        {
+            model.SelectedArticle = null;
+            model.IsUnifiedLayout = true;
+            AppDefaults.Shared.ArticleContentJavascriptEnabled = false;
+            AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.None);
+            content.ProbeWebView.MaxWidth = 740;
+            model.ArticleItems = new System.Collections.ObjectModel.ObservableCollection<Models.FeedItem> { row };
+            model.SelectedArticle = row;
+            await WaitFor(async () => content.ProbeArticleReady && content.ProbeReaderInteractionReady
+                && await ScriptBool(content, "window.innerWidth > 700 && document.getElementById('resize-paragraph-40') !== null"),
+                "Wide reader resize fixture");
+            await content.ProbeWebView.ExecuteScriptAsync("""
+                window.scrollTo(0, window.scrollY + document.getElementById('resize-paragraph-40').getBoundingClientRect().top + 5);
+                """);
+            await WaitFor(() => ScriptBool(content,
+                "Math.abs(document.getElementById('resize-paragraph-40').getBoundingClientRect().top + 5) < 2"),
+                "Reader starts within the target paragraph");
+            await Task.Delay(250);
+            foreach (int width in new[] { 420, 740 })
+            {
+                content.ProbeWebView.MaxWidth = width;
+                await WaitFor(() => ScriptBool(content, $"Math.abs(window.innerWidth - {width}) < 3"),
+                    "Reader host width changes");
+                await Task.Delay(350);
+                Require(await ScriptBool(content,
+                    "Math.abs(document.getElementById('resize-paragraph-40').getBoundingClientRect().top + 5) < 2"),
+                    "Reader resize lost the visible paragraph or its top offset.");
+                using var offset = JsonDocument.Parse(await content.ProbeWebView.ExecuteScriptAsync("window.scrollY"));
+                Require(Math.Abs(window.CaptureState().Detail.ScrollY - offset.RootElement.GetDouble()) < 2,
+                    "Reader resize left a stale saved scroll position.");
+            }
+            return new { NarrowAndWide = true, ParagraphPreserved = true, OffsetPreserved = true, SavedPositionCurrent = true,
+                PublisherScriptsDisabled = true };
+        }
+        finally
+        {
+            content.ProbeWebView.MaxWidth = previousWidth;
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            model.IsUnifiedLayout = previousUnified;
+            AppDefaults.Shared.ArticleContentJavascriptEnabled = previousScripts;
+            AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
+        }
+    }
+
     private sealed record ScrollArticleFixture(string? Title, string Content, string Url, bool ReaderMode, int TextSize = 1);
     [StructLayout(LayoutKind.Sequential)]
     private struct ScrollMouseInput
