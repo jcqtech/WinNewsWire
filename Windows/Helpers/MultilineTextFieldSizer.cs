@@ -45,6 +45,13 @@ public sealed class MultilineTextFieldSizer
 
     public static void EmptyCache() { SingleLineTextFieldSizer.VerifyAccess(); Sizers.Clear(); }
 
+    public static int NumberOfLinesForMeasuredHeight(double height, TextFont font, int maximumLines)
+    {
+        if (!double.IsFinite(height) || height < 0) throw new ArgumentOutOfRangeException(nameof(height));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumLines);
+        return Math.Min(maximumLines, For(font, maximumLines).NumberOfLinesForHeight(height));
+    }
+
     private static MultilineTextFieldSizer For(TextFont font, int lines)
     {
         SingleLineTextFieldSizer.VerifyAccess();
@@ -62,8 +69,13 @@ public sealed class MultilineTextFieldSizer
             if (neighbor is { } known) height = known;
             else { setText(); height = MeasureHeight(width); heights[width] = height; }
         }
+        return new(new Size(width, height), NumberOfLinesForHeight(height));
+    }
+
+    private int NumberOfLinesForHeight(double height)
+    {
         var lineHeight = _doubleLineHeight / 2.0;
-        return new(new Size(width, height), lineHeight > 0 ? (int)Math.Round(height / lineHeight) : 0);
+        return lineHeight > 0 ? (int)Math.Round(height / lineHeight) : 0;
     }
 
     private int MeasureHeight(int width)

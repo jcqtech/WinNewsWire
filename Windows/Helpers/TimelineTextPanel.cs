@@ -2,7 +2,6 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Foundation;
-using WinNewsWire.AppShared.Extensions;
 
 namespace WinNewsWire.Helpers;
 
@@ -34,8 +33,7 @@ public sealed class TimelineTextPanel : Panel
             throw new InvalidOperationException("A timeline text panel requires title and summary text blocks.");
         int limit = ShowFullTitles ? 12 : NumberOfLines;
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
-        var text = HtmlInlines.GetAttributedText(title) ?? SimpleHtml.Parse(title.Text);
-        bool hasTitle = !string.IsNullOrWhiteSpace(text.Text);
+        bool hasTitle = !string.IsNullOrWhiteSpace(HtmlInlines.GetAttributedText(title)?.Text ?? title.Text);
         title.Visibility = hasTitle ? Visibility.Visible : Visibility.Collapsed;
         title.MaxLines = limit;
         var available = new Size(availableSize.Width, double.PositiveInfinity);
@@ -44,8 +42,8 @@ public sealed class TimelineTextPanel : Panel
         if (hasTitle && double.IsFinite(availableSize.Width) && availableSize.Width > 0)
         {
             var font = new TextFont(title.FontSize, title.FontWeight.Weight, title.FontFamily.Source);
-            titleLines = Math.Clamp(MultilineTextFieldSizer.SizeFor(text, font, limit,
-                (int)Math.Min(int.MaxValue, Math.Floor(availableSize.Width))).NumberOfLinesUsed, 1, limit);
+            titleLines = Math.Clamp(MultilineTextFieldSizer.NumberOfLinesForMeasuredHeight(
+                title.DesiredSize.Height, font, limit), 1, limit);
         }
         int remaining = ShowFullTitles ? (hasTitle ? 0 : 4) : limit - titleLines;
         summary.Visibility = remaining > 0 && !string.IsNullOrWhiteSpace(summary.Text) ? Visibility.Visible : Visibility.Collapsed;

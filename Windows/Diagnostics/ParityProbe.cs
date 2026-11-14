@@ -181,6 +181,12 @@ internal static partial class ParityProbe
                     () => CheckGrayscaleRevisionSharingAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-measurement-retention"))
+            {
+                await CheckAsync("Timeline layout does not retain a second copy of every measured article title",
+                    CheckTimelineMeasurementRetentionAsync);
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--icon-retention"))
             {
                 await CheckAsync("Desktop icon variants remain cached without the removed automatic memory monitor", async () =>

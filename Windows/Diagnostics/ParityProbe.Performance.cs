@@ -21,6 +21,42 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static Task<object?> CheckTimelineMeasurementRetentionAsync()
+    {
+        Helpers.MultilineTextFieldSizer.EmptyCache();
+        var title = new TextBlock { FontSize = 14, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis };
+        var summary = new TextBlock { Text = "A short preview.", FontSize = 14, TextWrapping = TextWrapping.Wrap };
+        var panel = new Helpers.TimelineTextPanel();
+        panel.Children.Add(title);
+        panel.Children.Add(summary);
+        try
+        {
+            var timer = Stopwatch.StartNew();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int index = 0; index < 500; index++)
+            {
+                Helpers.HtmlInlines.SetAttributedText(title, AppShared.Extensions.SimpleHtml.Parse(
+                    $"<b>Article {index}</b> has an independently wrapped title in the scrolling timeline."));
+                panel.InvalidateMeasure();
+                panel.Measure(new global::Windows.Foundation.Size(240, double.PositiveInfinity));
+            }
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            var fields = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var sizers = (System.Collections.IDictionary)(typeof(Helpers.MultilineTextFieldSizer)
+                .GetField("Sizers", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .GetValue(null)!);
+            int retained = sizers.Values.Cast<object>().Sum(sizer =>
+                ((System.Collections.IDictionary)sizer.GetType().GetField("_cache", fields)!.GetValue(sizer)!).Count
+                + ((System.Collections.IDictionary)sizer.GetType().GetField("_attributedCache", fields)!.GetValue(sizer)!).Count);
+            var report = new { Rows = 500, RetainedMeasurementTexts = retained, AllocatedBytes = allocated, ElapsedMs = timer.Elapsed.TotalMilliseconds };
+            File.WriteAllText(Path.Combine(OutputDirectory, "measurement-retention.json"), JsonSerializer.Serialize(report));
+            Require(retained == 0, "Timeline layout retained visited titles in a redundant global measurement cache.");
+            return Task.FromResult<object?>(report);
+        }
+        finally { Helpers.MultilineTextFieldSizer.EmptyCache(); }
+    }
+
     private static async Task<object?> CheckIconContrastAsync(MainWindow window)
     {
         var list = (ListView)window.ProbeContent.FindName("ArticleListView");
