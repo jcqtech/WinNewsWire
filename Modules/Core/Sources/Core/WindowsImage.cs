@@ -93,6 +93,48 @@ public static partial class WindowsImage
         }
     }
 
+    public static byte[] GrayscaleImageData(byte[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (data.Length == 0) throw new InvalidDataException("The image is empty.");
+        try
+        {
+            using var resources = new ComResources();
+            var factory = resources.Add((IWICImagingFactory)new ImagingFactory());
+            CreateStreamOnHGlobal(IntPtr.Zero, true, out var input);
+            resources.Add(input);
+            input.Write(data, data.Length, IntPtr.Zero);
+            input.Seek(0, 0, IntPtr.Zero);
+            factory.CreateDecoderFromStream(input, IntPtr.Zero, 0, out var decoder);
+            resources.Add(decoder);
+            var largest = LargestFrame(decoder, out _);
+            decoder.GetFrame(largest.Index, out var frame);
+            resources.Add(frame);
+            var source = ConvertPixels(factory, frame, Bgra32, resources);
+            uint transform = OrientationTransform(frame, resources);
+            if (transform != 0)
+            {
+                factory.CreateBitmapFlipRotator(out var rotator);
+                resources.Add(rotator);
+                rotator.Initialize(source, transform);
+                source = rotator;
+            }
+            var pixels = ReadPixels(source, out _, out _);
+            for (int offset = 0; offset < pixels.Length; offset += 4)
+            {
+                byte gray = pixels[offset + 3] == 0 ? (byte)0 : (byte)Math.Round(
+                    pixels[offset + 2] * 0.2126 + pixels[offset + 1] * 0.7152 + pixels[offset] * 0.0722,
+                    MidpointRounding.AwayFromZero);
+                pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = gray;
+            }
+            return EncodeImage(factory, source, resources, pixels);
+        }
+        catch (COMException error) when (IsImageError(error.HResult))
+        {
+            throw new InvalidDataException("Windows could not convert the icon to grayscale.", error);
+        }
+    }
+
     private static (uint Index, uint Width, uint Height) LargestFrame(IWICBitmapDecoder decoder, out uint count)
     {
         decoder.GetFrameCount(out count);
@@ -197,7 +239,7 @@ public static partial class WindowsImage
         return 0;
     }
 
-    private static byte[] EncodeImage(IWICImagingFactory factory, IWICBitmapSource source, ComResources resources)
+    private static byte[] EncodeImage(IWICImagingFactory factory, IWICBitmapSource source, ComResources resources, byte[]? pixels = null)
     {
         var pixelFormat = Bgra32;
         source = ConvertPixels(factory, source, pixelFormat, resources);
@@ -215,7 +257,12 @@ public static partial class WindowsImage
         frame.Initialize(options);
         frame.SetSize(width, height);
         frame.SetPixelFormat(ref pixelFormat);
-        frame.WriteSource(source, IntPtr.Zero);
+        if (pixels is null) frame.WriteSource(source, IntPtr.Zero);
+        else
+        {
+            if (pixelFormat != Bgra32) throw new InvalidDataException("The PNG encoder rejected 32-bit BGRA pixels.");
+            frame.WritePixels(height, checked(width * 4), checked((uint)pixels.Length), pixels);
+        }
         frame.Commit();
         encoder.Commit();
         output.Stat(out var stats, 1);

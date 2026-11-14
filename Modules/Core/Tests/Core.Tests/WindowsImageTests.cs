@@ -11,6 +11,32 @@ namespace WinNewsWire.Core.Tests;
 public sealed class WindowsImageTests
 {
     [Theory]
+    [InlineData(255, 0, 0, 128, 54)]
+    [InlineData(0, 255, 0, 200, 182)]
+    [InlineData(0, 0, 255, 255, 18)]
+    [InlineData(255, 0, 0, 0, 0)]
+    public void GrayscaleIconsPreserveAlphaDimensionsAndOriginalColorBytes(byte red, byte green, byte blue, byte alpha, byte gray)
+    {
+        var original = Png(3, 2, [red, green, blue, alpha]);
+        var saved = original.ToArray();
+        var image = ReadPng(WindowsImage.GrayscaleImageData(original));
+        Assert.Equal((3, 2), (image.Width, image.Height));
+        Assert.All(image.Pixels.Chunk(4), pixel => Assert.Equal(new byte[] { gray, gray, gray, alpha }, pixel));
+        Assert.Equal(saved, original);
+    }
+
+    [Fact]
+    public void GrayscaleIconsKeepTheirDisplayedExifOrientation()
+    {
+        var image = ReadPng(WindowsImage.GrayscaleImageData(Tiff(6, 4, 6)));
+        Assert.Equal((4, 6), (image.Width, image.Height));
+        var corners = new[] { 0, (image.Width - 1) * 4, (image.Height - 1) * image.Width * 4, image.Pixels.Length - 4 };
+        var gray = new byte[] { 18, 54, 237, 182 };
+        for (int i = 0; i < corners.Length; i++)
+            Assert.Equal(new byte[] { gray[i], gray[i], gray[i], 255 }, image.Pixels.AsSpan(corners[i], 4).ToArray());
+    }
+
+    [Theory]
     [InlineData(1, 48)]
     [InlineData(1.1, 53)]
     [InlineData(1.25, 60)]
