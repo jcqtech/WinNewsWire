@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`257edf35fd33f696c6da50158b1a7bfe8b4b8fa9`**. This synchronization is in progress.
+`cd6dd9ab29ec27ec99dc23ec48e6ceea54f266e7`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is removing thumbnail background fills, `a9b0e48726ea2a423eb95b7ce2f04c66a13932ef`;
+is changing the separator default, `0aa620ff13b857971c7093baf586ed421c838d47`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -110,9 +110,18 @@ Large mode now has a persisted app-wide preference and localized checked View
 command, with UI-dispatched updates in other windows and no loss of selection.
 Its initial responsive layout was ported separately, then refined to a fixed
 180-logical-pixel height aligned with the feed icon (or text without an icon).
-Both timeline modes fit the whole image on a theme-aware fill. The reusable view
-now always fits and centers images, removing the unused crop/fit option; native
-layout updates scaling on resize and clips rounded corners. Permanent failures refresh
+Both timeline modes fit their decoded image with transparent letterboxes.
+Small thumbnails are now worker-decoded squares: the shorter side is at most
+256 pixels without upscaling, with centered horizontal cropping and bottom-only
+vertical cropping after EXIF rotation. The cache retains only the cropped bitmap
+rows; readers and icons still share original full-size source bytes. Large
+thumbnails retain complete-image sizing and the fixed row height.
+The reusable view now shows a faint system-themed fill only while unloaded,
+restores it on recycling, and rounds the fitted image itself rather than its
+larger slot. Source arrival and native image loading invalidate measurement.
+Whole-point aspect-fit geometry centers landscape and portrait frames.
+Native icon backdrops use the same subtle platform palette with source-over
+compositing instead of opaque light/dark grays. Permanent failures refresh
 only matching rows; visible download admission waits for native layout to settle.
 Shared **Small / Large / None** settings now replace the initial large-mode
 boolean. The localized View submenu and native Preferences picker stay in sync
@@ -154,7 +163,8 @@ duplicating its migration, coalescing, backoff, activity, and shutdown behavior.
 The new shared `DownloadedImages` cache coalesces reads/downloads across feed
 icons, reader images and both thumbnail sizes. It stores original full-size encoded
 bytes, including animation, per URL without a second raw HTTP-body cache. Native thumbnails decode
-those bytes directly at up to 256/1200 pixels, respect EXIF orientation, and retain no
+those bytes directly at up to 256 pixels on the small square's shorter side or
+1200 pixels on the large image's longer side, respect EXIF orientation, and retain no
 per-size encoded thumbnail copies. Scaled icon/favicon representations persist
 by size and encoding, avoiding repeated resizing after memory eviction or service
 recreation. After their atomic write, the larger original is deleted; a failed
@@ -421,8 +431,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **233 Ported, 88 Covered, 118 Skipped, and 66 Pending**
-source commits, backed by **250 source-attributed Windows port commits**.
+The inventory currently has **238 Ported, 88 Covered, 118 Skipped, and 61 Pending**
+source commits, backed by **255 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
