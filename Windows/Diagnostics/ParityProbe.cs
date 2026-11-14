@@ -145,6 +145,16 @@ internal static partial class ParityProbe
                 });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
+            {
+                await CheckThumbnailSquaresAsync(window);
+                await CheckAsync("Large thumbnails retain oriented aspect-fit decoding", async () =>
+                {
+                    await CheckThumbnailDisplaySizesAsync(window);
+                    return new { Landscape = true, Rotated = true, Wide = true, Portrait = true, Cached = true };
+                });
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-presentation"))
             {
                 await CheckAsync("Native thumbnails fit complete images without a background fill",

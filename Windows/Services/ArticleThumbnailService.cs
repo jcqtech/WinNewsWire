@@ -22,7 +22,7 @@ namespace WinNewsWire.Services;
 
 internal sealed class ArticleThumbnailService : IAsyncDisposable
 {
-    private const int SmallThumbnailMaxPixelSize = 256;
+    private const int SmallThumbnailPixelSize = 256;
     private const int LargeThumbnailMaxPixelSize = 1200;
     private sealed record CachedThumbnail(string Url, ThumbnailMode Mode, SoftwareBitmapSource Source, long ByteCount);
     private sealed class InsignificantThumbnailDimensionsException(uint width, uint height)
@@ -53,6 +53,7 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal bool ProbeDecodedOnUIThread;
     internal long ProbeCacheBytes => _cacheBytes;
     internal (int Width, int Height) ProbeLastDecodedSize;
+    internal Action<SoftwareBitmap>? ProbeDecodedBitmap;
     internal int ProbeDecodeError;
     internal int ProbeUrlResolutions;
     internal Action? ProbeFindingUrls;
@@ -361,8 +362,9 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         if (frame is null) throw new InvalidDataException("The image has no readable frames.");
         if (!SignificantImageFilter.HasSignificantDimensions(frame.PixelWidth, frame.PixelHeight))
             throw new InsignificantThumbnailDimensionsException(frame.PixelWidth, frame.PixelHeight);
-        int maxPixelSize = mode == ThumbnailMode.Small ? SmallThumbnailMaxPixelSize : LargeThumbnailMaxPixelSize;
-        double scale = Math.Min(1, (double)maxPixelSize / Math.Max(frame.PixelWidth, frame.PixelHeight));
+        double scale = mode == ThumbnailMode.Small
+            ? Math.Min(1, (double)SmallThumbnailPixelSize / Math.Min(frame.PixelWidth, frame.PixelHeight))
+            : Math.Min(1, (double)LargeThumbnailMaxPixelSize / Math.Max(frame.PixelWidth, frame.PixelHeight));
         if (mode == ThumbnailMode.Large)
             scale = Math.Min(scale, 180 * WindowsScreen.MaxScreenScale() / frame.OrientedPixelHeight);
         var transform = new BitmapTransform
@@ -370,11 +372,21 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             ScaledWidth = (uint)Math.Max(1, Math.Round(frame.PixelWidth * scale)),
             ScaledHeight = (uint)Math.Max(1, Math.Round(frame.PixelHeight * scale))
         };
+        if (mode == ThumbnailMode.Small)
+        {
+            bool swapsAxes = frame.OrientedPixelWidth != frame.PixelWidth;
+            uint width = swapsAxes ? transform.ScaledHeight : transform.ScaledWidth;
+            uint height = swapsAxes ? transform.ScaledWidth : transform.ScaledHeight;
+            uint side = Math.Min(width, height);
+            // Bounds are in scaled, EXIF-oriented coordinates; Y == 0 preserves the displayed top.
+            transform.Bounds = new BitmapBounds { X = (width - side) / 2, Y = 0, Width = side, Height = side };
+        }
         var bitmap = await frame.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
                 transform, ExifOrientationMode.RespectExifOrientation, ColorManagementMode.ColorManageToSRgb)
             .AsTask(ct).ConfigureAwait(false);
 #if PARITY_PROBE
         ProbeLastDecodedSize = (bitmap.PixelWidth, bitmap.PixelHeight);
+        ProbeDecodedBitmap?.Invoke(bitmap);
 #endif
         return bitmap;
     }
