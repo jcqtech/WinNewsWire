@@ -7,12 +7,12 @@ internal static class MediaRss
 {
     public static ParsedAttachment? Attachment(string url, XmlAttributes attributes)
     {
-        var medium = ParsedAttachment.ParseMedium(attributes.ValueForNameCaseInsensitive("medium"));
-        return ParsedAttachment.Create(url, attributes.ValueForNameCaseInsensitive("type"), null,
-            PositiveInteger(attributes.ValueForNameCaseInsensitive("fileSize") ?? attributes.ValueForNameCaseInsensitive("length")),
-            ParsedAttachment.ParseDurationInSeconds(attributes.ValueForNameCaseInsensitive("duration")),
-            PositiveInteger(attributes.ValueForNameCaseInsensitive("width")),
-            PositiveInteger(attributes.ValueForNameCaseInsensitive("height")), medium);
+        var medium = ParsedAttachment.ParseMedium(attributes.ValueForCaseInsensitiveName("medium"));
+        return ParsedAttachment.Create(url, attributes.ValueForCaseInsensitiveName("type"), null,
+            PositiveInteger(attributes.ValueForCaseInsensitiveName("fileSize") ?? attributes.ValueForCaseInsensitiveName("length")),
+            ParsedAttachment.ParseDurationInSeconds(attributes.ValueForCaseInsensitiveName("duration")),
+            PositiveInteger(attributes.ValueForCaseInsensitiveName("width")),
+            PositiveInteger(attributes.ValueForCaseInsensitiveName("height")), medium);
     }
 
     private static long? PositiveInteger(string? value)
@@ -51,13 +51,13 @@ internal sealed class MediaElementTracker
         }
         if (name.SequenceEqual("content"u8))
         {
-            if (attributes.ValueForNameCaseInsensitive("url") is { } raw
+            if (attributes.ValueForCaseInsensitiveName("url") is { } raw
                 && resolveUrl(raw) is { } url && MediaRss.Attachment(url, attributes) is { } attachment)
             {
                 if (_inGroup)
                 {
                     _first ??= attachment;
-                    if (string.Equals(attributes.ValueForNameCaseInsensitive("isDefault"), "true", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(attributes.ValueForCaseInsensitiveName("isDefault"), "true", StringComparison.OrdinalIgnoreCase))
                         _default ??= attachment;
                 }
                 else
@@ -79,14 +79,14 @@ internal sealed class MediaElementTracker
         {
             if (item.MediaDescription is null)
             {
-                item.MediaDescriptionIsHtml = string.Equals(attributes.ValueForNameCaseInsensitive("type"), "html", StringComparison.OrdinalIgnoreCase);
+                item.MediaDescriptionIsHtml = string.Equals(attributes.ValueForCaseInsensitiveName("type"), "html", StringComparison.OrdinalIgnoreCase);
                 parser.BeginStoringCharacters();
             }
             ContainerDepth++;
             return false;
         }
         if (name.SequenceEqual("thumbnail"u8) && item.ThumbnailUrl is null
-            && attributes.ValueForNameCaseInsensitive("url") is { Length: > 0 } thumbnail)
+            && attributes.ValueForCaseInsensitiveName("url") is { Length: > 0 } thumbnail)
             item.ThumbnailUrl = resolveUrl(thumbnail);
         return true;
     }

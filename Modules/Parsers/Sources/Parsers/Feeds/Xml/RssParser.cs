@@ -47,7 +47,7 @@ public static class RssParser
             }
             if (_parsingArticle && ns.IsITunes && name.SequenceEqual("image"u8))
             {
-                if (CurrentItem is { ITunesImageUrl: null } item && attributes.ValueForNameCaseInsensitive("href") is { Length: > 0 } href)
+                if (CurrentItem is { ITunesImageUrl: null } item && attributes.ValueForCaseInsensitiveName("href") is { Length: > 0 } href)
                     item.ITunesImageUrl = ResolveUrl(href);
                 _namespaceElementDepth = 1;
                 return;

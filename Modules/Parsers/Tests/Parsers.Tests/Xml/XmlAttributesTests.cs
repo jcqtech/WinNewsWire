@@ -46,15 +46,15 @@ public sealed class XmlAttributesTests
     {
         var attributes = Make(Attribute("isPermaLink", "false"));
         foreach (var query in new[] { "ispermalink", "ISPERMALINK", "IsPermaLink" })
-            Assert.Equal("false", attributes.ValueForNameCaseInsensitive(query));
+            Assert.Equal("false", attributes.ValueForCaseInsensitiveName(query));
     }
     [Fact] public void CaseInsensitiveMatchesPrefixAndLocal()
-        => Assert.Equal("en", Make(Attribute("Lang", "en", "XML", "http://www.w3.org/XML/1998/namespace")).ValueForNameCaseInsensitive("xml:lang"));
+        => Assert.Equal("en", Make(Attribute("Lang", "en", "XML", "http://www.w3.org/XML/1998/namespace")).ValueForCaseInsensitiveName("xml:lang"));
     [Fact] public void CaseInsensitiveDoesNotAffectNonLetters()
     {
         var attributes = Make(Attribute("data-id", "42"));
-        Assert.Equal("42", attributes.ValueForNameCaseInsensitive("data-id"));
-        Assert.Null(attributes.ValueForNameCaseInsensitive("data_id"));
+        Assert.Equal("42", attributes.ValueForCaseInsensitiveName("data-id"));
+        Assert.Null(attributes.ValueForCaseInsensitiveName("data_id"));
     }
     [Fact] public void DictionaryBuildsQualifiedKeys()
     {

@@ -19,7 +19,7 @@ public sealed class XmlAttributes
     public int Count => _attributes.Count;
     public bool IsEmpty => Count == 0;
     public string? this[string name] => ValueForName(name, false);
-    public string? ValueForNameCaseInsensitive(string name) => ValueForName(name, true);
+    public string? ValueForCaseInsensitiveName(string name) => ValueForName(name, true);
 
     public Dictionary<string, string> Dictionary()
     {
