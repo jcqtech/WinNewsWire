@@ -197,6 +197,33 @@
             </MenuBarItem>
 
             <MenuBarItem Title="View" AccessKey="V">
+                <ToggleMenuFlyoutItem x:Name="MenuShowSidebar" Text="Show Sidebar"
+                                      AccessKey="S"
+                                      IsChecked="True" Click="Menu_ToggleSidebar">
+                    <ToggleMenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="B" />
+                    </ToggleMenuFlyoutItem.KeyboardAccelerators>
+                </ToggleMenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuReadFeedsFilter" Text="Hide Read Feeds" Click="Menu_ToggleSidebarReadFilter" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutSubItem Text="Sort By">
+                    <ToggleMenuFlyoutItem x:Name="MenuSortDate" Text="Date" Tag="Date" Click="Menu_SortBy" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortFeed" Text="Feed" Tag="Feed" Click="Menu_SortBy" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortTitle" Text="Title" Tag="Title" Click="Menu_SortBy" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortUnread" Text="Unread" Tag="Unread" Click="Menu_SortBy" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortStarred" Text="Starred" Tag="Starred" Click="Menu_SortBy" />
+                    <MenuFlyoutSeparator />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortAscending" Text="Ascending" Tag="ascending" Click="Menu_SortDirection" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSortDescending" Text="Descending" Tag="descending" Click="Menu_SortDirection" />
+                </MenuFlyoutSubItem>
+                <ToggleMenuFlyoutItem x:Name="MenuHideRead" Text="Hide Read Articles" Click="Menu_ToggleReadFilter" />
+                <ToggleMenuFlyoutItem x:Name="MenuSearchAllAccounts" Text="Search All Accounts" Click="Menu_SearchAllAccounts" />
+                <ToggleMenuFlyoutItem x:Name="MenuColumnLayout" Text="Use Column Layout" Click="Menu_ToggleColumnLayout" />
+                <MenuFlyoutSubItem x:Name="MenuThumbnails" />
+                <MenuFlyoutSeparator />
+                <ToggleMenuFlyoutItem x:Name="MenuShowStatusBar" Click="Menu_ToggleStatusBar" />
+                <ToggleMenuFlyoutItem x:Name="MenuShowStatusBarThemes" Click="Menu_ToggleStatusBarThemes" />
+                <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Name="MenuShowToolbar" AccessKey="B" Click="Menu_ToggleToolbar">
                     <MenuFlyoutItem.KeyboardAccelerators>
                         <KeyboardAccelerator Modifiers="Control,Menu" Key="T" />
@@ -209,35 +236,10 @@
                     <ToggleMenuFlyoutItem x:Name="MenuToolbarText" Tag="TextOnly" Click="Menu_ToolbarDisplay" />
                 </MenuFlyoutSubItem>
                 <MenuFlyoutSeparator />
-                <ToggleMenuFlyoutItem x:Name="MenuColumnLayout" Text="Use Column Layout" Click="Menu_ToggleColumnLayout" />
-                <MenuFlyoutSubItem x:Name="MenuThumbnails" />
-                <ToggleMenuFlyoutItem x:Name="MenuShowStatusBar" Click="Menu_ToggleStatusBar" />
-                <ToggleMenuFlyoutItem x:Name="MenuShowStatusBarThemes" Click="Menu_ToggleStatusBarThemes" />
                 <ToggleMenuFlyoutItem x:Name="MenuUnifiedLayout" Text="Reading Only"
                                       AccessKey="U" Click="Menu_ToggleUnified" />
                 <ToggleMenuFlyoutItem x:Name="MenuFullScreen" Text="Full Screen" KeyboardAcceleratorTextOverride="F11"
                                       Click="Menu_ToggleFullScreen" />
-                <ToggleMenuFlyoutItem x:Name="MenuShowSidebar" Text="Show Sidebar"
-                                      AccessKey="S"
-                                      IsChecked="True" Click="Menu_ToggleSidebar">
-                    <ToggleMenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="B" />
-                    </ToggleMenuFlyoutItem.KeyboardAccelerators>
-                </ToggleMenuFlyoutItem>
-                <MenuFlyoutSubItem Text="Sort By">
-                    <ToggleMenuFlyoutItem x:Name="MenuSortDate" Text="Date" Tag="Date" Click="Menu_SortBy" />
-                    <ToggleMenuFlyoutItem x:Name="MenuSortFeed" Text="Feed" Tag="Feed" Click="Menu_SortBy" />
-                    <ToggleMenuFlyoutItem x:Name="MenuSortTitle" Text="Title" Tag="Title" Click="Menu_SortBy" />
-                    <ToggleMenuFlyoutItem x:Name="MenuSortUnread" Text="Unread" Tag="Unread" Click="Menu_SortBy" />
-                    <ToggleMenuFlyoutItem x:Name="MenuSortStarred" Text="Starred" Tag="Starred" Click="Menu_SortBy" />
-                    <MenuFlyoutSeparator />
-                    <ToggleMenuFlyoutItem x:Name="MenuSortAscending" Text="Ascending" Tag="ascending" Click="Menu_SortDirection" />
-                    <ToggleMenuFlyoutItem x:Name="MenuSortDescending" Text="Descending" Tag="descending" Click="Menu_SortDirection" />
-                </MenuFlyoutSubItem>
-                <MenuFlyoutItem x:Name="MenuReadFeedsFilter" Text="Hide Read Feeds" Click="Menu_ToggleSidebarReadFilter" />
-                <ToggleMenuFlyoutItem x:Name="MenuHideRead" Text="Hide Read Articles" Click="Menu_ToggleReadFilter" />
-                <ToggleMenuFlyoutItem x:Name="MenuSearchAllAccounts" Text="Search All Accounts" Click="Menu_SearchAllAccounts" />
-                <MenuFlyoutSeparator />
                 <ToggleMenuFlyoutItem x:Name="MenuReaderMode" Text="Reader View"
                                       AccessKey="R"
                                       Click="Menu_ToggleReaderMode">

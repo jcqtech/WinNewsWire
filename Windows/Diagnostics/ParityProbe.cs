@@ -208,6 +208,12 @@ internal static partial class ParityProbe
                     () => CheckThumbnailChoiceOrderAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--view-menu-sections"))
+            {
+                await CheckAsync("View menu groups sidebar, timeline, status bar and toolbar commands",
+                    () => CheckViewMenuSectionsAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-cache-retention"))
             {
                 await CheckAsync("Thumbnail choices survive desktop display-mode changes", () => CheckThumbnailCacheRetentionAsync(window));

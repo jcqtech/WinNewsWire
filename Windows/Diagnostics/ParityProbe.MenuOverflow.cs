@@ -18,6 +18,30 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static Task<object?> CheckViewMenuSectionsAsync(MainWindow window)
+    {
+        var bar = Descendants(window.Content).OfType<MenuBar>().Single(item => item.Name == "AppMenuBar");
+        var view = bar.Items.Single(item => item.Items.Any(command => command.Name == "MenuShowSidebar"));
+        string[] expected =
+        [
+            "MenuShowSidebar", "MenuReadFeedsFilter", "|",
+            "(sort)", "MenuHideRead", "MenuSearchAllAccounts", "MenuColumnLayout", "MenuThumbnails", "|",
+            "MenuShowStatusBar", "MenuShowStatusBarThemes", "|",
+            "MenuShowToolbar", "MenuCustomizeToolbar", "MenuToolbarDisplay", "|"
+        ];
+        var actual = view.Items.Take(expected.Length).Select(item => item switch
+        {
+            MenuFlyoutSeparator => "|",
+            MenuFlyoutSubItem { Name.Length: 0 } => "(sort)",
+            _ => item.Name
+        }).ToArray();
+        Require(actual.SequenceEqual(expected), "View commands are not grouped as sidebar, timeline, status bar and toolbar.");
+        Require(view.Items.OfType<ToggleMenuFlyoutItem>().Any(item => item.Name == "MenuFullScreen")
+            && view.Items.OfType<MenuFlyoutSubItem>().Any(item => item.Name == "MenuThemes"),
+            "Reorganizing View removed Windows reading/appearance commands.");
+        return Task.FromResult<object?>(new { Sidebar = true, Timeline = true, StatusBar = true, Toolbar = true, WindowsCommands = true });
+    }
+
     private static IExpandCollapseProvider MenuExpansion(FrameworkElement element)
     {
         var peer = FrameworkElementAutomationPeer.FromElement(element) ?? FrameworkElementAutomationPeer.CreatePeerForElement(element);
