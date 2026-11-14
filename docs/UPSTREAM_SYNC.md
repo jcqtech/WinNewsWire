@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`f4df806a6611a7ca13e965aa0af3f3d01c2dd243`**. This synchronization is in progress.
+`966641c7230fbe0580685da15f10c5bf00faf756`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is separating homepage icon storage by homepage, `9c3bb706ce407d6165192c419e484989eaee7e7a`;
+is unified feed-icon precedence, `e3e7bf324111b8c75b7a14fae78d6a2e109d21de`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -246,7 +246,8 @@ retains its original success date after a rejected redirect.
 Saved homepage icons stay visible while owned checks load a different advertised
 icon. Successful replacements update only matching current native rows; failed
 checks retain the old mapping. Saved favicons similarly check only candidates
-ahead of the saved one and use a successful replacement on the next lookup.
+ahead of the saved one and notify current consumers after a successful replacement,
+without waiting for another lookup. Overlapping checks retain the newest metadata.
 Metadata refreshes recheck feeds with no homepage icon, preserving declared-icon
 precedence and the newest refresh if an earlier download is still pending.
 Failed declared icons use an available saved homepage image before metadata;
@@ -263,6 +264,15 @@ already-warm replacements update without network or a later article refresh.
 Favicon and feed-icon consumers now share one URL-keyed representation cache
 and in-flight load/scale task, retaining per-request activity ownership.
 Different feeds already shared that work; no per-Feed decode-task cache is needed.
+Discovered icons and dated no-icon verdicts are now stored by normalized homepage,
+not feed. Feeds sharing a homepage reuse its mapping and receive replacement
+notifications. Changing a feed's homepage cannot reuse the previous site's mapping.
+Old feed-keyed mappings are dropped and rediscovered without deleting downloaded
+sources. Unavailable metadata never establishes absence; a real no-icon verdict
+expires after five days or is reconsidered when fresh metadata arrives.
+Queued duplicate metadata notices and delayed initial image writes cannot undo a
+newer homepage replacement. The unused raw-byte SingleFaviconDownloader is removed;
+declared favicons no longer overwrite another feed's shared homepage mapping.
 Retired favicon
 folders, including the former SHA1 cache, are removed once on upgrade; they are
 no longer imported or periodically purged. Windows retains native decoder
@@ -400,8 +410,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **218 Ported, 79 Covered, 87 Skipped, and 121 Pending**
-source commits, backed by **233 source-attributed Windows port commits**.
+The inventory currently has **220 Ported, 79 Covered, 87 Skipped, and 119 Pending**
+source commits, backed by **235 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -441,7 +451,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **262 tests** after memory-only/fetch-time HTML
+The current image suite passes **271 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
 visible-only loading, priority-free queues, fixed retry dates, actual-file-size
 launch pruning, schema upgrades, icon recovery and saved-favicon rediscovery.
@@ -474,6 +484,11 @@ no added network requests. Both mixed favicon/feed-icon identity controls fail
 with separate representation caches; the eight-feed control passes unchanged.
 After consolidation all three recovery/settings selectors pass and both x64
 builds remain warning-free.
+Seven homepage-keyed schema/sharing/absence controls fail pristine production
+with signature-only API adapters. A separate delayed-initial-write control fails
+without its guard. Three favicon replacement/mapping-isolation controls also fail
+pristine production. Restored native recovery/settings selectors pass; the shared
+test project and both Windows configurations build without warnings.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
