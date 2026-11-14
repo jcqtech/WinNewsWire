@@ -21,6 +21,7 @@ public sealed class HtmlMetadataDownloader : IAsyncDisposable
     private readonly SynchronizationContext? _notifications;
     private readonly object _gate = new();
     private readonly Dictionary<string, Task<HtmlMetadataRecord?>> _pending = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _urlsLookedUp = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTimeOffset> _attemptDates = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, HtmlMetadataRecord> _cache = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _lifetime = new();
@@ -47,8 +48,12 @@ public sealed class HtmlMetadataDownloader : IAsyncDisposable
     public HtmlMetadataRecord? CachedMetadata(string url)
     {
         if (ShouldSkip(url)) return null;
-        lock (_gate) ObjectDisposedException.ThrowIf(_stopping, this);
-        if (_cache.TryGetValue(url, out var record)) return record;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_stopping, this);
+            if (_cache.TryGetValue(url, out var record)) return record;
+            if (!_urlsLookedUp.Add(url)) return null;
+        }
         _ = PopulateCacheAsync(url);
         return null;
     }
@@ -175,7 +180,11 @@ public sealed class HtmlMetadataDownloader : IAsyncDisposable
 
     public void EmptyCache()
     {
-        _cache.Clear();
+        lock (_gate)
+        {
+            _cache.Clear();
+            _urlsLookedUp.Clear();
+        }
         _database.EmptyCache();
     }
 
@@ -194,6 +203,14 @@ public sealed class HtmlMetadataDownloader : IAsyncDisposable
     {
         try { await Task.WhenAll(pending).ConfigureAwait(false); }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        finally { _cache.Clear(); _lifetime.Dispose(); }
+        finally
+        {
+            lock (_gate)
+            {
+                _cache.Clear();
+                _urlsLookedUp.Clear();
+            }
+            _lifetime.Dispose();
+        }
     }
 }

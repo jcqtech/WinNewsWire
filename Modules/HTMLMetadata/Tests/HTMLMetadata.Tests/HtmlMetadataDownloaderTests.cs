@@ -12,6 +12,32 @@ public sealed class HtmlMetadataDownloaderTests
     private static readonly byte[] Html = Encoding.UTF8.GetBytes("<head><link rel=\"icon\" href=\"icon.png\"></head>");
 
     [Fact]
+    public async Task RepeatedNegativeCacheLookupsAvoidPerCellWorkUntilTheCacheIsEmptied()
+    {
+        var clock = new HtmlMetadataDatabaseTests.TestClock();
+        using var database = new HtmlMetadataDatabase(":memory:", clock);
+        bool available = false;
+        using var handler = new Handler(_ => Task.FromResult(
+            Response(available ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable, available ? Html : null)));
+        using var http = new HttpClient(handler);
+        await using var downloader = new HtmlMetadataDownloader(database, new Downloader(http, clock), clock, new(clock));
+        Assert.Null(downloader.CachedMetadata(Url));
+        Assert.Null(await downloader.GetMetadataAsync(Url));
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++) Assert.Null(downloader.CachedMetadata(Url));
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert.True(allocated < 16_384, $"Repeated empty cell lookups allocated {allocated} bytes.");
+        Assert.Equal(1, handler.Calls);
+        available = true;
+        clock.Advance(TimeSpan.FromHours(4));
+        downloader.EmptyCache();
+        Assert.Null(downloader.CachedMetadata(Url));
+        var recovered = Assert.IsType<HtmlMetadataRecord>(await downloader.GetMetadataAsync(Url));
+        Assert.Same(recovered, downloader.CachedMetadata(Url));
+        Assert.Equal(2, handler.Calls);
+    }
+
+    [Fact]
     public async Task RepeatedCacheReadsDoNotCreateNotificationLoops()
     {
         var clock = new HtmlMetadataDatabaseTests.TestClock();
