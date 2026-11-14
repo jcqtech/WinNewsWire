@@ -250,4 +250,5 @@
   <data name="TimelineIconSize" xml:space="preserve"><value>Timeline icon size</value></data>
   <data name="TimelineTextSize" xml:space="preserve"><value>Timeline text size</value></data>
   <data name="TimelineNumberOfLines" xml:space="preserve"><value>Title and preview lines</value></data>
+  <data name="TimelineShowSeparators" xml:space="preserve"><value>Show separators between articles</value></data>
 </root>

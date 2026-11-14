@@ -40,6 +40,9 @@ public sealed partial class PreferencesWindow
         AddAppearanceChoice(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineNumberOfLinesKey, "TimelineNumberOfLines", "TimelineNumberOfLinesCombo",
             Enumerable.Range(1, 6).Select(lines => (lines.ToString(System.Globalization.CultureInfo.CurrentCulture), lines)),
             () => AppDefaults.Shared.GetTimelineNumberOfLines(), value => AppDefaults.Shared.SetTimelineNumberOfLines(value), localizeOptions: false);
+        AddAppearanceToggle(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineShowSeparatorsKey,
+            "TimelineShowSeparators", "TimelineShowSeparatorsToggle",
+            () => AppDefaults.Shared.GetTimelineShowSeparators(), value => AppDefaults.Shared.SetTimelineShowSeparators(value));
     }
 
     private void AddAppearanceChoice<T>(StackPanel panel, string key, string labelKey, string name,

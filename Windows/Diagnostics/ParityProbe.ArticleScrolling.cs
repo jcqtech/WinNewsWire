@@ -30,6 +30,7 @@ internal static partial class ParityProbe
         bool previousColumns = AppDefaults.Shared.UseColumnLayout;
         bool previousUnified = model.IsUnifiedLayout;
         bool previousSeparators = AppDefaults.Shared.GetValue(key, false);
+        var preferences = new AppWindows.PreferencesWindow();
         var previousDisplay = AppDefaults.Shared.GetTimelineThumbnailsDisplay();
         Models.FeedItem Row(string id)
         {
@@ -58,8 +59,14 @@ internal static partial class ParityProbe
             model.SelectedArticle = null;
             model.ArticleItems = rows;
             await WaitFor(() => Task.FromResult(list.ContainerFromIndex(1) is not null), "Separator fixture rows");
-            AppDefaults.Shared.SetValue(key, true);
+            preferences.Activate();
+            await WaitFor(() => Task.FromResult(((FrameworkElement)preferences.Content).IsLoaded), "Separator preferences");
+            var toggle = Descendants(preferences.Content).OfType<ToggleSwitch>()
+                .SingleOrDefault(control => control.Name == "TimelineShowSeparatorsToggle");
+            Require(toggle is not null, "Preferences have no timeline separator control.");
+            toggle!.IsOn = true;
             await SettleAsync();
+            Require(new AppDefaults().GetValue(key, false), "The separator preference did not persist.");
             Require(Separator(0)?.Visibility == Visibility.Visible, "Enabled standard rows have no native separator.");
             Require(Separator(1)?.Visibility == Visibility.Collapsed, "The final row retained a separator below it.");
             rows.Add(Row("third"));
@@ -79,20 +86,23 @@ internal static partial class ParityProbe
             Require(!Descendants(list).OfType<Border>().Any(border => border.Name == "TimelineRowSeparator"
                 && border.Visibility == Visibility.Visible), "Column layout displayed standard-row separators.");
             AppDefaults.Shared.UseColumnLayout = false;
-            AppDefaults.Shared.SetValue(key, false);
+            await Task.Run(() => AppDefaults.Shared.SetValue(key, false));
             await SettleAsync();
+            Require(!toggle.IsOn, "The separator preference control ignored a worker notification.");
             Require(!Descendants(list).OfType<Border>().Any(border => border.Name == "TimelineRowSeparator"
                 && border.Visibility == Visibility.Visible), "Disabled separators remained visible.");
             return new { FinalRow = true, SelectedRow = true, Append = true, Remove = true, Columns = true, Preference = true };
         }
         finally
         {
+            preferences.Close();
             AppDefaults.Shared.SetValue(key, previousSeparators);
             model.ArticleItems = previousItems;
             model.SelectedArticle = previousSelection;
             model.IsUnifiedLayout = previousUnified;
             AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
             AppDefaults.Shared.UseColumnLayout = previousColumns;
+            window.Activate();
         }
     }
 
