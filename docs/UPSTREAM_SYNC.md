@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`1972d25f2010e4cb075451c779f2a2c36a445570`**. This synchronization is in progress.
+`f4df806a6611a7ca13e965aa0af3f3d01c2dd243`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is invalidating feed images after metadata changes, `713a93715d989f574db080c59f9c78fc0bb16db1`;
+is separating homepage icon storage by homepage, `9c3bb706ce407d6165192c419e484989eaee7e7a`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -256,6 +256,13 @@ deduplicated, shutdown-owned operations, preserving server retry deadlines.
 The cancellable native view queue updates matching sidebar rows and recomputes
 timeline precedence, retaining healthy declared icons instead of replacing them
 with recovered favicons. Delayed lookups cannot undo a newer dispatched result.
+Windows now observes icon/favicon/homepage settings for current account feeds,
+detaches removed feeds and window observers, and refreshes existing consumers
+through its cancellable view queue. Old images remain until replacements arrive;
+already-warm replacements update without network or a later article refresh.
+Favicon and feed-icon consumers now share one URL-keyed representation cache
+and in-flight load/scale task, retaining per-request activity ownership.
+Different feeds already shared that work; no per-Feed decode-task cache is needed.
 Retired favicon
 folders, including the former SHA1 cache, are removed once on upgrade; they are
 no longer imported or periodically purged. Windows retains native decoder
@@ -393,8 +400,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **216 Ported, 78 Covered, 87 Skipped, and 124 Pending**
-source commits, backed by **231 source-attributed Windows port commits**.
+The inventory currently has **218 Ported, 79 Covered, 87 Skipped, and 121 Pending**
+source commits, backed by **233 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -434,7 +441,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **259 tests** after memory-only/fetch-time HTML
+The current image suite passes **262 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
 visible-only loading, priority-free queues, fixed retry dates, actual-file-size
 launch pruning, schema upgrades, icon recovery and saved-favicon rediscovery.
@@ -461,6 +468,12 @@ stale; restored `--feed-icon-recovery` and `--favicon-recovery` probes pass,
 including homepage replacement, sidebar recovery, retained preferred timeline
 icons, UI dispatch, unrelated rows and drained shutdown. Both x64 configurations
 build without warnings.
+All three `--feed-image-settings` native cases fail with the original window
+model plus a probe-only signature adapter, then pass after restoration with
+no added network requests. Both mixed favicon/feed-icon identity controls fail
+with separate representation caches; the eight-feed control passes unchanged.
+After consolidation all three recovery/settings selectors pass and both x64
+builds remain warning-free.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
