@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`e166dbdd9c2c53bbed23d24239ed6a10a9c7b819`**. This synchronization is in progress.
+`536c061f17f06455bf4fff525632944418f0bfe4`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is keeping only scaled icon copies on disk, `5196592efe907c2b380d8e95aaa3dcb5f9e78529`;
+is skipping hidden timeline icon lookups, `c300d573f3e8377b0f92d0942cf1e22b94a6d2f1`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -155,13 +155,19 @@ The new shared `DownloadedImages` cache coalesces reads/downloads across feed
 icons, reader images and both thumbnail sizes. It stores original full-size encoded
 bytes, including animation, per URL without a second raw HTTP-body cache. Native thumbnails decode
 those bytes directly at up to 256/1200 pixels, respect EXIF orientation, and retain no
-per-size encoded thumbnail copies. Scaled icon/favicon representations now also
-persist beside the original, keyed by size and encoding, avoiding repeated
-resizing after memory eviction or service recreation. Unchanged small images do
-not create duplicate sidecars. Corrupt copies are rebuilt without poisoning the
-original URL; changed originals invalidate every size/encoding sidecar under the
-shared disk gate before source-change notification.
-The source path still identifies the full-size original for reader/native callers.
+per-size encoded thumbnail copies. Scaled icon/favicon representations persist
+by size and encoding, avoiding repeated resizing after memory eviction or service
+recreation. After their atomic write, the larger original is deleted; a failed
+write keeps it. Unchanged small images do not create duplicate sidecars.
+Scaled-only icons survive startup cleanup, and corrupt copies refetch their
+source without poisoning the URL. Native paths identify the actual retained file.
+Full-size readers can fetch the original again without losing icon classification
+or deleting a displayed scaled file. Changed revalidations invalidate every
+size/encoding sidecar under the shared disk gate before notification. Identical
+HTTP 200 results compare against retained scaled pixels when no original remains,
+preserving file dates, validators and notification silence.
+Path-changing replacements update matching native rows/sidebar items and change
+the selected reader icon resource identity without navigating the document.
 Derived copies follow source eviction/orphan cleanup and do not count toward
 the upstream original-source byte budget.
 A shared four-slot cancellation-safe LIFO
@@ -415,8 +421,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **223 Ported, 82 Covered, 88 Skipped, and 112 Pending**
-source commits, backed by **238 source-attributed Windows port commits**.
+The inventory currently has **226 Ported, 82 Covered, 88 Skipped, and 109 Pending**
+source commits, backed by **241 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -456,7 +462,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **274 tests** after memory-only/fetch-time HTML
+The current image suite passes **283 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
 visible-only loading, priority-free queues, fixed retry dates, actual-file-size
 launch pruning, schema upgrades, icon recovery and saved-favicon rediscovery.
@@ -477,7 +483,8 @@ The metadata body-scanning allocation control fails pristine parsing with over
 at body. Both cross-host redirect controls fail pristine metadata handling with
 three unchanged same-host controls. The later HTTP-only guard has three pristine
 HTTPS-migration failures and two unchanged HTTP-portal controls; all **36 metadata
-tests** pass after restoration.
+tests** passed after restoration; the metadata suite now has **37 passing tests**
+including the nonblocking lookup deduplication control.
 The six homepage/favicon recovery ports add 18 focused cases that fail pristine
 production, with only an event-signature adapter needed for the new favicon
 notification API. Both native observer negative controls leave the actual image
@@ -503,6 +510,16 @@ success-shaped early exits. Restored recovery/settings selectors pass, along wit
 three backend precedence controls. The focused `--thumbnail-cache-retention`
 selector detects original disable-time cache clearing, then passes mode changes
 and explicit memory-pressure cleanup after restoration.
+Scaled-only icon storage has 11 failing pristine-production controls using only
+an API-signature adapter. Four separate comparison-only negatives prove unchanged
+HTTP 200 responses are not replacements after the original is removed. Native
+`--changed-feed-icons` covers both same-path pixel replacement and original-to-scaled
+path movement in the timeline, sidebar and selected reader. The moved-path reader
+fails without its path-aware resource identity. All four native image-change,
+recovery and settings selectors pass after restoration. URL/homepage-indexed
+notifications preserve the same checks. A 512-cell negative metadata lookup
+allocation control fails pristine source and passes with session lookup tracking,
+including successful retry after explicit cache cleanup.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
