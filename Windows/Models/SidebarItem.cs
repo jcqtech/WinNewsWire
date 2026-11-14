@@ -10,6 +10,7 @@ namespace WinNewsWire.Models;
 public partial class SidebarItem : ObservableObject
 {
     private UnreadCountDisplay _unreadDisplay = AppDefaults.Shared.GetUnreadCountDisplay();
+    private bool _showsIcons = AppDefaults.Shared.GetSidebarShowsIcons();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpansionLabel))]
@@ -68,8 +69,8 @@ public partial class SidebarItem : ObservableObject
     public Account.Folder? ParentFolder { get; init; }
     public bool IsFolder => Tag is Account.Folder;
     public bool IsSelectable => ItemType != SidebarItemType.SectionHeader && Identity is not null;
-    public bool HasSymbolIcon => IsFolder || ItemType == SidebarItemType.SmartFeed;
-    public bool HasFeedImage => Tag is Account.Feed;
+    public bool HasSymbolIcon => _showsIcons && (IsFolder || ItemType == SidebarItemType.SmartFeed);
+    public bool HasFeedImage => _showsIcons && Tag is Account.Feed;
     public bool IsExpandable => IsFolder;
     public string UnreadCountText => _unreadDisplay.TextFor(UnreadCount) ?? "";
     public bool ShowUnreadCount => _unreadDisplay == UnreadCountDisplay.Count && UnreadCount > 0;
@@ -90,6 +91,14 @@ public partial class SidebarItem : ObservableObject
     };
 
     public ObservableCollection<SidebarItem> Children { get; } = new();
+
+    internal void UpdateIconVisibility(bool show)
+    {
+        if (_showsIcons == show) return;
+        _showsIcons = show;
+        OnPropertyChanged(nameof(HasSymbolIcon));
+        OnPropertyChanged(nameof(HasFeedImage));
+    }
 
     public void UpdateUnreadCountDisplay(UnreadCountDisplay display)
     {

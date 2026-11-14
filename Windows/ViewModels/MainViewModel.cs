@@ -233,6 +233,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             QueueArticleIconLoads(ArticleItems.ToArray());
         }
         if (key == AppShared.Sidebar.SidebarFeedOrder.PreferenceKey) BuildSidebar();
+        if (key == AppDefaultsSharedExtensions.SidebarShowsIconsKey)
+        {
+            bool show = AppDefaults.Shared.GetSidebarShowsIcons();
+            void Update(SidebarItem item)
+            {
+                item.UpdateIconVisibility(show);
+                foreach (var child in item.Children) Update(child);
+            }
+            foreach (var item in SidebarItems) Update(item);
+            if (show) _ = PopulateSidebarFaviconsAsync();
+        }
         if (key == AppDefaultsSharedExtensions.UnreadCountDisplayKey)
         {
             _unreadDisplayMode = AppDefaults.Shared.GetUnreadCountDisplay();
@@ -1024,6 +1035,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task PopulateSidebarFaviconsAsync()
     {
+        if (_disposed || !AppDefaults.Shared.GetSidebarShowsIcons()) return;
         try
         {
             await EnsureFeedImageObserverAsync();
@@ -1035,6 +1047,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task PopulateFaviconsForSectionAsync(SidebarItem item)
     {
+        if (_disposed || !AppDefaults.Shared.GetSidebarShowsIcons()) return;
         if (item.Tag is AccountNs.Feed feed)
         {
             try

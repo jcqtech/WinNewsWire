@@ -238,4 +238,5 @@
   <data name="Light" xml:space="preserve"><value>Light</value></data>
   <data name="Dark" xml:space="preserve"><value>Dark</value></data>
   <data name="AppearanceSaveError" xml:space="preserve"><value>Could not save appearance setting: {0}</value></data>
+  <data name="SidebarShowIcons" xml:space="preserve"><value>Show sidebar icons</value></data>
 </root>

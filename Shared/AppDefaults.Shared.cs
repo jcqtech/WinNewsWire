@@ -9,6 +9,13 @@ public static class AppDefaultsSharedExtensions
     public const string TimelineThumbnailsDisplayKey = "timelineThumbnailsDisplay";
     public const string TimelineFeedIconsDisplayKey = "timelineFeedIconsDisplay";
     public const string TimelineShowSeparatorsKey = "timelineShowSeparators";
+    public const string SidebarShowsIconsKey = "sidebarShowsIcons";
+
+    public static bool GetSidebarShowsIcons(this AppDefaults defaults) =>
+        defaults.GetValue(SidebarShowsIconsKey, true);
+
+    public static void SetSidebarShowsIcons(this AppDefaults defaults, bool show) =>
+        defaults.SetValue(SidebarShowsIconsKey, show);
 
     public static bool GetTimelineShowSeparators(this AppDefaults defaults) =>
         defaults.GetValue(TimelineShowSeparatorsKey, false);
