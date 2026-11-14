@@ -174,6 +174,11 @@ internal static partial class ParityProbe
                         () => CheckChangedFeedImageSettingsAsync(window, setting));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-cache-retention"))
+            {
+                await CheckAsync("Thumbnail choices survive desktop display-mode changes", () => CheckThumbnailCacheRetentionAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnails"))
             {
                 await CheckAsync("Worker-decoded native thumbnails, mode caches and lifetime",

@@ -672,6 +672,47 @@ internal static partial class ParityProbe
         }
     }
 
+    private static async Task<object?> CheckThumbnailCacheRetentionAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousDisplay = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        using var database = new ImageDatabase(":memory:");
+        await using var service = new Services.ArticleThumbnailService(window.DispatcherQueue,
+            () => (new ArticleThumbnailFinder(database),
+                new ThumbnailDownloader(database, Path.Combine(OutputDirectory, "retained-thumbnail-cache"), () => false)),
+            networkAllowsDownloads: () => false);
+        Article ArticleWith(string name) => new("account", "cache-retention", "feed", "cache-retention", "Cache fixture",
+            $"<img src='/{name}.bmp' width='640' height='480'>", null, null, "https://thumbnail.test/article",
+            null, null, null, null, null, null, null, new ArticleStatus("cache-retention", true, false, DateTime.UnixEpoch));
+        var original = ArticleWith("old");
+        var changed = ArticleWith("new");
+        try
+        {
+            content.ProbeSetThumbnailService(service);
+            Require(await service.ThumbnailUrlAsync(original, ThumbnailMode.Small) == "https://thumbnail.test/old.bmp",
+                "The original thumbnail choice did not warm.");
+            foreach (var mode in new[] { TimelineThumbnailsDisplay.Small, TimelineThumbnailsDisplay.None,
+                TimelineThumbnailsDisplay.Large, TimelineThumbnailsDisplay.Small })
+            {
+                Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(mode);
+                await WaitFor(() => Task.FromResult(model.TimelineThumbnailsDisplay == mode && content.ProbeThumbnailWorkIsIdle),
+                    "Thumbnail display-mode cache retention");
+                Require(await service.ThumbnailUrlAsync(changed, ThumbnailMode.Small) == "https://thumbnail.test/old.bmp",
+                    "Changing the desktop thumbnail display mode discarded cached URL choices.");
+            }
+            service.EmptyCache();
+            Require(await service.ThumbnailUrlAsync(changed, ThumbnailMode.Small) == "https://thumbnail.test/new.bmp",
+                "Memory-pressure cleanup did not release thumbnail choices.");
+            return new { RetainedWhileDisabled = true, RetainedAcrossModes = true, MemoryPressureStillClears = true };
+        }
+        finally
+        {
+            content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
+        }
+    }
+
     private static async Task CheckRecoveredFaviconsAsync(MainWindow window, bool preferredIcon)
     {
         var content = window.ProbeContent;
