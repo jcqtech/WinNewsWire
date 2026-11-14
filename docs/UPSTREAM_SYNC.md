@@ -4,8 +4,9 @@ Source repository: `https://github.com/Ranchero-Software/NetNewsWire`
 
 Original port baseline: `fb086eb7684e9fdb90855c4e033a6beba4325c5e`.
 
-Target of this synchronization: `7908c801bf7c97fa7cca9ef78cf51b33fb853e6a` (2026-11-12). **This is a target,
-not a claim that every change through it has been incorporated.**
+Synchronized source tip: `7908c801bf7c97fa7cca9ef78cf51b33fb853e6a` (2026-11-12).
+All 505 inventoried descendant commits have been processed, with corresponding
+Windows commits or explicit coverage/exclusion reasons.
 
 The commit inventory in [UPSTREAM_COMMITS.csv](UPSTREAM_COMMITS.csv) records
 individual source commits, changed paths, disposition, and corresponding Windows
@@ -18,18 +19,17 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`0aa620ff13b857971c7093baf586ed421c838d47`**. This synchronization is in progress.
+`7908c801bf7c97fa7cca9ef78cf51b33fb853e6a`**.
 Every inventoried ancestor between the original baseline and this watermark is
-ported, covered, or explicitly skipped. The next unresolved first-parent change
-is suppressing separators below the final timeline row,
-`7203d7a5d64a8f19689ce16b4b4b224e2dfc86ce`;
-media, image-cache, and appearance work also remains beyond the watermark.
+ported, covered, or explicitly skipped; there are no unresolved inventory entries.
+This is a source-processing checkpoint, not a claim of complete application
+parity. The requested overall parity and performance/regression review follows
+this checkpoint and may identify earlier gaps or revisit exclusions.
 
 The latest individually ported change by source-history order is
-`35c27e3b5fe1044f49fa6c653c01980d9d5b5801` (open the double-clicked timeline row,
-not the previously selected article). Its merge,
-`98e71194a1b10dc2383e9a5a053cb2aa301b8711`, is recorded as covered.
-It is **not** a whole-repository checkpoint. Other completed ports include magnet
+`7908c801bf7c97fa7cca9ef78cf51b33fb853e6a`, ported in Windows commit `2c18f30`:
+connected metered networks allow thumbnails while background icon revalidation
+remains constrained. Other completed ports include magnet
 links, MacRumors/FreshRSS/Rust reader fixes, raw-text scanning and entity decoding,
 footnote positioning, lazy iframes, Plum/Gray themes, and theme-specific reader-icon
 grayscale. The default theme now has text-size-aware line lengths and upstream
@@ -68,7 +68,7 @@ HTML candidates plus negative results in memory, not in the database. The obsole
 article-thumbnail table is dropped, including during legacy Windows metadata
 migration. Failed URLs fall through to the next candidate. Cache resets and
 new finder instances parse current HTML again. Parsed results are retained until
-memory-pressure cleanup; the earlier 50,000-article
+explicit cache cleanup; the earlier 50,000-article
 HTML-cache threshold is removed. Chosen URLs remain bounded separately per mode.
 Small mode tries the provided thumbnail first. Large mode tries provided full
 images and significant attachments, then HTML images, and the provided thumbnail
@@ -217,9 +217,10 @@ usable. Rejection marks thumbnail-only lifetime unsuitability rather than
 blocking reader/icon access for five days. Shared work becomes unlimited when
 a reader joins; a caller arriving just after rejection retries safely. The
 independent pre-existing 64-MiB transport safety limit remains.
-The obsolete Energy Saver prefetch restriction has been removed. Windows retains its existing stricter
-connection-cost policy for visible downloads rather than silently permitting
-metered traffic to match Apple's visible-image policy.
+The obsolete Energy Saver prefetch restriction has been removed. The final port
+allows thumbnail downloads on connected metered, roaming, or constrained
+connections. Background icon revalidation still requires an unrestricted
+connection; offline requests remain blocked and cached images remain usable.
 Source pixel dimensions, last access, ETag, Last-Modified and icon classification
 are persisted. First use as an icon promotes a thumbnail source before the daily
 access throttle, including shared in-flight downloads; later source replacements
@@ -432,8 +433,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **239 Ported, 88 Covered, 123 Skipped, and 55 Pending**
-source commits, backed by **256 source-attributed Windows port commits**.
+The inventory has **270 Ported, 99 Covered, 136 Skipped, and 0 Pending**
+source commits, backed by **290 source-attributed Windows commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -444,11 +445,11 @@ preference migration, Swift defaults organization, Safari extension identities,
 and UIKit-only contextual-preview behavior. The FreshRSS merge resolution was
 reviewed separately: Windows retains the corrected feed/extracted-content paths
 without reproducing the intermediate Swift shadowing/build error.
-These counts do not imply that the remaining changes have been fully assessed.
+These counts describe commit dispositions, not a percentage of product parity.
 The temporary true Mac hidden-separator default and its immediate reversal are
-not reproduced in Windows. Actual enabled-row separators and their final exposed
-preference remain pending; drawing no separators is not evidence that final-row
-suppression is implemented. The case-insensitive XML lookup rename is ported
+not reproduced in Windows. Native row separators now have a persisted preference,
+suppress final and selected rows, update after insertions/removals, and do not
+leak column-cell borders into column layout. The case-insensitive XML lookup rename is ported
 with unchanged parser behavior. Apple's Swift/Foundation beta Date-comparison
 workaround is skipped, preserving Windows' safe inclusive timestamp boundaries.
 Reviewed cache-specific platform adaptations retain the Windows binary-cache
@@ -466,10 +467,22 @@ probe verifies both directions. Search results reuse the same timeline and read
 current shared display settings, avoiding the separate AppKit search controller's
 stale pre-view-load snapshot.
 
-Still pending are later image-cache rewrites,
-finder/cache refinements, appearance
-settings, remaining navigation/scroll fixes, and assessment of iPhone/iPad-specific
-changes.
+Appearance and Timeline have separate native settings panes. Application
+appearance, sidebar icon/text size and smart-feed visibility, timeline icon/text
+size, shared title/preview line limits, full titles, read fading, separators and
+byline placement are persisted and updated live. Full titles are capped at 12
+lines; titleless full-title entries use four preview lines. Byline/date placement
+defaults above the title, spans small thumbnails and preserves explicit user
+choices. Native rows measure independently and reserve the full small-thumbnail
+height; replacement rows retry image loading after visible indices settle.
+
+Grayscale feed icons use cached native variants with off-UI conversion and
+luminance measurement. Sidebar, timeline and reader icons update without changing
+source revisions or reloading the reading document; thumbnails and original files
+retain color. Automatic memory-pressure purges are removed, while explicit
+cleanup and independent thumbnail memory bounds remain. Confirmed sidebar
+deletion revalidates live identities, handles reordered or vanished rows, and
+selects a surviving row rather than a removed folder's child.
 
 Attribution correction: Windows commit `dd3c573` records an erroneous source
 trailer, `9b103e929b3580ed0f9fef2de4a9d7303992ebfa`. The correct FreshRSS source is
@@ -478,6 +491,16 @@ The historical Windows commit has not been rewritten. The implementation also
 covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df`.
 
 ## Verification at this checkpoint
+
+The final shared application suite passes **514 tests**, and the native Windows
+image suite passes **43 tests**. Both regular and Probe x64 builds pass. Focused
+native checks cover application/sidebar/timeline preferences, real text and image
+geometry, cross-account row heights, grayscale pixels and actual reader response
+bytes, unchanged reader state, deletion during sidebar changes, and the final
+network policy. New behavior has original-production negative controls; new APIs
+use explicitly identified signature/input-boundary adapters where necessary.
+The upcoming overall regression/performance audit is separate from these focused
+port checks. Historical verification details and baseline failures follow.
 
 The current image suite passes **287 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
@@ -922,7 +945,8 @@ Generated media URLs remain restricted to HTTP(S) on Windows.
 
 ## Continuing the synchronization
 
-Start with `Pending` entries in the inventory, in recorded topological order.
+There are no `Pending` entries at this checkpoint. For a subsequent source update,
+add the new descendant commits to the inventory in topological order.
 Review each source diff against the Windows implementation before deciding to
 port, mark already covered, or skip with an explicit reason. Keep implementation
 commits separate and include the full source hash in `NetNewsWire-Commit`.
@@ -932,8 +956,9 @@ a later individually ported fix is not a new whole-repository baseline.
 To inventory a future update from the last fully incorporated watermark:
 
 ```powershell
-git -C D:\NetNewsWire log --ancestry-path --reverse --topo-order --format='%H %s' BASELINE..HEAD
-git -C D:\NetNewsWire diff BASELINE HEAD
+$baseline = '7908c801bf7c97fa7cca9ef78cf51b33fb853e6a'
+git -C D:\NetNewsWire log --ancestry-path --reverse --topo-order --format='%H %s' "$baseline..HEAD"
+git -C D:\NetNewsWire diff $baseline HEAD
 ```
 
 Use the ancestry-path filter: this target contains a merge of old historical
