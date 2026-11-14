@@ -169,6 +169,41 @@ internal static partial class ParityProbe
         finally { AppDefaults.Shared.SetValue(key, saved); }
     }
 
+    private static async Task<object?> CheckTimelineFullTitlesAsync(MainWindow window)
+    {
+        const string key = "timelineShowFullTitles";
+        bool saved = AppDefaults.Shared.GetValue(key, false);
+        int savedLines = AppDefaults.Shared.GetTimelineNumberOfLines();
+        try
+        {
+            AppDefaults.Shared.SetValue(key, false);
+            AppDefaults.Shared.SetTimelineNumberOfLines(1);
+            return await WithAppearanceTimelineAsync(window, async (_, list, _, preferences) =>
+            {
+                var toggle = Descendants(preferences.Content).OfType<ToggleSwitch>().SingleOrDefault(control => control.Name == "TimelineShowFullTitlesToggle");
+                Require(toggle is not null, "Preferences have no full-title mode control.");
+                var choices = Descendants(preferences.Content).OfType<ComboBox>().Single(control => control.Name == "TimelineNumberOfLinesCombo");
+                TextBlock Title() => Descendants((DependencyObject)list.ContainerFromIndex(1)).OfType<TextBlock>()
+                    .Single(block => block.Name == "TimelineTitle");
+                double oneLineHeight = Title().ActualHeight;
+                toggle!.IsOn = true;
+                await SettleAppearanceAsync(window, list);
+                Require(!choices.IsEnabled && Title().MaxLines == 12 && Title().ActualHeight > oneLineHeight * 3,
+                    "Full-title mode did not expand the title or disable the irrelevant line picker.");
+                Require(Descendants(list).OfType<TextBlock>().Where(block => block.Name == "TimelineSummary")
+                    .All(block => block.Visibility == Visibility.Collapsed), "Full-title mode retained previews.");
+                Require(new AppDefaults().GetValue(key, false) && new AppDefaults().GetTimelineNumberOfLines() == 1,
+                    "Full-title mode overwrote the saved preview line count.");
+                await Task.Run(() => AppDefaults.Shared.SetValue(key, false));
+                await SettleAppearanceAsync(window, list);
+                Require(choices.IsEnabled && !toggle.IsOn && Title().MaxLines == 1,
+                    "Leaving full-title mode did not restore the saved line limit.");
+                return new { TwelveLineCap = true, PreviewHidden = true, LineChoicePreserved = true, WorkerNotification = true };
+            });
+        }
+        finally { AppDefaults.Shared.SetValue(key, saved); AppDefaults.Shared.SetTimelineNumberOfLines(savedLines); }
+    }
+
     private static async Task SettleAppearanceAsync(MainWindow window, ListView list)
     {
         list.UpdateLayout();

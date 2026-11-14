@@ -235,6 +235,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var item in ArticleItems) item.UpdateTimelineTextSize(AppDefaults.Shared.GetTimelineTextSize());
         if (key == AppDefaultsSharedExtensions.TimelineNumberOfLinesKey)
             foreach (var item in ArticleItems) item.UpdateTimelineNumberOfLines(AppDefaults.Shared.GetTimelineNumberOfLines());
+        if (key == AppDefaultsSharedExtensions.TimelineShowFullTitlesKey)
+            foreach (var item in ArticleItems) item.UpdateTimelineShowFullTitles(AppDefaults.Shared.GetTimelineShowFullTitles());
         if (key == AppDefaultsSharedExtensions.TimelineFeedIconsDisplayKey)
         {
             OnPropertyChanged(nameof(TimelineFeedIconsDisplay));

@@ -11,6 +11,15 @@ public partial class FeedItem
     public double TimelineMetadataFontSize => Math.Floor(TimelineFontSize * 0.9);
     private int _timelineNumberOfLines = AppDefaults.Shared.GetTimelineNumberOfLines();
     public int TimelineNumberOfLines => _timelineNumberOfLines;
+    private bool _timelineShowFullTitles = AppDefaults.Shared.GetTimelineShowFullTitles();
+    public bool TimelineShowFullTitles => _timelineShowFullTitles;
+
+    internal void UpdateTimelineShowFullTitles(bool show)
+    {
+        if (_timelineShowFullTitles == show) return;
+        _timelineShowFullTitles = show;
+        OnPropertyChanged(nameof(TimelineShowFullTitles));
+    }
 
     internal void UpdateTimelineNumberOfLines(int lines)
     {

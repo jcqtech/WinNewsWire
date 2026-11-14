@@ -548,7 +548,8 @@
                                         <StackPanel Grid.Column="2" Spacing="3"
                                                     VerticalAlignment="Center"
                                                     AutomationProperties.Name="{x:Bind Tooltip, Mode=OneWay}">
-                                            <helpers:TimelineTextPanel NumberOfLines="{x:Bind TimelineNumberOfLines, Mode=OneWay}">
+                                            <helpers:TimelineTextPanel NumberOfLines="{x:Bind TimelineNumberOfLines, Mode=OneWay}"
+                                                                       ShowFullTitles="{x:Bind TimelineShowFullTitles, Mode=OneWay}">
                                             <TextBlock x:Name="TimelineTitle" helpers:HtmlInlines.AttributedText="{x:Bind AttributedTitle, Mode=OneWay}"
                                                        FontSize="{x:Bind TimelineFontSize, Mode=OneWay}"
                                                        Style="{StaticResource BodyStrongTextBlockStyle}"

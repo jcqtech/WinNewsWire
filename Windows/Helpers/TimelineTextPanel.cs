@@ -10,6 +10,14 @@ public sealed class TimelineTextPanel : Panel
 {
     public static readonly DependencyProperty NumberOfLinesProperty = DependencyProperty.Register(
         nameof(NumberOfLines), typeof(int), typeof(TimelineTextPanel), new PropertyMetadata(3, AppearanceChanged));
+    public static readonly DependencyProperty ShowFullTitlesProperty = DependencyProperty.Register(
+        nameof(ShowFullTitles), typeof(bool), typeof(TimelineTextPanel), new PropertyMetadata(false, AppearanceChanged));
+
+    public bool ShowFullTitles
+    {
+        get => (bool)GetValue(ShowFullTitlesProperty);
+        set => SetValue(ShowFullTitlesProperty, value);
+    }
 
     public int NumberOfLines
     {
@@ -24,7 +32,7 @@ public sealed class TimelineTextPanel : Panel
     {
         if (Children.Count != 2 || Children[0] is not TextBlock title || Children[1] is not TextBlock summary)
             throw new InvalidOperationException("A timeline text panel requires title and summary text blocks.");
-        int limit = NumberOfLines;
+        int limit = ShowFullTitles ? 12 : NumberOfLines;
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
         var text = HtmlInlines.GetAttributedText(title) ?? SimpleHtml.Parse(title.Text);
         bool hasTitle = !string.IsNullOrWhiteSpace(text.Text);
@@ -39,7 +47,7 @@ public sealed class TimelineTextPanel : Panel
             titleLines = Math.Clamp(MultilineTextFieldSizer.SizeFor(text, font, limit,
                 (int)Math.Min(int.MaxValue, Math.Floor(availableSize.Width))).NumberOfLinesUsed, 1, limit);
         }
-        int remaining = limit - titleLines;
+        int remaining = ShowFullTitles && hasTitle ? 0 : limit - titleLines;
         summary.Visibility = remaining > 0 && !string.IsNullOrWhiteSpace(summary.Text) ? Visibility.Visible : Visibility.Collapsed;
         summary.MaxLines = Math.Max(1, remaining);
         summary.Measure(available);

@@ -13,6 +13,7 @@ public sealed partial class PreferencesWindow
 {
     private readonly Dictionary<string, Action> _appearanceUpdates = new();
     private bool _updatingAppearance;
+    private ComboBox? _timelineLineCountCombo;
 
     private void PopulateAppearanceOptions()
     {
@@ -37,15 +38,19 @@ public sealed partial class PreferencesWindow
         AddAppearanceChoice(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineTextSizeKey, "TimelineTextSize", "TimelineTextSizeCombo",
             Enum.GetValues<TimelineTextSize>().Select(size => (size.ToString(), size)),
             () => AppDefaults.Shared.GetTimelineTextSize(), value => AppDefaults.Shared.SetTimelineTextSize(value));
-        AddAppearanceChoice(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineNumberOfLinesKey, "TimelineNumberOfLines", "TimelineNumberOfLinesCombo",
+        _timelineLineCountCombo = AddAppearanceChoice(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineNumberOfLinesKey, "TimelineNumberOfLines", "TimelineNumberOfLinesCombo",
             Enumerable.Range(1, 6).Select(lines => (lines.ToString(System.Globalization.CultureInfo.CurrentCulture), lines)),
             () => AppDefaults.Shared.GetTimelineNumberOfLines(), value => AppDefaults.Shared.SetTimelineNumberOfLines(value), localizeOptions: false);
         AddAppearanceToggle(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineShowSeparatorsKey,
             "TimelineShowSeparators", "TimelineShowSeparatorsToggle",
             () => AppDefaults.Shared.GetTimelineShowSeparators(), value => AppDefaults.Shared.SetTimelineShowSeparators(value));
+        AddAppearanceToggle(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineShowFullTitlesKey,
+            "TimelineShowFullTitles", "TimelineShowFullTitlesToggle",
+            () => AppDefaults.Shared.GetTimelineShowFullTitles(), value => AppDefaults.Shared.SetTimelineShowFullTitles(value));
+        SyncTimelineRowsAvailability();
     }
 
-    private void AddAppearanceChoice<T>(StackPanel panel, string key, string labelKey, string name,
+    private ComboBox AddAppearanceChoice<T>(StackPanel panel, string key, string labelKey, string name,
         IEnumerable<(string LabelKey, T Value)> options, Func<T> read, Action<T> write, bool localizeOptions = true) where T : struct
     {
         var combo = new ComboBox { Name = name, MinWidth = 180 };
@@ -65,6 +70,7 @@ public sealed partial class PreferencesWindow
                 SaveAppearancePreference(key, () => write(value));
         };
         AddAppearanceRow(panel, labelKey, combo);
+        return combo;
     }
 
     private void AddAppearanceToggle(StackPanel panel, string key, string labelKey, string name,
@@ -114,9 +120,15 @@ public sealed partial class PreferencesWindow
     private bool SyncAppearancePreference(string key)
     {
         if (!_appearanceUpdates.TryGetValue(key, out var update)) return false;
-        if (DispatcherQueue.HasThreadAccess) update();
-        else if (!DispatcherQueue.TryEnqueue(() => { if (!_closed) update(); }))
+        void Apply() { if (!_closed) { update(); SyncTimelineRowsAvailability(); } }
+        if (DispatcherQueue.HasThreadAccess) Apply();
+        else if (!DispatcherQueue.TryEnqueue(Apply))
             throw new InvalidOperationException("The appearance preference dispatcher is unavailable.");
         return true;
+    }
+
+    private void SyncTimelineRowsAvailability()
+    {
+        if (_timelineLineCountCombo is not null) _timelineLineCountCombo.IsEnabled = !AppDefaults.Shared.GetTimelineShowFullTitles();
     }
 }
