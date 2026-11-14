@@ -16,6 +16,21 @@ public static class AppDefaultsSharedExtensions
     public const string ShowStarredFeedKey = "showStarredFeed";
     public const string TimelineIconSizeKey = "timelineIconSize";
     public const string TimelineTextSizeKey = "timelineTextSize";
+    public const string TimelineNumberOfLinesKey = "timelineNumberOfLines";
+
+    public static int GetTimelineNumberOfLines(this AppDefaults defaults)
+    {
+        int value = defaults.GetValue(TimelineNumberOfLinesKey, 3);
+        if (value is >= 1 and <= 6) return value;
+        Trace.TraceWarning($"Unknown timeline line count {value}; using three lines.");
+        return 3;
+    }
+
+    public static void SetTimelineNumberOfLines(this AppDefaults defaults, int lines)
+    {
+        if (lines is < 1 or > 6) throw new ArgumentOutOfRangeException(nameof(lines));
+        defaults.SetValue(TimelineNumberOfLinesKey, lines);
+    }
 
     public static TimelineTextSize GetTimelineTextSize(this AppDefaults defaults)
     {

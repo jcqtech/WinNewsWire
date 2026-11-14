@@ -199,6 +199,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineTextSizeAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-lines"))
+            {
+                await CheckAsync("Timeline title and preview share the selected line budget, including titleless articles",
+                    () => CheckTimelineLinesAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);

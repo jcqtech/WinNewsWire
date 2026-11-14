@@ -548,17 +548,17 @@
                                         <StackPanel Grid.Column="2" Spacing="3"
                                                     VerticalAlignment="Center"
                                                     AutomationProperties.Name="{x:Bind Tooltip, Mode=OneWay}">
+                                            <helpers:TimelineTextPanel NumberOfLines="{x:Bind TimelineNumberOfLines, Mode=OneWay}">
                                             <TextBlock x:Name="TimelineTitle" helpers:HtmlInlines.AttributedText="{x:Bind AttributedTitle, Mode=OneWay}"
                                                        FontSize="{x:Bind TimelineFontSize, Mode=OneWay}"
                                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                                                       MaxLines="2" />
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
                                             <TextBlock x:Name="TimelineSummary" Text="{x:Bind Summary, Mode=OneWay}"
                                                        FontSize="{x:Bind TimelineFontSize, Mode=OneWay}"
                                                        Style="{StaticResource CaptionTextBlockStyle}"
                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                                                       MaxLines="2" />
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                                            </helpers:TimelineTextPanel>
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <TextBlock Text="{x:Bind FeedTitle, Mode=OneWay}"
                                                            FontSize="{x:Bind TimelineMetadataFontSize, Mode=OneWay}"

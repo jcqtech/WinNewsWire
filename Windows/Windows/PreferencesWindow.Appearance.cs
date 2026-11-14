@@ -37,14 +37,17 @@ public sealed partial class PreferencesWindow
         AddAppearanceChoice(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineTextSizeKey, "TimelineTextSize", "TimelineTextSizeCombo",
             Enum.GetValues<TimelineTextSize>().Select(size => (size.ToString(), size)),
             () => AppDefaults.Shared.GetTimelineTextSize(), value => AppDefaults.Shared.SetTimelineTextSize(value));
+        AddAppearanceChoice(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineNumberOfLinesKey, "TimelineNumberOfLines", "TimelineNumberOfLinesCombo",
+            Enumerable.Range(1, 6).Select(lines => (lines.ToString(System.Globalization.CultureInfo.CurrentCulture), lines)),
+            () => AppDefaults.Shared.GetTimelineNumberOfLines(), value => AppDefaults.Shared.SetTimelineNumberOfLines(value), localizeOptions: false);
     }
 
     private void AddAppearanceChoice<T>(StackPanel panel, string key, string labelKey, string name,
-        IEnumerable<(string LabelKey, T Value)> options, Func<T> read, Action<T> write) where T : struct
+        IEnumerable<(string LabelKey, T Value)> options, Func<T> read, Action<T> write, bool localizeOptions = true) where T : struct
     {
         var combo = new ComboBox { Name = name, MinWidth = 180 };
         foreach (var option in options)
-            combo.Items.Add(new ComboBoxItem { Content = AppStrings.Get(option.LabelKey), Tag = option.Value });
+            combo.Items.Add(new ComboBoxItem { Content = localizeOptions ? AppStrings.Get(option.LabelKey) : option.LabelKey, Tag = option.Value });
         Action update = () =>
         {
             _updatingAppearance = true;

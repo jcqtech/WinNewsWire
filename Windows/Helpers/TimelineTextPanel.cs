@@ -1,0 +1,62 @@
+using System;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Windows.Foundation;
+using WinNewsWire.AppShared.Extensions;
+
+namespace WinNewsWire.Helpers;
+
+public sealed class TimelineTextPanel : Panel
+{
+    public static readonly DependencyProperty NumberOfLinesProperty = DependencyProperty.Register(
+        nameof(NumberOfLines), typeof(int), typeof(TimelineTextPanel), new PropertyMetadata(3, AppearanceChanged));
+
+    public int NumberOfLines
+    {
+        get => (int)GetValue(NumberOfLinesProperty);
+        set => SetValue(NumberOfLinesProperty, value);
+    }
+
+    private static void AppearanceChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args) =>
+        ((TimelineTextPanel)sender).InvalidateMeasure();
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (Children.Count != 2 || Children[0] is not TextBlock title || Children[1] is not TextBlock summary)
+            throw new InvalidOperationException("A timeline text panel requires title and summary text blocks.");
+        int limit = NumberOfLines;
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        var text = HtmlInlines.GetAttributedText(title) ?? SimpleHtml.Parse(title.Text);
+        bool hasTitle = !string.IsNullOrWhiteSpace(text.Text);
+        title.Visibility = hasTitle ? Visibility.Visible : Visibility.Collapsed;
+        title.MaxLines = limit;
+        var available = new Size(availableSize.Width, double.PositiveInfinity);
+        title.Measure(available);
+        int titleLines = hasTitle ? limit : 0;
+        if (hasTitle && double.IsFinite(availableSize.Width) && availableSize.Width > 0)
+        {
+            var font = new TextFont(title.FontSize, title.FontWeight.Weight, title.FontFamily.Source);
+            titleLines = Math.Clamp(MultilineTextFieldSizer.SizeFor(text, font, limit,
+                (int)Math.Min(int.MaxValue, Math.Floor(availableSize.Width))).NumberOfLinesUsed, 1, limit);
+        }
+        int remaining = limit - titleLines;
+        summary.Visibility = remaining > 0 && !string.IsNullOrWhiteSpace(summary.Text) ? Visibility.Visible : Visibility.Collapsed;
+        summary.MaxLines = Math.Max(1, remaining);
+        summary.Measure(available);
+        double gap = title.Visibility == Visibility.Visible && summary.Visibility == Visibility.Visible ? 3 : 0;
+        return new Size(Math.Max(title.DesiredSize.Width, summary.DesiredSize.Width),
+            title.DesiredSize.Height + gap + summary.DesiredSize.Height);
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        double top = 0;
+        foreach (var child in Children)
+        {
+            if (top > 0 && child.Visibility == Visibility.Visible) top += 3;
+            child.Arrange(new Rect(0, top, finalSize.Width, child.DesiredSize.Height));
+            top += child.DesiredSize.Height;
+        }
+        return finalSize;
+    }
+}

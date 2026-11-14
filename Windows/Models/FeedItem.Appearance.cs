@@ -9,6 +9,15 @@ public partial class FeedItem
     private TimelineTextSize _timelineTextSize = AppDefaults.Shared.GetTimelineTextSize();
     public double TimelineFontSize => _timelineTextSize.PointSize();
     public double TimelineMetadataFontSize => Math.Floor(TimelineFontSize * 0.9);
+    private int _timelineNumberOfLines = AppDefaults.Shared.GetTimelineNumberOfLines();
+    public int TimelineNumberOfLines => _timelineNumberOfLines;
+
+    internal void UpdateTimelineNumberOfLines(int lines)
+    {
+        if (_timelineNumberOfLines == lines) return;
+        _timelineNumberOfLines = lines;
+        OnPropertyChanged(nameof(TimelineNumberOfLines));
+    }
 
     internal void UpdateTimelineTextSize(TimelineTextSize size)
     {

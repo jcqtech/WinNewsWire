@@ -132,6 +132,43 @@ internal static partial class ParityProbe
         finally { AppDefaults.Shared.SetValue(key, saved); }
     }
 
+    private static async Task<object?> CheckTimelineLinesAsync(MainWindow window)
+    {
+        const string key = "timelineNumberOfLines";
+        int saved = AppDefaults.Shared.GetValue(key, 3);
+        try
+        {
+            return await WithAppearanceTimelineAsync(window, async (_, list, rows, preferences) =>
+            {
+                var choice = Descendants(preferences.Content).OfType<ComboBox>().SingleOrDefault(combo => combo.Name == "TimelineNumberOfLinesCombo");
+                Require(choice is not null, "Preferences have no title and preview line-count choice.");
+                TextBlock Text(int index, string name) => Descendants((DependencyObject)list.ContainerFromIndex(index))
+                    .OfType<TextBlock>().Single(block => block.Name == name);
+                choice!.SelectedItem = choice.Items.OfType<ComboBoxItem>().Single(item => Convert.ToInt32(item.Tag) == 1);
+                await SettleAppearanceAsync(window, list);
+                Require(Text(0, "TimelineTitle").MaxLines == 1 && Text(0, "TimelineSummary").Visibility == Visibility.Collapsed,
+                    "A one-line budget also displayed a preview.");
+                double oneLineHeight = Text(1, "TimelineTitle").ActualHeight;
+                choice.SelectedItem = choice.Items.OfType<ComboBoxItem>().Single(item => Convert.ToInt32(item.Tag) == 3);
+                await SettleAppearanceAsync(window, list);
+                Require(Text(0, "TimelineSummary").Visibility == Visibility.Visible && Text(0, "TimelineSummary").MaxLines == 2,
+                    "The short title did not leave the remaining two lines for its preview.");
+                Require(Text(1, "TimelineTitle").MaxLines == 3 && Text(1, "TimelineSummary").Visibility == Visibility.Collapsed
+                    && Text(1, "TimelineTitle").ActualHeight > oneLineHeight * 2,
+                    "A long title did not consume the shared line budget.");
+                rows[1] = AppearanceRow("untitled", "", string.Concat(Enumerable.Repeat("Untitled body text ", 25)));
+                choice.SelectedItem = choice.Items.OfType<ComboBoxItem>().Single(item => Convert.ToInt32(item.Tag) == 6);
+                await SettleAppearanceAsync(window, list);
+                Require(Text(1, "TimelineTitle").Visibility == Visibility.Collapsed && Text(1, "TimelineSummary").MaxLines == 6
+                    && Text(1, "TimelineSummary").ActualHeight > oneLineHeight * 4,
+                    "A titleless article did not give its full line budget to the preview.");
+                Require(new AppDefaults().GetValue(key, 3) == 6, "Timeline line budget did not persist.");
+                return new { OneLine = true, SharedBudget = true, WrappedTitle = true, Titleless = true, Persisted = true };
+            });
+        }
+        finally { AppDefaults.Shared.SetValue(key, saved); }
+    }
+
     private static async Task SettleAppearanceAsync(MainWindow window, ListView list)
     {
         list.UpdateLayout();
