@@ -196,6 +196,12 @@ internal static partial class ParityProbe
                     () => CheckThumbnailNetworkHeightsAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--reader-thumbnail-layout"))
+            {
+                await CheckAsync("Reader image sharing follows standard layout and thumbnail visibility",
+                    () => CheckReaderThumbnailLayoutAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-cache-retention"))
             {
                 await CheckAsync("Thumbnail choices survive desktop display-mode changes", () => CheckThumbnailCacheRetentionAsync(window));

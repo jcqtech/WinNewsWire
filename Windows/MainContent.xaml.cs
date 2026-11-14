@@ -803,10 +803,12 @@ public sealed partial class MainContent : UserControl
         ArticleIdentityKey? identity = article is null ? null : MainViewModel.Identity(article);
         var themeFolder = ViewModel.CurrentRendering?.ThemeFolder;
         var thumbnailMode = ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode();
+        bool routesThumbnailImages = ShowsTimelineThumbnails;
         bool IsCurrent() => !_shuttingDown && generation == _htmlLoadGeneration && html == ViewModel.ArticleHtml
             && ViewModel.SelectedArticle is { } selected && MainViewModel.Identity(selected) == identity
             && string.Equals(themeFolder, ViewModel.CurrentRendering?.ThemeFolder, StringComparison.OrdinalIgnoreCase)
-            && thumbnailMode == ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode();
+            && thumbnailMode == ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode()
+            && routesThumbnailImages == ShowsTimelineThumbnails;
         if (!forceReload && _pendingRestoredScroll is null && identity == _renderedArticleIdentity
             && html == _renderedArticleHtml && string.Equals(themeFolder, _mappedThemeFolder, StringComparison.OrdinalIgnoreCase)) return;
         try
@@ -815,7 +817,8 @@ public sealed partial class MainContent : UserControl
                 await CaptureScrollPositionAsync();
             if (!IsCurrent()) return;
             string? thumbnailUrl = null;
-            if (thumbnailMode is { } mode && article?.SourceArticle is { } source && _thumbnailService is { } images)
+            if (routesThumbnailImages && thumbnailMode is { } mode
+                && article?.SourceArticle is { } source && _thumbnailService is { } images)
                 thumbnailUrl = await images.ThumbnailUrlAsync(source, mode, _thumbnailLifetime.Token);
             if (!IsCurrent()) return;
             NavigateArticleHtml(html, article, identity, themeFolder, thumbnailUrl);
@@ -1036,6 +1039,8 @@ public sealed partial class MainContent : UserControl
         if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout)
             or nameof(ViewModel.TimelineThumbnailsDisplay))
             QueueTimelineThumbnailRefresh();
+        if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout))
+            LoadArticleHtml(ViewModel.ArticleHtml, forceReload: true);
         if (e.PropertyName == nameof(ViewModel.TimelineThumbnailsDisplay)
             && ViewModel.SelectedArticle is { } selected && !ViewModel.UseColumnLayout && !ViewModel.IsUnifiedLayout)
             DispatcherQueue.TryEnqueue(() =>

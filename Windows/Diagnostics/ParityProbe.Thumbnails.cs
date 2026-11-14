@@ -16,6 +16,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.Web.WebView2.Core;
 using WinNewsWire.Articles;
 using WinNewsWire.AppShared;
 using WinNewsWire.Core;
@@ -671,6 +672,95 @@ internal static partial class ParityProbe
             model.SelectedArticle = previousSelection;
             Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
             Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousIcons);
+        }
+    }
+
+    private static async Task<object?> CheckReaderThumbnailLayoutAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSelection = model.SelectedArticle;
+        bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
+        bool previousUnified = model.IsUnifiedLayout;
+        var previousDisplay = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        const string imageUrl = "https://reader-layout.test/photo.bmp";
+        const string filter = "https://reader-layout.test/*";
+        var bytes = ThumbnailBitmap(128, 128);
+        int nativeRequests = 0, directRequests = 0;
+        using var http = new HttpClient(new ThumbnailHandler((_, _) =>
+        {
+            Interlocked.Increment(ref nativeRequests);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) });
+        }));
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "reader-layout.db"));
+        await using var service = new ArticleThumbnailService(window.DispatcherQueue,
+            () => (new ArticleThumbnailFinder(database), new ThumbnailDownloader(database,
+                Path.Combine(OutputDirectory, "reader-layout"), () => true, new Downloader(http))),
+            networkAllowsDownloads: () => true);
+        var core = content.ProbeWebView.CoreWebView2;
+        void DirectImage(CoreWebView2 sender, CoreWebView2WebResourceRequestedEventArgs args)
+        {
+            if (args.Request.Uri != imageUrl) return;
+            directRequests++;
+            var stream = WindowsRuntimeStreamExtensions.AsRandomAccessStream(new MemoryStream(bytes, writable: false));
+            args.Response = sender.Environment.CreateWebResourceResponse(stream,
+                200, "OK", "Content-Type: image/bmp\r\nCache-Control: no-store\r\n");
+        }
+        core.AddWebResourceRequestedFilter(filter, CoreWebView2WebResourceContext.Image);
+        core.WebResourceRequested += DirectImage;
+        var article = new Article("account", "reader-layout", "feed", "reader-layout", "Reader layout fixture",
+            $"<img id='layout-route-fixture' src='{imageUrl}' width='128' height='128'>",
+            null, null, "https://reader-layout.test/article", null, null, imageUrl,
+            null, null, null, null, new ArticleStatus("reader-layout", true, false, DateTime.UnixEpoch));
+        var row = new Models.FeedItem
+            { Id = article.ArticleID, AccountID = article.AccountID, SourceArticle = article, IsRead = true };
+        async Task WaitForImageAsync(bool routed, string label)
+        {
+            string expected = routed ? AppShared.ArticleRendering.ArticleImageResource.Url(imageUrl) : imageUrl;
+            await WaitFor(() => ScriptBool(content,
+                "window.__wnwArticleProcessed === true && Array.from(document.images).some(image => image.src === "
+                + System.Text.Json.JsonSerializer.Serialize(expected) + " && image.naturalWidth === 128)"), label);
+        }
+        try
+        {
+            model.SelectedArticle = null;
+            Core.AppDefaults.Shared.UseColumnLayout = true;
+            model.IsUnifiedLayout = false;
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small);
+            content.ProbeSetThumbnailService(service);
+            model.ArticleItems = new ObservableCollection<Models.FeedItem> { row };
+            model.SelectedArticle = row;
+            await WaitForImageAsync(false, "Column reader uses the original image URL");
+            Require(nativeRequests == 0 && service.ProbeUrlResolutions == 0 && directRequests > 0,
+                "Column layout performed a thumbnail lookup or native source download.");
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.None);
+            Core.AppDefaults.Shared.UseColumnLayout = false;
+            await WaitForImageAsync(false, "Disabled thumbnails keep the original reader URL");
+            Require(nativeRequests == 0 && service.ProbeUrlResolutions == 0,
+                "Disabled thumbnails performed a lookup for the reader.");
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small);
+            await WaitForImageAsync(true, "Standard layout shares its timeline image with the reader");
+            await WaitFor(() => Task.FromResult(content.ProbeThumbnailWorkIsIdle), "Shared reader timeline work");
+            Require(nativeRequests == 1, "The standard reader and timeline did not share one original download.");
+            int resolutions = service.ProbeUrlResolutions;
+            model.IsUnifiedLayout = true;
+            await WaitForImageAsync(false, "Unified layout restores the original reader URL");
+            Require(nativeRequests == 1 && service.ProbeUrlResolutions == resolutions,
+                "A thumbnail-free layout performed another reader thumbnail lookup.");
+            return new { ColumnDirect = true, DisabledDirect = true, StandardShared = true, UnifiedDirect = true,
+                SharedDownloads = nativeRequests, DirectRequests = directRequests };
+        }
+        finally
+        {
+            core.WebResourceRequested -= DirectImage;
+            core.RemoveWebResourceRequestedFilter(filter, CoreWebView2WebResourceContext.Image);
+            content.ProbeSetThumbnailService(AppRuntime.AppService.Shared.ThumbnailImages);
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            model.IsUnifiedLayout = previousUnified;
+            Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(previousDisplay);
+            Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
         }
     }
 
