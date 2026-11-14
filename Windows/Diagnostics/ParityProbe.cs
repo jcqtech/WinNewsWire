@@ -167,6 +167,13 @@ internal static partial class ParityProbe
                 });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--feed-image-settings"))
+            {
+                foreach (var setting in new[] { "icon", "favicon", "homepage" })
+                    await CheckAsync($"Warm {setting} changes replace native feed images",
+                        () => CheckChangedFeedImageSettingsAsync(window, setting));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnails"))
             {
                 await CheckAsync("Worker-decoded native thumbnails, mode caches and lifetime",

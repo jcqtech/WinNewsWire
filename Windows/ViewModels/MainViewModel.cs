@@ -36,6 +36,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcher;
     private readonly HashSet<AccountNs.Account> _observedAccounts = new();
+    private readonly Dictionary<AccountNs.FeedSettings, AccountNs.Feed> _observedFeedImageSettings = [];
     private int _accountUpdateQueued;
     private long _lastAccountChange;
     private int _urgentAccountUpdate;
@@ -68,6 +69,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
     internal int ProbeSectionStatusUpdates;
     internal int ProbeSubscriptionRefreshes;
+    internal void ProbeObserveFeedImageSettings(AccountNs.Feed feed) => ObserveFeedImageSettings(feed);
     internal Action? ProbePreparingTimeline;
     internal Task ProbeDrainViewUpdatesAsync()
     {
@@ -261,6 +263,79 @@ public partial class MainViewModel : ObservableObject, IDisposable
             account.StatusesChanged += OnArticleStatusesChanged;
             _observedAccounts.Add(account);
         }
+        var feeds = accounts.SelectMany(account => account.FlattenedFeeds()).ToArray();
+        var settings = feeds.Select(feed => feed.Settings).ToHashSet();
+        foreach (var obsolete in _observedFeedImageSettings.Keys.Except(settings).ToArray())
+        {
+            obsolete.SettingChanged -= FeedImageSettingChanged;
+            _observedFeedImageSettings.Remove(obsolete);
+        }
+        foreach (var feed in feeds) ObserveFeedImageSettings(feed);
+    }
+
+    private void ObserveFeedImageSettings(AccountNs.Feed feed)
+    {
+        if (_observedFeedImageSettings.TryAdd(feed.Settings, feed))
+            feed.Settings.SettingChanged += FeedImageSettingChanged;
+        else _observedFeedImageSettings[feed.Settings] = feed;
+    }
+
+    private void FeedImageSettingChanged(object? sender, AccountNs.FeedSettingsDatabase.Column column)
+    {
+        if (_disposed || column is not (AccountNs.FeedSettingsDatabase.Column.IconUrl
+            or AccountNs.FeedSettingsDatabase.Column.FaviconUrl or AccountNs.FeedSettingsDatabase.Column.HomePageUrl)) return;
+        if (!_dispatcher.TryEnqueue(() =>
+        {
+            if (_disposed || sender is not AccountNs.FeedSettings settings
+                || !_observedFeedImageSettings.TryGetValue(settings, out var feed)) return;
+            var source = FeedImageSourceFor(feed);
+            foreach (var item in ArticleItems)
+                if (item.AccountID == feed.AccountID && item.FeedId == feed.FeedID)
+                {
+                    item.FeedUrl = source.FeedUrl;
+                    item.FeedHomePageUrl = source.HomePageUrl;
+                    item.FeedIconUrl = source.IconUrl ?? "";
+                    item.FeedFaviconUrl = source.FaviconUrl;
+                }
+            _viewOperations.Add(new MainThreadAsyncOperation(ct => RefreshFeedImagesAsync(feed, ct),
+                "Updating changed feed images"));
+        }) && !_disposed)
+            System.Diagnostics.Trace.TraceError("Could not dispatch changed feed image settings.");
+    }
+
+    private async Task RefreshFeedImagesAsync(AccountNs.Feed feed, CancellationToken ct)
+    {
+        if (_disposed) return;
+        bool hasArticles = ArticleItems.Any(item => item.AccountID == feed.AccountID && item.FeedId == feed.FeedID);
+        bool ContainsFeed(SidebarItem item) => item.Tag is AccountNs.Feed candidate && candidate.Equals(feed)
+            || item.Children.Any(ContainsFeed);
+        bool hasSidebar = SidebarItems.Any(ContainsFeed);
+        if (!hasArticles && !hasSidebar) return;
+        await EnsureFeedImageObserverAsync();
+        ct.ThrowIfCancellationRequested();
+        if (_disposed || _feedImages is not { } service) return;
+        var source = FeedImageSourceFor(feed);
+        var version = _feedIconVersion;
+        bool IsCurrent() => !_disposed && ReferenceEquals(service, _feedImages) && FeedImageSourceFor(feed) == source;
+        var favicon = hasSidebar ? service.FaviconAsync(source, ct) : null;
+        async Task UpdateFaviconAsync()
+        {
+            var image = await favicon!;
+            ct.ThrowIfCancellationRequested();
+            if (IsCurrent() && image is not null) ApplyFaviconUpdate(source, image.Path);
+        }
+        async Task UpdateIconAsync()
+        {
+            var image = await service.IconAsync(source, ct);
+            image ??= await (favicon ??= service.FaviconAsync(source, ct));
+            ct.ThrowIfCancellationRequested();
+            if (!IsCurrent() || image is null) return;
+            var path = image.Path;
+            if (_feedIconUpdates.TryGetValue(source, out var updated) && updated.Version > version) path = updated.Path;
+            ApplyFeedIconUpdate(source, path);
+        }
+        await Task.WhenAll(hasArticles ? UpdateIconAsync() : Task.CompletedTask,
+            hasSidebar ? UpdateFaviconAsync() : Task.CompletedTask);
     }
 
     private void OnArticleStatusesChanged(object? sender, AccountNs.StatusesChangedEventArgs args)
@@ -378,6 +453,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UndoManager.StackChanged -= OnUndoHistoryChanged;
         foreach (var account in _observedAccounts) UnobserveAccount(account);
         _observedAccounts.Clear();
+        foreach (var settings in _observedFeedImageSettings.Keys) settings.SettingChanged -= FeedImageSettingChanged;
+        _observedFeedImageSettings.Clear();
     }
 
     private static ArticleTextSize CurrentArticleTextSize
@@ -1308,6 +1385,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 item.FaviconPath = path;
     }
 
+    private void ApplyFaviconUpdate(Images.FeedImageSource feed, string path)
+    {
+        _faviconUpdates[feed] = (++_feedIconVersion, path);
+        void UpdateSidebar(SidebarItem item)
+        {
+            if (item.Tag is AccountNs.Feed candidate && FeedImageSourceFor(candidate) == feed) item.FaviconPath = path;
+            foreach (var child in item.Children) UpdateSidebar(child);
+        }
+        foreach (var item in SidebarItems) UpdateSidebar(item);
+    }
+
     private void FaviconDidBecomeAvailable(object? sender, Images.FeedIconImage recovered)
     {
         if (_disposed) return;
@@ -1317,14 +1405,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _viewOperations.Add(new MainThreadAsyncOperation(async ct =>
             {
                 if (_disposed || !ReferenceEquals(service, _feedImages)) return;
-                _faviconUpdates[recovered.Feed] = (++_feedIconVersion, recovered.Image.Path);
-                void UpdateSidebar(SidebarItem item)
-                {
-                    if (item.Tag is AccountNs.Feed feed && FeedImageSourceFor(feed) == recovered.Feed)
-                        item.FaviconPath = recovered.Image.Path;
-                    foreach (var child in item.Children) UpdateSidebar(child);
-                }
-                foreach (var item in SidebarItems) UpdateSidebar(item);
+                ApplyFaviconUpdate(recovered.Feed, recovered.Image.Path);
                 var version = _feedIconVersion;
                 var preferred = await service.IconAsync(recovered.Feed, ct);
                 ct.ThrowIfCancellationRequested();

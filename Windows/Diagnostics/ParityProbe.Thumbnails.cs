@@ -774,6 +774,114 @@ internal static partial class ParityProbe
         }
     }
 
+    private static async Task<object?> CheckChangedFeedImageSettingsAsync(MainWindow window, string setting)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var previousItems = model.ArticleItems;
+        var previousSidebar = model.SidebarItems.ToArray();
+        var previousSelection = model.SelectedArticle;
+        var previousImages = model.ProbeFeedImages;
+        var previousIcons = Core.AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+        bool previousColumns = Core.AppDefaults.Shared.UseColumnLayout;
+        bool networkAllowed = true;
+        int requests = 0;
+        using var http = new HttpClient(new ThumbnailHandler((request, _) =>
+        {
+            Require(networkAllowed, "A warm image-setting change unexpectedly used the network.");
+            Interlocked.Increment(ref requests);
+            var path = request.RequestUri!.AbsolutePath;
+            bool newer = path.StartsWith("/new", StringComparison.Ordinal);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = path.EndsWith("-home/", StringComparison.Ordinal)
+                    ? new StringContent($"<link rel='apple-touch-icon' sizes='180x180' href='/{(newer ? "new" : "old")}-icon.bmp'>"
+                        + $"<link rel='icon' href='/{(newer ? "new" : "old")}-favicon.bmp'>", System.Text.Encoding.UTF8, "text/html")
+                    : new ByteArrayContent(newer ? ThumbnailBitmap(1600, 800) : ThumbnailBitmap(128, 128))
+            });
+        }));
+        var downloader = new Downloader(http);
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, setting + "-setting.db"));
+        using var htmlDatabase = new HTMLMetadata.HtmlMetadataDatabase(":memory:");
+        await using var metadata = new HTMLMetadata.HtmlMetadataDownloader(htmlDatabase, downloader);
+        await using var images = new FeedImageDownloader(database, metadata, Path.Combine(OutputDirectory, setting + "-setting"),
+            downloader, maxPixelSize: 48, networkAllowsUpdates: () => true);
+        var feed = new Account.Feed("image-setting-fixture", setting, "https://image-setting.test/feed")
+        {
+            HomePageUrl = "https://image-setting.test/old-home/",
+            IconUrl = setting == "homepage" ? null : "https://image-setting.test/old-icon.bmp",
+            FaviconUrl = setting == "homepage" ? null : "https://image-setting.test/old-favicon.bmp"
+        };
+        var oldSource = new FeedImageSource(feed.Url, feed.HomePageUrl, feed.FaviconUrl, feed.IconUrl);
+        var originalIcon = await images.IconAsync(oldSource) ?? throw new InvalidOperationException("The initial icon did not load.");
+        var originalFavicon = await images.FaviconAsync(oldSource) ?? throw new InvalidOperationException("The initial favicon did not load.");
+        var next = oldSource with
+        {
+            FeedUrl = "https://image-setting.test/warm-new",
+            IconUrl = setting == "icon" ? "https://image-setting.test/new-icon.bmp" : oldSource.IconUrl,
+            FaviconUrl = setting == "favicon" ? "https://image-setting.test/new-favicon.bmp" : oldSource.FaviconUrl,
+            HomePageUrl = setting == "homepage" ? "https://image-setting.test/new-home/" : oldSource.HomePageUrl
+        };
+        var expectedIcon = await images.IconAsync(next) ?? throw new InvalidOperationException("The replacement icon did not warm.");
+        var expectedFavicon = await images.FaviconAsync(next) ?? throw new InvalidOperationException("The replacement favicon did not warm.");
+        var row = new Models.FeedItem
+        {
+            Id = setting + "-setting", AccountID = feed.AccountID, FeedId = feed.FeedID, FaviconPath = originalIcon.Path,
+            FeedUrl = oldSource.FeedUrl, FeedHomePageUrl = oldSource.HomePageUrl, FeedIconUrl = oldSource.IconUrl ?? "",
+            FeedFaviconUrl = oldSource.FaviconUrl
+        };
+        var unrelated = new Models.FeedItem { Id = "unrelated-setting", FaviconPath = originalIcon.Path };
+        var sidebar = new Models.SidebarItem { Title = "Changed image setting", Tag = feed, FaviconPath = originalFavicon.Path };
+        bool onUI = true;
+        row.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(Models.FeedItem.FaviconSource))
+                onUI &= window.DispatcherQueue.HasThreadAccess;
+        };
+        var list = (ListView)content.FindName("ArticleListView");
+        try
+        {
+            Core.AppDefaults.Shared.UseColumnLayout = false;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
+            model.ProbeFeedImages = images;
+            model.ProbeObserveFeedImageSettings(feed);
+            model.SelectedArticle = null;
+            model.ArticleItems = new ObservableCollection<Models.FeedItem> { row, unrelated };
+            model.SidebarItems.Clear();
+            model.SidebarItems.Add(sidebar);
+            await WaitFor(() => Task.FromResult(list.ContainerFromItem(row) is not null), "Image-setting row");
+            var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
+            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 128 }), "Original setting icon");
+            int warmedRequests = requests;
+            networkAllowed = false;
+            switch (setting)
+            {
+                case "icon": feed.IconUrl = next.IconUrl; break;
+                case "favicon": feed.FaviconUrl = next.FaviconUrl; break;
+                case "homepage": feed.HomePageUrl = next.HomePageUrl; break;
+                default: throw new ArgumentOutOfRangeException(nameof(setting));
+            }
+            await WaitFor(() => Task.FromResult(row.FaviconPath == expectedIcon.Path
+                && sidebar.FaviconPath == expectedFavicon.Path
+                && icon.ImageSource is BitmapImage bitmap && bitmap.PixelWidth == (setting == "favicon" ? 128 : 1600)),
+                "Changed native image setting");
+            Require(onUI && requests == warmedRequests && unrelated.FaviconPath == originalIcon.Path
+                && unrelated.FaviconSource.Revision == 0, "A warm image-setting update changed unrelated rows or used the network.");
+            return new { Setting = setting, WarmReplacement = true, NativePixels = true, DispatchedOnUI = true,
+                NoAdditionalNetwork = true, UnrelatedRowsPreserved = true };
+        }
+        finally
+        {
+            model.ProbeFeedImages = previousImages;
+            model.SidebarItems.Clear();
+            foreach (var item in previousSidebar) model.SidebarItems.Add(item);
+            model.ArticleItems = previousItems;
+            model.SelectedArticle = previousSelection;
+            Core.AppDefaults.Shared.UseColumnLayout = previousColumns;
+            Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousIcons);
+        }
+    }
+
     private static async Task CheckChangedFeedIconsAsync(MainWindow window)
     {
         var content = window.ProbeContent;
