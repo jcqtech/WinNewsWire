@@ -7,7 +7,7 @@ using ActivityKind = WinNewsWire.ActivityLog.ActivityKind;
 
 namespace WinNewsWire.Images;
 
-/// <summary>One original, full-size disk source per URL; display-size representations stay in their owners' memory caches.</summary>
+/// <summary>Shared disk sources; icons retain their scaled copy instead of a larger original.</summary>
 public sealed class DownloadedImageCache : IAsyncDisposable
 {
     private readonly ImageResourceDownloader _downloads;
@@ -107,6 +107,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
 
     internal static string DerivedDiskKey(string url, string suffix) => url.Md5Hex() + "-" + suffix;
     internal string SourcePath(string url) => _diskCache.PathForKey(url.Md5Hex());
+    internal string DerivedPath(string url, string suffix) => _diskCache.PathForKey(DerivedDiskKey(url, suffix));
 
     private static string BaseDiskKey(string key)
     {
@@ -115,8 +116,18 @@ public sealed class DownloadedImageCache : IAsyncDisposable
     }
 
     internal Task<byte[]?> DerivedImageDataAsync(string url, string suffix, CancellationToken ct = default)
-        => RunDiskOperationAsync(token => File.Exists(_diskCache.PathForKey(url.Md5Hex()))
-            ? _diskCache.GetAsync(DerivedDiskKey(url, suffix), token) : Task.FromResult<byte[]?>(null), ct);
+        => RunDiskOperationAsync(token => _diskCache.GetAsync(DerivedDiskKey(url, suffix), token), ct);
+
+    internal Task<bool> SaveScaledIconDataAsync(string url, string suffix, byte[] data, byte[] original, CancellationToken ct = default)
+        => RunDiskOperationAsync(async token =>
+        {
+            var current = await _diskCache.GetAsync(url.Md5Hex(), token).ConfigureAwait(false);
+            // An older decode must not remove a replacement saved while it was running.
+            if (current is not null && !current.AsSpan().SequenceEqual(original)) return false;
+            await _diskCache.SetAsync(DerivedDiskKey(url, suffix), data, token).ConfigureAwait(false);
+            _diskCache.Remove(url.Md5Hex());
+            return true;
+        }, ct);
 
     internal Task SaveDerivedImageDataAsync(string url, string suffix, byte[] data, CancellationToken ct = default)
         => RunDiskOperationAsync(async token =>
@@ -210,18 +221,17 @@ public sealed class DownloadedImageCache : IAsyncDisposable
                 UserAgentStyle.Browser, cachesResponse: false).ConfigureAwait(false);
             if (response.Success && response.Data is { Length: > 0 } data)
             {
-                byte[]? stored;
-                await _diskGate.WaitAsync(ct).ConfigureAwait(false);
-                try { stored = await _diskCache.GetAsync(url.Md5Hex(), ct).ConfigureAwait(false); }
-                finally { _diskGate.Release(); }
-                if (stored is not null && data.AsSpan().SequenceEqual(stored))
+                try
                 {
-                    await _database.SaveDownloadedImageNextCheckAsync(url,
-                        CalculateNextCheck(response.CacheMaxAge, validation.ConditionalGet is not null, _clock.GetUtcNow()))
-                        .ConfigureAwait(false);
-                    return;
+                    if (await IsStoredImageAsync(url, data, ct).ConfigureAwait(false))
+                    {
+                        await _database.SaveDownloadedImageNextCheckAsync(url,
+                            CalculateNextCheck(response.CacheMaxAge, validation.ConditionalGet is not null, _clock.GetUtcNow()))
+                            .ConfigureAwait(false);
+                        return;
+                    }
+                    await _downloads.StoreUpdatedSourceAsync(url, data, response, ct).ConfigureAwait(false);
                 }
-                try { await _downloads.StoreUpdatedSourceAsync(url, data, response, ct).ConfigureAwait(false); }
                 catch (InvalidDataException error)
                 {
                     Trace.TraceWarning($"Image revalidation for {url} returned unreadable data; keeping the cached image: {error}");
@@ -249,6 +259,35 @@ public sealed class DownloadedImageCache : IAsyncDisposable
             Trace.TraceWarning($"Image revalidation for {url} failed; keeping the cached image: {error}");
         }
         finally { if (inUse) ReleaseRevalidation(url); }
+    }
+
+    private async Task<bool> IsStoredImageAsync(string url, byte[] data, CancellationToken ct)
+    {
+        await _diskGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var stored = await _diskCache.GetAsync(url.Md5Hex(), ct).ConfigureAwait(false);
+            if (stored is not null) return data.AsSpan().SequenceEqual(stored);
+            string prefix = url.Md5Hex() + "-";
+            var copies = Directory.EnumerateFiles(_diskCache.Folder, prefix + "*-Png")
+                .Select(path => (Path: path, Size: int.TryParse(Path.GetFileName(path).AsSpan(prefix.Length,
+                    Path.GetFileName(path).Length - prefix.Length - 4), System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out int size) ? size : 0))
+                .Where(copy => copy.Size > 0).OrderByDescending(copy => copy.Size);
+            foreach (var copy in copies)
+            {
+                var scaled = await _diskCache.GetAsync(Path.GetFileName(copy.Path), ct).ConfigureAwait(false);
+                if (scaled is null) continue;
+                var candidate = await Task.Run(() =>
+                {
+                    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Icon scaling requires Windows.");
+                    return WindowsImage.ScaledImageData(data, copy.Size);
+                }, ct).ConfigureAwait(false);
+                return candidate.AsSpan().SequenceEqual(scaled);
+            }
+            return false;
+        }
+        finally { _diskGate.Release(); }
     }
 
     internal static DateTimeOffset CalculateNextCheck(TimeSpan? maxAge, bool hasValidators, DateTimeOffset now)
@@ -320,12 +359,16 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         var keep = new List<(DownloadedImageUsage Record, string Key, long ByteCount)>();
         var icons = new List<(DownloadedImageUsage Record, string Key)>();
         var recordedKeys = new HashSet<string>(StringComparer.Ordinal);
+        var keysWithFiles = files.Keys.Select(BaseDiskKey).ToHashSet(StringComparer.Ordinal);
+        var recentlyWrittenKeys = files.Where(pair => pair.Value.ModificationDate >= recentChange)
+            .Select(pair => BaseDiskKey(pair.Key)).ToHashSet(StringComparer.Ordinal);
         var urls = new List<string>();
         foreach (var record in records)
         {
             string key = record.Url.Md5Hex();
             recordedKeys.Add(key);
-            if (!files.ContainsKey(key) && record.LastAccessed < recentChange) urls.Add(record.Url);
+            if (!files.ContainsKey(key) && (!record.IsIcon || !keysWithFiles.Contains(key))
+                && record.LastAccessed < recentChange) urls.Add(record.Url);
             else if (record.IsIcon) icons.Add((record, key));
             else keep.Add((record, key, files.GetValueOrDefault(key)?.ByteCount ?? 0));
         }
@@ -344,7 +387,7 @@ public sealed class DownloadedImageCache : IAsyncDisposable
         foreach (var (record, key) in icons)
         {
             if (record.LastAccessed >= now - TimeSpan.FromDays(180) || urlsInUse?.Contains(record.Url) == true
-                || files.TryGetValue(key, out var file) && file.ModificationDate >= recentChange) continue;
+                || recentlyWrittenKeys.Contains(key)) continue;
             urls.Add(record.Url);
             keys.Add(key);
         }

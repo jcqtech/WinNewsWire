@@ -274,16 +274,17 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
     internal Task StoreUpdatedSourceAsync(string url, byte[] data, DownloadResult response, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        return StoreImageAsync(url, ProcessImage(data), response, true, ct);
+        return StoreImageAsync(url, ProcessImage(data), response, true, ct, invalidateDerived: true);
     }
 
-    private async Task StoreImageAsync(string url, byte[] processed, DownloadResult response, bool isIcon, CancellationToken ct)
+    private async Task StoreImageAsync(string url, byte[] processed, DownloadResult response, bool isIcon, CancellationToken ct,
+        bool invalidateDerived = false)
     {
         if (_sourceDiskGate is not null) await _sourceDiskGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             await _diskCache.SetAsync(url.Md5Hex(), processed, ct).ConfigureAwait(false);
-            if (_configuration.StoresSourceData)
+            if (_configuration.StoresSourceData && invalidateDerived)
                 foreach (var derived in Directory.EnumerateFiles(_diskCache.Folder, url.Md5Hex() + "-*"))
                     _diskCache.Remove(Path.GetFileName(derived));
             if (_configuration.StoresSourceData && OperatingSystem.IsWindows())
@@ -307,11 +308,11 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             {
                 _ = WindowsImage.LargestFramePixelSize(scaled);
                 await _sourceCache.ImageWasUsedAsync(url, checksForUpdates: true, ct).ConfigureAwait(false);
-                return Cache(new(url, _sourceCache.SourcePath(url), scaled));
+                return Cache(new(url, _sourceCache.DerivedPath(url, ScaledCopySuffix), scaled));
             }
             catch (InvalidDataException error)
             {
-                Trace.TraceWarning($"Could not decode scaled icon {url}; rebuilding from its original: {error}");
+                Trace.TraceWarning($"Could not decode scaled icon {url}; fetching its source again: {error}");
                 await _sourceCache.DeleteDerivedImageDataAsync(url, ScaledCopySuffix, ct).ConfigureAwait(false);
             }
         }
@@ -324,7 +325,17 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
             var image = source with { Data = ProcessImage(source.Data) };
             ct.ThrowIfCancellationRequested();
             if (!image.Data.AsSpan().SequenceEqual(source.Data))
-                await _sourceCache.SaveDerivedImageDataAsync(url, ScaledCopySuffix, image.Data, ct).ConfigureAwait(false);
+            {
+                try
+                {
+                    if (await _sourceCache.SaveScaledIconDataAsync(url, ScaledCopySuffix, image.Data, source.Data, ct).ConfigureAwait(false))
+                        image = image with { Path = _sourceCache.DerivedPath(url, ScaledCopySuffix) };
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    Trace.TraceWarning($"Could not save scaled icon {url}; keeping its original: {error}");
+                }
+            }
             return Cache(image);
         }
         catch (InvalidDataException error)
@@ -481,7 +492,7 @@ internal sealed class ImageResourceDownloader : IAsyncDisposable
         lock (_gate) _pending.TryGetValue(url, out pending);
         // An older decode must finish before invalidation, or it can cache stale pixels again.
         if (pending is not null) await pending.WaitAsync(ct).ConfigureAwait(false);
-        if (_sourceCache is not null)
+        if (_sourceCache is not null && File.Exists(_sourceCache.SourcePath(url)))
             await _sourceCache.DeleteDerivedImageDataAsync(url, ScaledCopySuffix, ct).ConfigureAwait(false);
         lock (_gate)
         {

@@ -873,14 +873,15 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task FaviconRepresentationsStayInMemoryWhileDiskKeepsTheSharedSource()
+    public async Task FaviconRepresentationsReplaceTheirLargeDiskSources()
     {
         var original = Bitmap(192, 96);
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)), maxPixelSize: 48);
         var source = new FeedImageSource(Feed, Home, Home + "large.bmp");
         var image = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
         AssertPngSize(image.Data, 48, 24);
-        Assert.Equal(original, await File.ReadAllBytesAsync(image.Path));
+        Assert.Equal(image.Data, await File.ReadAllBytesAsync(image.Path));
+        Assert.False(File.Exists(fixture.NativePath(source.FaviconUrl!)));
         Assert.Equal(ActivityLogger.DataSizeMessage(original.LongLength), Assert.Single(fixture.Activity.CompletedActivities).CompletionMessage);
         Assert.Equal(Home, Assert.Single(fixture.Activity.CompletedActivities).Detail);
         fixture.Images.EmptyCache();
@@ -891,19 +892,25 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task FaviconsReuseTheFullThumbnailSourceWithoutReplacingItWithTheirSmallRepresentation()
+    public async Task FaviconsReuseThumbnailDownloadsButFullSizeReadersRefetchTheOriginal()
     {
         var original = Bitmap(192, 96);
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)), maxPixelSize: 48);
         string url = Home + "legacy.bmp";
         var source = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.SourceAsync(url));
         var image = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(new(Feed, Home, url)));
-        Assert.Equal(fixture.NativePath(url), image.Path);
         AssertPngSize(image.Data, 48, 24);
-        Assert.Equal(source.Path, image.Path);
-        Assert.Equal(original, await File.ReadAllBytesAsync(image.Path));
+        Assert.NotEqual(source.Path, image.Path);
+        Assert.Equal(image.Data, await File.ReadAllBytesAsync(image.Path));
+        Assert.False(File.Exists(source.Path));
         Assert.Single(fixture.Requests);
         Assert.Empty(fixture.Activity.CompletedActivities);
+        var fullSize = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.FullSizeImageAsync(url));
+        Assert.Equal(original, fullSize.Data);
+        Assert.Equal(original, await File.ReadAllBytesAsync(fullSize.Path));
+        Assert.Equal(image.Data, await File.ReadAllBytesAsync(image.Path));
+        Assert.True(Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).IsIcon);
+        Assert.Equal(2, fixture.Requests.Count);
     }
 
     [Fact]
@@ -1058,7 +1065,7 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task MemoryHitsRepairMissingSourcesWithoutReplacingThemWithTheirSmallDisplayRepresentation()
+    public async Task MemoryHitsRepairMissingScaledIconsByRefetchingTheirSource()
     {
         var original = Bitmap(192, 96);
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, original)), maxPixelSize: 48);
@@ -1069,7 +1076,8 @@ public sealed class FeedImageDownloaderTests
         var restored = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(source));
         Assert.Equal(first.Path, restored.Path);
         AssertPngSize(restored.Data, 48, 24);
-        Assert.Equal(original, await File.ReadAllBytesAsync(restored.Path));
+        Assert.Equal(restored.Data, await File.ReadAllBytesAsync(restored.Path));
+        Assert.False(File.Exists(fixture.NativePath(source.FaviconUrl!)));
         Assert.Equal(2, fixture.Requests.Count);
     }
 
@@ -1192,10 +1200,12 @@ public sealed class FeedImageDownloaderTests
     {
         byte[] source = Bitmap(128, 128);
         Array.Resize(ref source, 25 * 1024 * 1024 + 1);
-        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, source)));
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, source)), maxPixelSize: 48);
         const string url = Home + "large-icon-source.bmp";
         var icon = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(new(Feed, Home, IconUrl: url)));
-        Assert.Equal(source, await File.ReadAllBytesAsync(icon.Path));
+        AssertPngSize(icon.Data, 48, 48);
+        Assert.Equal(icon.Data, await File.ReadAllBytesAsync(icon.Path));
+        Assert.Equal(ActivityLogger.DataSizeMessage(source.LongLength), Assert.Single(fixture.Activity.CompletedActivities).CompletionMessage);
         Assert.Single(fixture.Requests);
     }
 
@@ -1266,52 +1276,125 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal(image.Data, scaled);
         // A valid distinguishable representation proves hits do not silently rescale the original.
         var saved = Bitmap(40, 20);
-        await fixture.Images.DownloadedImages.SaveDerivedImageDataAsync(url, "48-Png", saved);
+        await File.WriteAllBytesAsync(image.Path, saved);
         fixture.Images.EmptyCache();
         Assert.Equal(saved, (await fixture.Images.IconAsync(feed))?.Data);
         await fixture.ReopenImagesAsync();
         Assert.Equal(saved, (await fixture.Images.IconAsync(feed))?.Data);
-        Assert.Equal((1600u, 800u), WindowsImage.LargestFramePixelSize(await File.ReadAllBytesAsync(image.Path)));
+        Assert.False(File.Exists(fixture.NativePath(url)));
+        Assert.Equal(saved, await File.ReadAllBytesAsync(image.Path));
+        fixture.Clock.Advance(TimeSpan.FromDays(10));
+        File.SetLastWriteTimeUtc(image.Path, fixture.Clock.GetUtcNow().AddDays(-10).UtcDateTime);
+        await using var coldCache = new DownloadedImageCache(fixture.ImageDatabase, fixture.CacheDirectory,
+            fixture.Downloader, fixture.Clock, networkAllowsUpdates: () => false);
+        await using var coldImages = new FeedImageDownloader(fixture.ImageDatabase, fixture.Metadata, fixture.CacheDirectory,
+            fixture.Downloader, fixture.Clock, maxPixelSize: 48, downloadedImages: coldCache);
+        Assert.Equal(saved, (await coldImages.IconAsync(feed))?.Data);
+        Assert.True(Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).IsIcon);
         Assert.Single(fixture.Requests);
     }
 
     [Fact]
-    public async Task CorruptScaledIconsRebuildFromTheOriginalWithoutPoisoningTheUrl()
+    public async Task CorruptScaledIconsRefetchTheOriginalWithoutPoisoningTheUrl()
     {
         await using var fixture = new Fixture((_, _) =>
             Task.FromResult(Response(HttpStatusCode.OK, Bitmap(1600, 800))), maxPixelSize: 48);
         const string url = Home + "corrupt-scaled.bmp";
         var feed = new FeedImageSource(Feed, Home, IconUrl: url);
         var original = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(feed));
-        await fixture.Images.DownloadedImages.SaveDerivedImageDataAsync(url, "48-Png", "invalid image"u8.ToArray());
+        await File.WriteAllBytesAsync(original.Path, "invalid image"u8.ToArray());
         fixture.Images.EmptyCache();
         Assert.Equal(original.Data, (await fixture.Images.IconAsync(feed))?.Data);
         Assert.Equal(original.Data, await fixture.Images.DownloadedImages.DerivedImageDataAsync(url, "48-Png"));
         Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
-        Assert.Single(fixture.Requests);
+        Assert.Equal(2, fixture.Requests.Count);
     }
 
     [Fact]
-    public async Task ChangedIconSourcesKeepTheOriginalFullSizeReplacement()
+    public async Task FailedScaledIconWritesKeepTheOriginalAndAUsableNativePath()
     {
+        var original = Bitmap(192, 96);
+        string blockedPath = "";
+        await using var fixture = new Fixture((_, _) =>
+        {
+            Directory.CreateDirectory(blockedPath);
+            return Task.FromResult(Response(HttpStatusCode.OK, original));
+        }, maxPixelSize: 48);
+        const string url = Home + "blocked-scaled.bmp";
+        blockedPath = fixture.NativePath(url) + "-48-Png";
+        var image = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(new(Feed, IconUrl: url)));
+        AssertPngSize(image.Data, 48, 24);
+        Assert.Equal(fixture.NativePath(url), image.Path);
+        Assert.Equal(original, await File.ReadAllBytesAsync(image.Path));
+        Assert.False(fixture.ImageDatabase.RecentlyFailed(url));
+        Assert.Single(fixture.Requests);
+    }
+
+    [Theory]
+    [InlineData(48, false)]
+    [InlineData(48, true)]
+    [InlineData(96, false)]
+    [InlineData(96, true)]
+    public async Task UnchangedScaledOnlyIconsPreserveFilesAndValidatorsWithoutAnnouncingReplacement(int size, bool validators)
+    {
+        var original = Bitmap(192, 96);
+        int requests = 0, changes = 0;
+        await using var fixture = new Fixture((request, _) =>
+        {
+            int count = Interlocked.Increment(ref requests);
+            Assert.Equal(count > 1 && validators ? "\"scaled-v1\"" : "", request.Headers.IfNoneMatch.ToString());
+            var response = Response(HttpStatusCode.OK, original);
+            if (count == 1 && validators) response.Headers.TryAddWithoutValidation("ETag", "\"scaled-v1\"");
+            return Task.FromResult(response);
+        }, maxPixelSize: size);
+        const string url = Home + "unchanged-scaled.bmp";
+        var feed = new FeedImageSource(Feed, IconUrl: url);
+        var image = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(feed));
+        Assert.False(File.Exists(fixture.NativePath(url)));
+        var modified = File.GetLastWriteTimeUtc(image.Path);
+        fixture.Images.DownloadedImages.DownloadedImageChanged += (_, _) => Interlocked.Increment(ref changes);
+        fixture.Clock.Advance(TimeSpan.FromDays(40));
+        fixture.Images.EmptyCache();
+        Assert.Equal(image.Data, (await fixture.Images.IconAsync(feed))?.Data);
+        await fixture.Images.DownloadedImages.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(image.Data, await File.ReadAllBytesAsync(image.Path));
+        Assert.Equal(modified, File.GetLastWriteTimeUtc(image.Path));
+        Assert.False(File.Exists(fixture.NativePath(url)));
+        var validation = Assert.IsType<DownloadedImageValidation>(
+            await fixture.ImageDatabase.FetchDownloadedImageValidationAsync(url));
+        Assert.Equal(validators ? "\"scaled-v1\"" : null, validation.ConditionalGet?.ETag);
+        Assert.True(validation.NextCheck > fixture.Clock.GetUtcNow());
+        Assert.Equal(2, requests);
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
+    public async Task ChangedIconSourcesNotifyFeedsWhenTheirNativePathChanges()
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Icon scaling requires Windows.");
         int requests = 0;
         byte[] original = Bitmap(1600, 800);
         await using var fixture = new Fixture((_, _) =>
         {
-            var response = Response(HttpStatusCode.OK, Interlocked.Increment(ref requests) == 1 ? Bitmap(128, 128) : original);
+            var response = Response(HttpStatusCode.OK, Interlocked.Increment(ref requests) == 1 ? Bitmap(32, 32) : original);
             response.Headers.TryAddWithoutValidation("ETag", "\"icon\"");
             return Task.FromResult(response);
-        });
+        }, maxPixelSize: 48);
         const string url = Home + "revalidated-source.bmp";
         var feed = new FeedImageSource(Feed, Home, IconUrl: url);
-        Assert.NotNull(await fixture.Images.IconAsync(feed));
+        var first = Assert.IsType<DownloadedImage>(await fixture.Images.IconAsync(feed));
+        var available = new TaskCompletionSource<FeedIconImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Images.FeedIconDidBecomeAvailable += (_, update) => available.TrySetResult(update);
         fixture.Clock.Advance(TimeSpan.FromDays(10));
         fixture.Images.EmptyCache();
         Assert.NotNull(await fixture.Images.IconAsync(feed));
         await fixture.Images.DownloadedImages.WaitForRevalidationsAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        var source = Assert.IsType<DownloadedImage>(await fixture.Thumbnails.SourceAsync(url));
-        Assert.Equal(original, source.Data);
-        Assert.Equal(original, await File.ReadAllBytesAsync(source.Path));
+        var update = await available.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(feed, update.Feed);
+        Assert.NotEqual(first.Path, update.Image.Path);
+        Assert.Equal(update.Image.Data, await File.ReadAllBytesAsync(update.Image.Path));
+        Assert.False(File.Exists(first.Path));
+        Assert.Equal((48u, 24u), WindowsImage.LargestFramePixelSize(update.Image.Data));
         Assert.Equal(url, Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).Url);
         Assert.Equal(2, requests);
     }
@@ -1361,7 +1444,8 @@ public sealed class FeedImageDownloaderTests
         Assert.Equal((48u, 24u), WindowsImage.LargestFramePixelSize(fresh.Data));
         Assert.Equal(old.Path, fresh.Path);
         Assert.Equal(fresh.Data, (await (favicon ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed)))?.Data);
-        Assert.Equal((1600u, 800u), WindowsImage.LargestFramePixelSize(await File.ReadAllBytesAsync(fresh.Path)));
+        Assert.Equal(fresh.Data, await File.ReadAllBytesAsync(fresh.Path));
+        Assert.False(File.Exists(fixture.NativePath(url)));
         Assert.Equal(2, requests);
     }
 
@@ -1542,15 +1626,14 @@ public sealed class FeedImageDownloaderTests
         release.TrySetResult();
         var largeImage = Assert.IsType<DownloadedImage>(await large);
         var iconImage = Assert.IsType<DownloadedImage>(await icon);
-        Assert.Equal(largeImage.Path, iconImage.Path);
+        Assert.NotEqual(largeImage.Path, iconImage.Path);
         Assert.Equal((1600u, 800u), WindowsImage.LargestFramePixelSize(largeImage.Data));
         Assert.Equal(original, largeImage.Data);
         Assert.Equal(original, Assert.IsType<DownloadedImage>(await fullSize).Data);
         Assert.Equal((64u, 32u), WindowsImage.LargestFramePixelSize(iconImage.Data));
-        Assert.Equal(largeImage.Data, await File.ReadAllBytesAsync(largeImage.Path));
+        Assert.False(File.Exists(largeImage.Path));
         var files = Directory.GetFiles(Path.Combine(fixture.CacheDirectory, "DownloadedImages"));
-        Assert.Equal(2, files.Length);
-        Assert.Contains(largeImage.Path, files);
+        Assert.Equal(iconImage.Path, Assert.Single(files));
         Assert.Equal(iconImage.Data, await fixture.Images.DownloadedImages.DerivedImageDataAsync(url, "64-Png"));
         Assert.True(Assert.Single(await fixture.ImageDatabase.FetchDownloadedImageUsageByLeastRecentAccessAsync()).IsIcon);
         Assert.Single(fixture.Requests);

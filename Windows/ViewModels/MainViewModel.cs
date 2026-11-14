@@ -1791,6 +1791,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     internal static string ArticleIconSource(FeedItem item) => ArticleIconIdentityUrl(item)
         + "&state=" + (item.FaviconPath is null ? "pending" : "ready")
+        + "&source=" + (item.FaviconPath?.Md5Hex() ?? "")
         + "&revision=" + item.FaviconSource.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture);
 }
 

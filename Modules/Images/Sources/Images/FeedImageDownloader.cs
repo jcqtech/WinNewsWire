@@ -69,6 +69,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private readonly Dictionary<FeedImageSource, OwnIconWait> _waitingForOwnIcons = [];
     private readonly Dictionary<FeedImageSource, HashSet<string>> _waitingForFavicons = [];
     private readonly HashSet<FeedImageSource> _retryingFavicons = [];
+    private readonly HashSet<FeedImageSource> _requestedFeedIcons = [];
     private readonly HashSet<FeedImageSource> _homePageIconFeeds = [];
     private readonly Dictionary<string, HtmlMetadataRecord> _homePageIconMetadata = [];
     private readonly HashSet<string> _checkedHomePageIcons = [];
@@ -165,7 +166,18 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             var task = RunOperationAsync(async ct =>
             {
                 var result = await _images.RefreshAsync(url, ct).ConfigureAwait(false);
-                if (result.Image is { } image) ImageDidBecomeAvailable?.Invoke(this, image);
+                if (result.Image is { } image)
+                {
+                    ImageDidBecomeAvailable?.Invoke(this, image);
+                    FeedImageSource[] feeds;
+                    lock (_gate) feeds = _requestedFeedIcons.Where(feed => UsesImage(feed, url)).ToArray();
+                    foreach (var feed in feeds)
+                    {
+                        var preferred = await IconCoreAsync(feed, ct).ConfigureAwait(false)
+                            ?? await FaviconCoreAsync(feed, ct).ConfigureAwait(false);
+                        if (preferred is not null) FeedIconDidBecomeAvailable?.Invoke(this, new(feed, preferred));
+                    }
+                }
                 return result.Image;
             }, CancellationToken.None);
             _ = task.ContinueWith(completed =>
@@ -174,6 +186,13 @@ public sealed class FeedImageDownloader : IAsyncDisposable
                     Trace.TraceError($"Could not rebuild a changed feed image at {url}: {completed.Exception}");
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
+    }
+
+    private bool UsesImage(FeedImageSource feed, string url)
+    {
+        if (OwnIconUrl(feed) is { Length: > 0 } own && SanitizedIconUrl(own) == url || feed.FaviconUrl == url) return true;
+        var homePage = HomePage(feed);
+        return homePage is not null && (_database.HomePageIconUrl(homePage) == url || _database.FaviconUrl(homePage) == url);
     }
 
     private static int DefaultMaxPixelSize()
@@ -261,6 +280,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     {
         ct.ThrowIfCancellationRequested();
         if (ShouldSkipFeedIcon(feed.FeedUrl)) return null;
+        lock (_gate) { if (!_stopping) _requestedFeedIcons.Add(feed); }
         string? iconUrl = OwnIconUrl(feed);
         OwnIconWait? ownIcon = null;
         if (iconUrl is { Length: > 0 })
@@ -533,6 +553,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             NetworkMonitor.ConnectivityChanged -= NetworkStatusChanged;
             _waitingForOwnIcons.Clear();
             _waitingForFavicons.Clear();
+            _requestedFeedIcons.Clear();
             _homePageIconFeeds.Clear();
             _homePageIconMetadata.Clear();
             _checkedHomePageIcons.Clear();

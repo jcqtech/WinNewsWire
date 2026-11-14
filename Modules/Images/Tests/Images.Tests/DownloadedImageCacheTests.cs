@@ -12,6 +12,35 @@ public sealed class DownloadedImageCacheTests
     private static readonly DateTimeOffset Now = new(2026, 10, 27, 0, 0, 0, TimeSpan.Zero);
     private static string Url(string name, string host = "images.test") => "https://" + host + "/" + name + ".png";
 
+    [Theory]
+    [InlineData(10, false, false)]
+    [InlineData(181, false, true)]
+    [InlineData(181, true, false)]
+    public void ScaledOnlyIconsSurvivePruningUntilUnusedAndNotRecentlyWritten(int ageDays, bool recentWrite, bool removed)
+    {
+        var old = Now.AddDays(-ageDays);
+        var record = new DownloadedImageUsage(Url("scaled-icon"), old, IsIcon: true);
+        string key = DownloadedImageCache.DerivedDiskKey(record.Url, "48-Png");
+        var files = new Dictionary<string, DownloadedImageCache.StoredFile> { [key] = new(recentWrite ? Now : old, 10) };
+        var removal = DownloadedImageCache.PlanRemoval([record], files, Now, 1);
+        Assert.Equal(removed, removal.Urls.Contains(record.Url));
+        Assert.Equal(removed, removal.Keys.Contains(key));
+        Assert.Equal(0, removal.RemainingByteCount);
+    }
+
+    [Fact]
+    public async Task AStaleScaledSaveCannotDeleteAReplacementOriginal()
+    {
+        await using var fixture = new Fixture();
+        await using var cache = fixture.CreateCache(1000);
+        Assert.NotNull(await fixture.FetchAsync(cache, "icon"));
+        byte[] replacement = [1, 2, 3];
+        await File.WriteAllBytesAsync(fixture.PathFor("icon"), replacement);
+        Assert.False(await cache.SaveScaledIconDataAsync(Url("icon"), "48-Png", [4, 5], Fixture.Image));
+        Assert.Equal(replacement, await File.ReadAllBytesAsync(fixture.PathFor("icon")));
+        Assert.False(File.Exists(fixture.PathFor("icon") + "-48-Png"));
+    }
+
     [Fact]
     public void DerivedCopiesFollowTheirOriginalsDuringEvictionAndOrphanCleanup()
     {
@@ -604,7 +633,7 @@ public sealed class DownloadedImageCacheTests
         var files = records.ToDictionary(row => row.Url.Md5Hex(),
             row => new DownloadedImageCache.StoredFile(row.Url == Url("recent-file") ? Now : Now.AddDays(-181), 100));
         string derived = DownloadedImageCache.DerivedDiskKey(records[0].Url, "144");
-        files[derived] = new(Now, 20);
+        files[derived] = new(Now.AddDays(-181), 20);
         var removal = DownloadedImageCache.PlanRemoval(records, files, Now, 10_000,
             new HashSet<string>(StringComparer.Ordinal) { Url("active") });
         Assert.Equal([Url("expired")], removal.Urls);

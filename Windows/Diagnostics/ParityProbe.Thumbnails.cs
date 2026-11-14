@@ -649,14 +649,14 @@ internal static partial class ParityProbe
             model.ArticleItems = new ObservableCollection<Models.FeedItem> { row, unrelated };
             await WaitFor(() => Task.FromResult(list.ContainerFromItem(row) is not null), "Fallback icon row");
             var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
-            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 128 }), "Native fallback icon");
+            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 48, PixelHeight: 48 }), "Native fallback icon");
             clock.Advance(TimeSpan.FromMinutes(37));
             releaseMetadata.TrySetResult();
             var own = newHomepageIcon
                 ? await upgraded.Task.WaitAsync(TimeSpan.FromSeconds(10))
                 : await images.IconAsync(feed) ?? throw new InvalidOperationException("The own icon did not recover.");
             await WaitFor(() => Task.FromResult(row.FaviconPath == own.Path
-                && icon.ImageSource is BitmapImage { PixelWidth: 1600, PixelHeight: 800 }), "Recovered native feed icon");
+                && icon.ImageSource is BitmapImage { PixelWidth: 48, PixelHeight: 24 }), "Recovered native feed icon");
             Require(onUI && ownRequests == (newHomepageIcon ? 1 : 2)
                 && unrelated.FaviconPath == fallback.Path && unrelated.FaviconSource.Revision == 0,
                 "Feed-icon recovery changed unrelated rows, ran off UI, or downloaded more than once.");
@@ -801,7 +801,7 @@ internal static partial class ParityProbe
             await model.ProbeDrainViewUpdatesAsync();
             await WaitFor(() => Task.FromResult(sidebar.FaviconPath == (preferred?.Path ?? recovered.Path)
                 && row.FaviconPath == (preferred?.Path ?? recovered.Path)
-                && icon.ImageSource is BitmapImage bitmap && bitmap.PixelWidth == (preferredIcon ? 128 : 1600)),
+                && icon.ImageSource is BitmapImage { PixelWidth: 48 } bitmap && bitmap.PixelHeight == (preferredIcon ? 48 : 24)),
                 "Recovered native favicon");
             Require(onUI && recoveredRequests == 1 && unrelated.FaviconPath == preferred?.Path
                 && unrelated.FaviconSource.Revision == 0 && unrelatedSidebar.FaviconPath is null,
@@ -894,7 +894,7 @@ internal static partial class ParityProbe
             model.SidebarItems.Add(sidebar);
             await WaitFor(() => Task.FromResult(list.ContainerFromItem(row) is not null), "Image-setting row");
             var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
-            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 128 }), "Original setting icon");
+            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 48, PixelHeight: 48 }), "Original setting icon");
             int warmedRequests = requests;
             networkAllowed = false;
             switch (setting)
@@ -910,7 +910,7 @@ internal static partial class ParityProbe
             await model.ProbeDrainViewUpdatesAsync();
             await WaitFor(() => Task.FromResult(row.FaviconPath == expectedIcon.Path
                 && sidebar.FaviconPath == expectedIcon.Path
-                && icon.ImageSource is BitmapImage bitmap && bitmap.PixelWidth == (setting == "favicon" ? 128 : 1600)),
+                && icon.ImageSource is BitmapImage { PixelWidth: 48 } bitmap && bitmap.PixelHeight == (setting == "favicon" ? 48 : 24)),
                 "Changed native image setting");
             Require(onUI && requests == warmedRequests && unrelated.FaviconPath == originalIcon.Path
                 && unrelated.FaviconSource.Revision == 0, "A warm image-setting update changed unrelated rows or used the network.");
@@ -929,7 +929,7 @@ internal static partial class ParityProbe
         }
     }
 
-    private static async Task CheckChangedFeedIconsAsync(MainWindow window)
+    private static async Task CheckChangedFeedIconsAsync(MainWindow window, bool movingPath = false)
     {
         var content = window.ProbeContent;
         var model = content.ViewModel;
@@ -945,16 +945,17 @@ internal static partial class ParityProbe
             var response = new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new ByteArrayContent(Interlocked.Increment(ref requests) == 1
-                    ? ThumbnailBitmap(128, 128) : ThumbnailBitmap(1600, 800))
+                    ? ThumbnailBitmap(movingPath ? 32 : 128, movingPath ? 32 : 128) : ThumbnailBitmap(1600, 800))
             };
             response.Headers.TryAddWithoutValidation("ETag", "\"changed-icon\"");
             return Task.FromResult(response);
         }));
         var downloader = new Downloader(http, clock);
-        using var database = new ImageDatabase(Path.Combine(OutputDirectory, "changed-icon.db"), clock);
+        string fixtureName = movingPath ? "changed-icon-path" : "changed-icon";
+        using var database = new ImageDatabase(Path.Combine(OutputDirectory, fixtureName + ".db"), clock);
         using var htmlDatabase = new HTMLMetadata.HtmlMetadataDatabase(":memory:", clock);
         await using var metadata = new HTMLMetadata.HtmlMetadataDownloader(htmlDatabase, downloader, clock);
-        await using var images = new FeedImageDownloader(database, metadata, Path.Combine(OutputDirectory, "changed-icons"),
+        await using var images = new FeedImageDownloader(database, metadata, Path.Combine(OutputDirectory, fixtureName),
             downloader, clock, maxPixelSize: 48, networkAllowsUpdates: () => true);
         const string url = "https://thumbnail.test/changed-icon.bmp";
         var feed = new FeedImageSource("https://thumbnail.test/changed-icon-feed", IconUrl: url, FaviconUrl: url);
@@ -965,10 +966,15 @@ internal static partial class ParityProbe
         var row = new Models.FeedItem
         {
             Id = article.ArticleID, AccountID = article.AccountID, SourceArticle = article,
-            FeedTitle = "Changed icon fixture", FaviconPath = original.Path, IsRead = true
+            FeedTitle = "Changed icon fixture", FaviconPath = original.Path, IsRead = true,
+            FeedUrl = feed.FeedUrl, FeedIconUrl = url, FeedFaviconUrl = url
         };
         var unrelated = new Models.FeedItem { Id = "unrelated-icon" };
-        var sidebarRow = new Models.SidebarItem { Title = "Changed icon fixture", FaviconPath = original.Path };
+        var sidebarRow = new Models.SidebarItem
+        {
+            Title = "Changed icon fixture", FaviconPath = original.Path,
+            Tag = new Account.Feed("changed-icon-account", "changed-icon-feed", feed.FeedUrl) { IconUrl = url, FaviconUrl = url }
+        };
         var section = model.SidebarItems.First();
         bool onUI = true;
         row.PropertyChanged += (_, args) =>
@@ -988,24 +994,28 @@ internal static partial class ParityProbe
             list.SelectedItem = row;
             await WaitFor(() => Task.FromResult(list.ContainerFromItem(row) is not null), "Original icon row");
             var icon = Descendants((DependencyObject)list.ContainerFromItem(row)).OfType<IconView>().Single();
-            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 128 }),
+            int initialSize = movingPath ? 32 : 48;
+            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage bitmap
+                && bitmap.PixelWidth == initialSize && bitmap.PixelHeight == initialSize),
                 "Original native icon");
             await WaitFor(async () => await ScriptBool(content,
-                "window.__wnwArticleProcessed === true && document.getElementById('nnwImageIcon')?.naturalWidth === 128"),
+                $"window.__wnwArticleProcessed === true && document.getElementById('nnwImageIcon')?.naturalWidth === {initialSize} && document.getElementById('nnwImageIcon')?.naturalHeight === {initialSize}"),
                 "Original reader icon");
             await content.ProbeWebView.CoreWebView2.ExecuteScriptAsync("window.changedIconSentinel = true;");
             string document = model.ArticleHtml;
             clock.Advance(TimeSpan.FromDays(10));
             Require(await images.FaviconAsync(feed) is not null, "The icon source was not rechecked.");
-            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 1600, PixelHeight: 800 }),
-                "Replacement native icon at the unchanged file path");
+            await WaitFor(() => Task.FromResult(icon.ImageSource is BitmapImage { PixelWidth: 48, PixelHeight: 24 }),
+                "Replacement native icon");
             await WaitFor(async () => await ScriptBool(content,
-                "window.changedIconSentinel === true && document.getElementById('nnwImageIcon')?.naturalWidth === 1600"),
+                "window.changedIconSentinel === true && document.getElementById('nnwImageIcon')?.naturalWidth === 48 && document.getElementById('nnwImageIcon')?.naturalHeight === 24"),
                 "Replacement reader icon without document navigation");
-            Require(onUI && row.FaviconPath == original.Path && row.FaviconSource.Revision > 0
-                && sidebarRow.FaviconSource.Revision > 0 && unrelated.FaviconSource.Revision == 0
+            bool refreshed = movingPath
+                ? row.FaviconPath != original.Path && sidebarRow.FaviconPath == row.FaviconPath && !File.Exists(original.Path)
+                : row.FaviconPath == original.Path && row.FaviconSource.Revision > 0 && sidebarRow.FaviconSource.Revision > 0;
+            Require(onUI && refreshed && unrelated.FaviconSource.Revision == 0
                 && model.ArticleHtml == document && requests == 2,
-                "Changed icons must refresh matching rows on UI without changing paths, unrelated rows, or the document.");
+                "Changed icons must refresh matching rows on UI without changing unrelated rows or the document.");
         }
         finally
         {

@@ -174,6 +174,16 @@ internal static partial class ParityProbe
                         () => CheckChangedFeedImageSettingsAsync(window, setting));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--changed-feed-icons"))
+            {
+                foreach (bool movingPath in new[] { false, true })
+                    await CheckAsync($"Changed feed icons refresh native and reader pixels with moving path={movingPath}", async () =>
+                    {
+                        await CheckChangedFeedIconsAsync(window, movingPath);
+                        return new { NativePixels = true, ReaderPixels = true, MovingPath = movingPath, NoNavigation = true };
+                    });
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-cache-retention"))
             {
                 await CheckAsync("Thumbnail choices survive desktop display-mode changes", () => CheckThumbnailCacheRetentionAsync(window));
