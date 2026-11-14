@@ -235,6 +235,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineBylineLayoutAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-titleless-limit"))
+            {
+                await CheckAsync("Titleless articles use at most four lines in full-title mode",
+                    () => CheckTitlelessFullTitleLimitAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);

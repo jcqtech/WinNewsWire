@@ -278,6 +278,36 @@ internal static partial class ParityProbe
         finally { AppDefaults.Shared.SetValue(key, saved); }
     }
 
+    private static async Task<object?> CheckTitlelessFullTitleLimitAsync(MainWindow window)
+    {
+        bool savedFull = AppDefaults.Shared.GetTimelineShowFullTitles();
+        int savedLines = AppDefaults.Shared.GetTimelineNumberOfLines();
+        try
+        {
+            AppDefaults.Shared.SetTimelineShowFullTitles(true);
+            AppDefaults.Shared.SetTimelineNumberOfLines(6);
+            return await WithAppearanceTimelineAsync(window, async (_, list, rows, _) =>
+            {
+                rows[0] = AppearanceRow("titleless-cap", "", string.Concat(Enumerable.Repeat("A long titleless article body. ", 30)));
+                await SettleAppearanceAsync(window, list);
+                TextBlock Summary() => Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<TextBlock>()
+                    .Single(block => block.Name == "TimelineSummary");
+                Require(Summary().Visibility == Visibility.Visible && Summary().MaxLines == 4,
+                    "Full-title mode did not limit titleless articles to four preview lines.");
+                double cappedHeight = Summary().ActualHeight;
+                AppDefaults.Shared.SetTimelineShowFullTitles(false);
+                await WaitFor(() => Task.FromResult(Summary().MaxLines == 6 && Summary().ActualHeight > cappedHeight),
+                    "Normal titleless preview restores its selected six-line height");
+                return new { TitlelessFullMode = 4, NormalMode = 6, VisibleHeightReduced = true };
+            });
+        }
+        finally
+        {
+            AppDefaults.Shared.SetTimelineShowFullTitles(savedFull);
+            AppDefaults.Shared.SetTimelineNumberOfLines(savedLines);
+        }
+    }
+
     private static async Task SettleAppearanceAsync(MainWindow window, ListView list)
     {
         list.UpdateLayout();

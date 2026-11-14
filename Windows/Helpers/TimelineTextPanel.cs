@@ -47,7 +47,7 @@ public sealed class TimelineTextPanel : Panel
             titleLines = Math.Clamp(MultilineTextFieldSizer.SizeFor(text, font, limit,
                 (int)Math.Min(int.MaxValue, Math.Floor(availableSize.Width))).NumberOfLinesUsed, 1, limit);
         }
-        int remaining = ShowFullTitles && hasTitle ? 0 : limit - titleLines;
+        int remaining = ShowFullTitles ? (hasTitle ? 0 : 4) : limit - titleLines;
         summary.Visibility = remaining > 0 && !string.IsNullOrWhiteSpace(summary.Text) ? Visibility.Visible : Visibility.Collapsed;
         summary.MaxLines = Math.Max(1, remaining);
         summary.Measure(available);
