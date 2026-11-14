@@ -15,6 +15,21 @@ public static class AppDefaultsSharedExtensions
     public const string ShowUnreadFeedKey = "showUnreadFeed";
     public const string ShowStarredFeedKey = "showStarredFeed";
     public const string TimelineIconSizeKey = "timelineIconSize";
+    public const string TimelineTextSizeKey = "timelineTextSize";
+
+    public static TimelineTextSize GetTimelineTextSize(this AppDefaults defaults)
+    {
+        var value = (TimelineTextSize)defaults.GetValue(TimelineTextSizeKey, (int)TimelineTextSize.Medium);
+        if (Enum.IsDefined(value)) return value;
+        Trace.TraceWarning($"Unknown timeline text size {(int)value}; using medium.");
+        return TimelineTextSize.Medium;
+    }
+
+    public static void SetTimelineTextSize(this AppDefaults defaults, TimelineTextSize size)
+    {
+        if (!Enum.IsDefined(size)) throw new ArgumentOutOfRangeException(nameof(size));
+        defaults.SetValue(TimelineTextSizeKey, (int)size);
+    }
 
     public static TimelineIconSize GetTimelineIconSize(this AppDefaults defaults)
     {

@@ -248,4 +248,5 @@
   <data name="ShowStarredFeed" xml:space="preserve"><value>Show Starred</value></data>
   <data name="SmartFeedHidden" xml:space="preserve"><value>This smart feed is hidden in Preferences.</value></data>
   <data name="TimelineIconSize" xml:space="preserve"><value>Timeline icon size</value></data>
+  <data name="TimelineTextSize" xml:space="preserve"><value>Timeline text size</value></data>
 </root>

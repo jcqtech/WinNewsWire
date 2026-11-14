@@ -34,6 +34,9 @@ public sealed partial class PreferencesWindow
         AddAppearanceChoice(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineIconSizeKey, "TimelineIconSize", "TimelineIconSizeCombo",
             Enum.GetValues<TimelineIconSize>().Select(size => (size.ToString(), size)),
             () => AppDefaults.Shared.GetTimelineIconSize(), value => AppDefaults.Shared.SetTimelineIconSize(value));
+        AddAppearanceChoice(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineTextSizeKey, "TimelineTextSize", "TimelineTextSizeCombo",
+            Enum.GetValues<TimelineTextSize>().Select(size => (size.ToString(), size)),
+            () => AppDefaults.Shared.GetTimelineTextSize(), value => AppDefaults.Shared.SetTimelineTextSize(value));
     }
 
     private void AddAppearanceChoice<T>(StackPanel panel, string key, string labelKey, string name,

@@ -55,11 +55,14 @@
                                       ImageSource="{x:Bind FaviconSource, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                       AutomationProperties.AccessibilityView="Raw" />
                     <TextBlock Grid.Column="1" Text="{x:Bind FeedTitle, Mode=OneWay}" FontWeight="{x:Bind ColumnFontWeight, Mode=OneWay}"
+                               FontSize="{x:Bind TimelineFontSize, Mode=OneWay}"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </Grid>
                 <TextBlock Grid.Column="3" Tag="Title" Text="{x:Bind ColumnTitle, Mode=OneWay}" Margin="8,0"
+                            FontSize="{x:Bind TimelineFontSize, Mode=OneWay}"
                            FontWeight="{x:Bind ColumnFontWeight, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 <TextBlock Grid.Column="4" Tag="Date" Text="{x:Bind ColumnDate, Mode=OneWay}" Margin="8,0"
+                            FontSize="{x:Bind TimelineFontSize, Mode=OneWay}"
                            FontWeight="{x:Bind ColumnFontWeight, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </Grid>
         </DataTemplate>
@@ -545,21 +548,25 @@
                                         <StackPanel Grid.Column="2" Spacing="3"
                                                     VerticalAlignment="Center"
                                                     AutomationProperties.Name="{x:Bind Tooltip, Mode=OneWay}">
-                                            <TextBlock helpers:HtmlInlines.AttributedText="{x:Bind AttributedTitle, Mode=OneWay}"
+                                            <TextBlock x:Name="TimelineTitle" helpers:HtmlInlines.AttributedText="{x:Bind AttributedTitle, Mode=OneWay}"
+                                                       FontSize="{x:Bind TimelineFontSize, Mode=OneWay}"
                                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                                        TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
                                                        MaxLines="2" />
-                                            <TextBlock Text="{x:Bind Summary, Mode=OneWay}"
+                                            <TextBlock x:Name="TimelineSummary" Text="{x:Bind Summary, Mode=OneWay}"
+                                                       FontSize="{x:Bind TimelineFontSize, Mode=OneWay}"
                                                        Style="{StaticResource CaptionTextBlockStyle}"
                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                        TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
                                                        MaxLines="2" />
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <TextBlock Text="{x:Bind FeedTitle, Mode=OneWay}"
+                                                           FontSize="{x:Bind TimelineMetadataFontSize, Mode=OneWay}"
                                                            Style="{StaticResource CaptionTextBlockStyle}"
                                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                                            FontWeight="SemiBold" />
                                                 <TextBlock Text="{x:Bind PublishedDate, Mode=OneWay, Converter={StaticResource RelativeTime}}"
+                                                           FontSize="{x:Bind TimelineMetadataFontSize, Mode=OneWay}"
                                                            Style="{StaticResource CaptionTextBlockStyle}"
                                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                                             </StackPanel>

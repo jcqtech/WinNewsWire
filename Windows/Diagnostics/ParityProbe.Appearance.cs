@@ -95,6 +95,43 @@ internal static partial class ParityProbe
         finally { AppDefaults.Shared.SetValue(key, saved); }
     }
 
+    private static async Task<object?> CheckTimelineTextSizeAsync(MainWindow window)
+    {
+        const string key = "timelineTextSize";
+        int saved = AppDefaults.Shared.GetValue(key, 2);
+        try
+        {
+            return await WithAppearanceTimelineAsync(window, async (content, list, rows, preferences) =>
+            {
+                var choice = Descendants(preferences.Content).OfType<ComboBox>().SingleOrDefault(combo => combo.Name == "TimelineTextSizeCombo");
+                Require(choice is not null, "Preferences have no timeline text-size choice.");
+                content.ViewModel.SelectedArticle = rows[0];
+                foreach (var (value, size) in new[] { (1, 12.0), (3, 16.0), (5, 22.0), (2, 14.0) })
+                {
+                    choice!.SelectedItem = choice.Items.OfType<ComboBoxItem>().Single(item => Convert.ToInt32(item.Tag) == value);
+                    await SettleAppearanceAsync(window, list);
+                    var row = (ListViewItem)list.ContainerFromIndex(0);
+                    var textBlocks = Descendants(row).OfType<TextBlock>().Where(text => text.Name is "TimelineTitle" or "TimelineSummary").ToArray();
+                    Require(textBlocks.Length == 2 && textBlocks.All(text => text.FontSize == size),
+                        "Timeline title and summary did not resize together.");
+                    Require(Descendants(row).OfType<TextBlock>().Single(text => text.Text == rows[0].FeedTitle).FontSize == Math.Floor(size * 0.9),
+                        "Timeline metadata did not follow the selected text size.");
+                    Require(ReferenceEquals(content.ViewModel.SelectedArticle, rows[0]) && row.IsSelected, "Timeline text resizing lost selection.");
+                    Require(new AppDefaults().GetValue(key, 2) == value, "Timeline text size did not persist.");
+                }
+                AppDefaults.Shared.UseColumnLayout = true;
+                rows[1].IsRead = false;
+                await Task.Run(() => AppDefaults.Shared.SetValue(key, 5));
+                await SettleAppearanceAsync(window, list);
+                var title = Descendants((DependencyObject)list.ContainerFromIndex(1)).OfType<TextBlock>().Single(text => text.Tag is "Title");
+                Require(title.FontSize == 22 && title.FontWeight == Microsoft.UI.Text.FontWeights.Bold,
+                    "Column text size lost unread bold styling or ignored the preference.");
+                return new { Standard = true, Columns = true, Metadata = true, UnreadBold = true, Selection = true };
+            });
+        }
+        finally { AppDefaults.Shared.SetValue(key, saved); }
+    }
+
     private static async Task SettleAppearanceAsync(MainWindow window, ListView list)
     {
         list.UpdateLayout();

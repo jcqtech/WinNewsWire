@@ -231,6 +231,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             QueueArticleIconLoads(ArticleItems.ToArray());
         }
         if (key == AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey) OnPropertyChanged(nameof(TimelineThumbnailsDisplay));
+        if (key == AppDefaultsSharedExtensions.TimelineTextSizeKey)
+            foreach (var item in ArticleItems) item.UpdateTimelineTextSize(AppDefaults.Shared.GetTimelineTextSize());
         if (key == AppDefaultsSharedExtensions.TimelineFeedIconsDisplayKey)
         {
             OnPropertyChanged(nameof(TimelineFeedIconsDisplay));

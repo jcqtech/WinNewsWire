@@ -193,6 +193,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineIconSizeAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-text-size"))
+            {
+                await CheckAsync("Timeline typography follows preferences in standard and column layouts",
+                    () => CheckTimelineTextSizeAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);
