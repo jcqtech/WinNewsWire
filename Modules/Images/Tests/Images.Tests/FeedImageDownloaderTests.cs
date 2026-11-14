@@ -97,6 +97,51 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
+    public async Task DifferentFeedsShareTheSameIconLoadAndRepresentation()
+    {
+        await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Bitmap(192, 96))),
+            maxPixelSize: 48);
+        var images = await Task.WhenAll(Enumerable.Range(0, 8).Select(index =>
+            fixture.Images.IconAsync(new(Home + "feed-" + index, Home, IconUrl: Home + "icon.bmp"))));
+        var first = Assert.IsType<DownloadedImage>(images[0]);
+        Assert.All(images, image => Assert.Same(first, image));
+        AssertPngSize(first.Data, 48, 24);
+        Assert.Single(fixture.Requests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FaviconsAndFeedIconsShareOneRepresentationAndLoad(bool faviconFirst)
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (_, ct) =>
+        {
+            started.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return Response(HttpStatusCode.OK, Bitmap(192, 96));
+        }, maxPixelSize: 48);
+        try
+        {
+            var requests = Enumerable.Range(0, 8).Select(index =>
+            {
+                var feed = new FeedImageSource(Home + "feed-" + index, Home,
+                    FaviconUrl: Home + "icon.bmp", IconUrl: Home + "icon.bmp");
+                return (index % 2 == 0) == faviconFirst ? fixture.Images.FaviconAsync(feed) : fixture.Images.IconAsync(feed);
+            }).ToArray();
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            release.TrySetResult();
+            var images = await Task.WhenAll(requests);
+            var first = Assert.IsType<DownloadedImage>(images[0]);
+            Assert.All(images, image => Assert.Same(first, image));
+            AssertPngSize(first.Data, 48, 24);
+            Assert.Single(fixture.Requests);
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Fact]
     public async Task ExplicitFaviconSkipsDiscoveryAndUsesTheNativeMd5Filename()
     {
         await using var fixture = new Fixture((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Image)));

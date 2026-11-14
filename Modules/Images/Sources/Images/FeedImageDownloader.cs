@@ -53,7 +53,6 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         ["propublica.org", "clubic.com", "comptoir-hardware.com", "cowcotland", "404media.co", "awfulannouncing.com", "michalzelazny.com"];
     private readonly ImageDatabase _database;
     private readonly HtmlMetadataDownloader _metadata;
-    private readonly ImageResourceDownloader _favicons;
     private readonly ImageResourceDownloader _images;
     private readonly bool _ownsDownloadedImages;
     public DownloadedImageCache DownloadedImages { get; }
@@ -94,9 +93,6 @@ public sealed class FeedImageDownloader : IAsyncDisposable
         int pixelSize = maxPixelSize ?? DefaultMaxPixelSize();
         DownloadedImages = downloadedImages ?? new(database, cacheFolder, downloader, clock, activityLog, networkAllowsUpdates);
         _ownsDownloadedImages = downloadedImages is null;
-        _favicons = new(database, Path.Combine(cacheFolder, "Favicons"), new(pixelSize),
-            ActivityOwner.FaviconDownloader, ActivityKind.DownloadFavicon, downloader, clock, activityLog,
-            sourceCache: DownloadedImages);
         _images = new(database, Path.Combine(cacheFolder, "Images"), new(pixelSize),
             ActivityOwner.FeedImageDownloader, ActivityKind.DownloadFeedImage, downloader, clock, activityLog,
             sourceCache: DownloadedImages);
@@ -164,7 +160,6 @@ public sealed class FeedImageDownloader : IAsyncDisposable
             if (_stopping) return;
             var task = RunOperationAsync(async ct =>
             {
-                await _favicons.RefreshAsync(url, ct).ConfigureAwait(false);
                 var result = await _images.RefreshAsync(url, ct).ConfigureAwait(false);
                 if (result.Image is { } image) ImageDidBecomeAvailable?.Invoke(this, image);
                 return result.Image;
@@ -446,12 +441,12 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     private Task<ImageResourceResult> FetchImageAsync(string url, bool favicon, CancellationToken ct, string? activityDetail = null)
     {
         ct.ThrowIfCancellationRequested();
-        return (favicon ? _favicons : _images).FetchAsync(url, ct, activityDetail);
+        return _images.FetchAsync(url, ct, activityDetail, favicon
+            ? new(ActivityOwner.FaviconDownloader, ActivityKind.DownloadFavicon(url), activityDetail, null) : null);
     }
 
     public void EmptyCache()
     {
-        _favicons.EmptyCache();
         _images.EmptyCache();
     }
 
@@ -499,8 +494,7 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     {
         try
         {
-            await Task.WhenAll(tasks.Append(_favicons.DisposeAsync().AsTask())
-                .Append(_images.DisposeAsync().AsTask())).ConfigureAwait(false);
+            await Task.WhenAll(tasks.Append(_images.DisposeAsync().AsTask())).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally
