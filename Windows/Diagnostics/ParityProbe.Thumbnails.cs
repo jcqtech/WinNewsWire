@@ -875,11 +875,10 @@ internal static partial class ParityProbe
     {
         var saved = Core.AppDefaults.Shared.GetTimelineThumbnailsDisplay();
         var expected = new[] { TimelineThumbnailsDisplay.None, TimelineThumbnailsDisplay.Small, TimelineThumbnailsDisplay.Large };
-        var menu = Descendants(window.Content).OfType<MenuBar>().SelectMany(bar => bar.Items)
+        Require(!Descendants(window.Content).OfType<MenuBar>().SelectMany(bar => bar.Items)
             .OfType<MenuBarItem>().SelectMany(item => item.Items).OfType<MenuFlyoutSubItem>()
-            .Single(item => item.Name == "MenuThumbnails");
-        Require(menu.Items.OfType<ToggleMenuFlyoutItem>().Select(item => item.Tag).SequenceEqual(expected.Cast<object>()),
-            "The View menu does not put None before Small and Large.");
+            .Any(item => item.Name == "MenuThumbnails"),
+            "The View menu retained the obsolete thumbnail submenu.");
         var preferences = new AppWindows.PreferencesWindow();
         try
         {
@@ -1606,11 +1605,6 @@ internal static partial class ParityProbe
                 throw;
             }
 
-            var thumbnailsMenu = Descendants(window.Content).OfType<MenuBar>().SelectMany(bar => bar.Items)
-                .OfType<MenuBarItem>().SelectMany(item => item.Items).OfType<MenuFlyoutSubItem>()
-                .Single(item => item.Name == "MenuThumbnails");
-            var modeItems = thumbnailsMenu.Items.OfType<ToggleMenuFlyoutItem>().ToArray();
-            var largeMenu = modeItems.Single(item => item.Tag is TimelineThumbnailsDisplay.Large);
             using var peer = new ViewModels.MainViewModel();
             int modeNotifications = 0;
             int feedIconNotifications = 0;
@@ -1806,9 +1800,9 @@ internal static partial class ParityProbe
             }
             await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Large));
             await WaitFor(() => Task.FromResult(modeNotifications > 0 && peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
-                && largeMenu.IsChecked && largeMenu.IsEnabled), "Shared large-thumbnail mode");
+                && model.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large), "Shared large-thumbnail mode");
             Require(modeNotificationsOnUI && new Core.AppDefaults().GetTimelineThumbnailsDisplay() == TimelineThumbnailsDisplay.Large
-                && modeItems.Count(item => item.IsChecked) == 1,
+                && model.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large,
                 "Large-thumbnail mode was not persisted or a peer notification ran off the UI thread.");
             await WaitFor(() => Task.FromResult(Descendants(list).OfType<ThumbnailView>().Any(view =>
                 view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && Grid.GetRow(view) == 1
@@ -1875,13 +1869,13 @@ internal static partial class ParityProbe
                 view.Tag is Article { ArticleID: "timeline-thumbnail-3" } && view.Visibility == Visibility.Collapsed
                 && ((Grid)view.Parent).ActualHeight < 100)), "Image-less large-mode row remains compact");
             Core.AppDefaults.Shared.UseColumnLayout = true;
-            await WaitFor(() => Task.FromResult(!largeMenu.IsEnabled && largeMenu.IsChecked
+            await WaitFor(() => Task.FromResult(model.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
                 && !Descendants(list).OfType<ThumbnailView>().Any()), "Large thumbnails disabled in columns");
             Core.AppDefaults.Shared.UseColumnLayout = false;
             await Task.Run(() => Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.Small));
             list.ScrollIntoView(rows[0], ScrollIntoViewAlignment.Leading);
             await WaitFor(() => Task.FromResult(modeNotifications == 2 && peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Small
-                && !largeMenu.IsChecked && largeMenu.IsEnabled && Descendants(list).OfType<ThumbnailView>().Any(view =>
+                && model.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Small && Descendants(list).OfType<ThumbnailView>().Any(view =>
                     view.Tag is Article { ArticleID: "timeline-thumbnail-0" } && Grid.GetRow(view) == 0
                     && Grid.GetColumn(view) == 3 && view.ActualHeight <= 76 && view.ImageSource is not null)),
                 "Return to small thumbnails without reopening the window");
@@ -1911,7 +1905,7 @@ internal static partial class ParityProbe
                 choices.SelectedItem = choices.Items.OfType<ComboBoxItem>()
                     .Single(item => item.Tag is TimelineThumbnailsDisplay.None);
                 await WaitFor(() => Task.FromResult(peer.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.None
-                    && modeItems.Single(item => item.IsChecked).Tag is TimelineThumbnailsDisplay.None
+                    && model.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.None
                     && Descendants(list).OfType<ThumbnailView>().All(view => view.Visibility == Visibility.Collapsed)),
                     "Hidden thumbnails propagate from Preferences");
                 Require(new Core.AppDefaults().GetTimelineThumbnailsDisplay() == TimelineThumbnailsDisplay.None
@@ -1928,12 +1922,10 @@ internal static partial class ParityProbe
                 await Task.Delay(150);
                 Require(!requests.Contains("/hidden-only.bmp"),
                     "Hidden mode discovered/downloaded a thumbnail for a newly realized row.");
-                var commandPeer = FrameworkElementAutomationPeer.FromElement(largeMenu)
-                    ?? FrameworkElementAutomationPeer.CreatePeerForElement(largeMenu);
-                (commandPeer?.GetPattern(PatternInterface.Toggle) as IToggleProvider
-                    ?? throw new InvalidOperationException("The thumbnail menu choice has no Toggle pattern.")).Toggle();
+                choices.SelectedItem = choices.Items.OfType<ComboBoxItem>()
+                    .Single(item => item.Tag is TimelineThumbnailsDisplay.Large);
                 await WaitFor(() => Task.FromResult(choices.SelectedItem is ComboBoxItem { Tag: TimelineThumbnailsDisplay.Large }
-                    && modeItems.Count(item => item.IsChecked) == 1 && largeMenu.IsChecked
+                    && model.TimelineThumbnailsDisplay == TimelineThumbnailsDisplay.Large
                     && ((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex == 0
                     && Descendants(list).OfType<ThumbnailView>().Any(view =>
                         ReferenceEquals(view.Tag, rows[0].SourceArticle) && view.ImageSource is not null)),

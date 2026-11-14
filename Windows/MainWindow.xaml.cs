@@ -466,18 +466,6 @@ public sealed partial class MainWindow : Window
     private void Menu_ToggleSidebar(object sender, RoutedEventArgs e)
         => MainContentControl.ViewModel.IsSidebarVisible = MenuShowSidebar.IsChecked;
 
-    private void Menu_SetTimelineThumbnails(object sender, RoutedEventArgs e)
-    {
-        if (sender is not ToggleMenuFlyoutItem { Tag: TimelineThumbnailsDisplay mode })
-            throw new InvalidOperationException("The thumbnail command has no display mode.");
-        try { Core.AppDefaults.Shared.SetTimelineThumbnailsDisplay(mode); }
-        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
-        {
-            ReportStateError("Save timeline thumbnail mode", error);
-            SyncMenuToggles();
-        }
-    }
-
     private void Menu_ToggleStatusBar(object sender, RoutedEventArgs e)
     {
         MainContentControl.SetStatusBarVisible(MenuShowStatusBar.IsChecked);
@@ -863,20 +851,6 @@ public sealed partial class MainWindow : Window
         if (MenuUnifiedLayout is not null) MenuUnifiedLayout.IsChecked = vm.IsUnifiedLayout;
         MenuFullScreen.IsChecked = IsFullScreen;
         MenuColumnLayout.IsChecked = vm.UseColumnLayout;
-        MenuThumbnails.Text = AppStrings.Get("Thumbnails");
-        MenuThumbnails.IsEnabled = !vm.UseColumnLayout;
-        if (MenuThumbnails.Items.Count == 0)
-            foreach (var mode in new[] { TimelineThumbnailsDisplay.None, TimelineThumbnailsDisplay.Small, TimelineThumbnailsDisplay.Large })
-            {
-                var item = new ToggleMenuFlyoutItem { Text = mode.DisplayString(), Tag = mode };
-                item.Click += Menu_SetTimelineThumbnails;
-                MenuThumbnails.Items.Add(item);
-            }
-        foreach (var item in MenuThumbnails.Items.OfType<ToggleMenuFlyoutItem>())
-        {
-            item.IsChecked = item.Tag is TimelineThumbnailsDisplay mode && mode == vm.TimelineThumbnailsDisplay;
-            item.IsEnabled = !vm.UseColumnLayout;
-        }
         if (MenuShowSidebar is not null) MenuShowSidebar.IsChecked = vm.IsSidebarVisible;
         if (MenuReaderMode is not null) MenuReaderMode.IsChecked = vm.IsReaderMode;
         MenuSortDate.IsChecked = vm.SortParameters.Key == ArticleSortKey.Date;

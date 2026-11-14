@@ -25,7 +25,7 @@ internal static partial class ParityProbe
         string[] expected =
         [
             "MenuShowSidebar", "MenuReadFeedsFilter", "|",
-            "(sort)", "MenuHideRead", "MenuSearchAllAccounts", "MenuColumnLayout", "MenuThumbnails", "|",
+            "(sort)", "MenuHideRead", "MenuSearchAllAccounts", "MenuColumnLayout", "|",
             "MenuShowStatusBar", "MenuShowStatusBarThemes", "|",
             "MenuShowToolbar", "MenuCustomizeToolbar", "MenuToolbarDisplay", "|"
         ];
