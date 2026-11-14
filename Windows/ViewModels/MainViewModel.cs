@@ -97,7 +97,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public TimelineThumbnailsDisplay TimelineThumbnailsDisplay => AppDefaults.Shared.GetTimelineThumbnailsDisplay();
     public TimelineFeedIconsDisplay TimelineFeedIconsDisplay => AppDefaults.Shared.GetTimelineFeedIconsDisplay();
     internal bool ShowsTimelineFeedIcons => TimelineFeedIconsDisplay.ShowsIcons(
-        SelectedSidebarItems.Count == 1 && SelectedSidebarItems[0].Tag is AccountNs.Feed
+        !UseColumnLayout && SelectedSidebarItems.Count == 1 && SelectedSidebarItems[0].Tag is AccountNs.Feed
             && !(SearchAllAccounts && !string.IsNullOrWhiteSpace(SearchQuery)),
         ArticleItems.Select(item => item.SourceArticle).OfType<Article>());
     public UnreadCountDisplay UnreadDisplayMode => _unreadDisplayMode;
@@ -225,7 +225,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         if (key is WinNewsWire.Core.AppDefaults.Key.ArticleTextSize or WinNewsWire.Core.AppDefaults.Key.CurrentThemeName)
             RefreshArticleHtml();
-        if (key == AppDefaults.Key.UseColumnLayout) OnPropertyChanged(nameof(UseColumnLayout));
+        if (key == AppDefaults.Key.UseColumnLayout)
+        {
+            OnPropertyChanged(nameof(UseColumnLayout));
+            QueueArticleIconLoads(ArticleItems.ToArray());
+        }
         if (key == AppDefaultsSharedExtensions.TimelineThumbnailsDisplayKey) OnPropertyChanged(nameof(TimelineThumbnailsDisplay));
         if (key == AppDefaultsSharedExtensions.TimelineFeedIconsDisplayKey)
         {

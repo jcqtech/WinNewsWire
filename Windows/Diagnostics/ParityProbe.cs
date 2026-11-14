@@ -175,6 +175,12 @@ internal static partial class ParityProbe
                     () => CheckSmartFeedVisibilityAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-icon-policy"))
+            {
+                await CheckAsync("Timeline icon policy works in standard and column layouts without empty icon slots",
+                    () => CheckTimelineIconPolicyAsync(window, server.Url));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);

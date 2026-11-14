@@ -49,8 +49,9 @@
                           Foreground="{ThemeResource SystemFillColorCautionBrush}"
                           Visibility="{x:Bind IsStarred, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
                 <Grid Grid.Column="2" Tag="Feed" Margin="8,0" ColumnSpacing="5">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                     <helpers:IconView Width="16" Height="16" VerticalAlignment="Center"
+                                      Loaded="TimelineFeedIcon_Loaded" Unloaded="TimelineFeedIcon_Unloaded"
                                       ImageSource="{x:Bind FaviconSource, Mode=OneWay, Converter={StaticResource PathToImage}}"
                                       AutomationProperties.AccessibilityView="Raw" />
                     <TextBlock Grid.Column="1" Text="{x:Bind FeedTitle, Mode=OneWay}" FontWeight="{x:Bind ColumnFontWeight, Mode=OneWay}"

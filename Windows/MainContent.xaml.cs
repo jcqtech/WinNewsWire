@@ -1051,7 +1051,8 @@ public sealed partial class MainContent : UserControl
         if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout))
             QueueTimelineAppearanceUpdate();
         if (e.PropertyName is nameof(ViewModel.TimelineFeedIconsDisplay) or nameof(ViewModel.SelectedSidebarItems)
-            or nameof(ViewModel.SearchQuery) or nameof(ViewModel.SearchAllAccounts))
+            or nameof(ViewModel.SearchQuery) or nameof(ViewModel.SearchAllAccounts)
+            or nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout))
             QueueTimelineFeedIconsUpdate();
         if (e.PropertyName == nameof(ViewModel.ArticleItems)) ObserveThumbnailItems();
         if (e.PropertyName is nameof(ViewModel.UseColumnLayout) or nameof(ViewModel.IsUnifiedLayout)

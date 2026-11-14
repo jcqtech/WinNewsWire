@@ -1,16 +1,79 @@
 #if PARITY_PROBE
 using System;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using WinNewsWire.AppShared;
 using WinNewsWire.Core;
+using WinNewsWire.Helpers;
 
 namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task SettleAppearanceAsync(MainWindow window, ListView list)
+    {
+        list.UpdateLayout();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Require(window.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => completion.TrySetResult()),
+            "The appearance dispatcher is unavailable.");
+        await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        list.UpdateLayout();
+    }
+
+    private static async Task<object?> CheckTimelineIconPolicyAsync(MainWindow window, string serverUrl)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var original = window.CaptureState();
+        var previousDisplay = AppDefaults.Shared.GetTimelineFeedIconsDisplay();
+        bool previousColumns = AppDefaults.Shared.UseColumnLayout;
+        var account = Account.AccountManager.Shared.DefaultAccount;
+        var feed = account.AddFeed(serverUrl + "/timeline-policy", "Timeline policy");
+        var list = (ListView)content.FindName("ArticleListView");
+        try
+        {
+            model.BuildSidebar();
+            model.SelectedSidebarItem = model.FindSidebarItemForFeed(account.AccountID, feed.FeedID);
+            await model.WaitForCurrentTimelineAsync(System.Threading.CancellationToken.None);
+            model.IsUnifiedLayout = false;
+            model.ArticleItems = new ObservableCollection<Models.FeedItem>
+                { new() { Id = "policy", Title = "Icon policy", FeedTitle = feed.NameForDisplay } };
+            foreach (var (columns, mode, visible) in new[]
+            {
+                (true, TimelineFeedIconsDisplay.Never, false),
+                (true, TimelineFeedIconsDisplay.Automatic, true),
+                (false, TimelineFeedIconsDisplay.Automatic, false),
+                (false, TimelineFeedIconsDisplay.Always, true),
+                (false, TimelineFeedIconsDisplay.Never, false)
+            })
+            {
+                AppDefaults.Shared.UseColumnLayout = columns;
+                AppDefaults.Shared.SetTimelineFeedIconsDisplay(mode);
+                await WaitFor(() => Task.FromResult(list.ContainerFromIndex(0) is ListViewItem { IsLoaded: true }), "Icon-policy row");
+                await SettleAppearanceAsync(window, list);
+                var icon = Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<IconView>().Single();
+                Require((icon.Visibility == Visibility.Visible) == visible,
+                    $"Timeline icon policy was ignored: columns={columns}, mode={mode}.");
+                if (columns && !visible)
+                    Require(icon.Parent is Grid { ColumnSpacing: 0 } grid && grid.ColumnDefinitions[0].ActualWidth == 0,
+                        "The hidden column feed icon left an empty slot before the name.");
+            }
+            return new { Standard = true, Columns = true, Always = true, Never = true, Automatic = true, NoEmptySlot = true };
+        }
+        finally
+        {
+            AppDefaults.Shared.SetTimelineFeedIconsDisplay(previousDisplay);
+            AppDefaults.Shared.UseColumnLayout = previousColumns;
+            account.RemoveFeed(feed);
+            model.BuildSidebar();
+            await content.RestoreStateAsync(original);
+            window.Activate();
+        }
+    }
+
     private static async Task<object?> CheckSmartFeedVisibilityAsync(MainWindow window)
     {
         var keys = new[] { "showTodayFeed", "showUnreadFeed", "showStarredFeed" };
