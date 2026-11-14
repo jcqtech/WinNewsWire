@@ -288,7 +288,7 @@ internal static partial class ParityProbe
         list.UpdateLayout();
     }
 
-    private static async Task<object?> CheckTimelineIconPolicyAsync(MainWindow window, string serverUrl, bool recheck = false)
+    private static async Task<object?> CheckTimelineIconPolicyAsync(MainWindow window, string serverUrl, bool recheck = false, bool byline = false)
     {
         var content = window.ProbeContent;
         var model = content.ViewModel;
@@ -306,6 +306,30 @@ internal static partial class ParityProbe
             model.IsUnifiedLayout = false;
             model.ArticleItems = new ObservableCollection<Models.FeedItem>
                 { new() { Id = "policy", Title = "Icon policy", FeedTitle = feed.NameForDisplay } };
+            if (byline)
+            {
+                AppDefaults.Shared.UseColumnLayout = false;
+                var row = AppearanceRow("byline", "Byline fallback");
+                row.FeedTitle = feed.NameForDisplay;
+                model.ArticleItems = new ObservableCollection<Models.FeedItem> { row };
+                string DisplayedName() => Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<TextBlock>()
+                    .Single(block => block.Name == "TimelineBylineText").Text;
+                await WaitFor(() => Task.FromResult(list.ContainerFromIndex(0) is ListViewItem { IsLoaded: true }), "Byline fallback row");
+                foreach (string author in new[] { "Fixture author", "", "   " })
+                {
+                    row.Author = author;
+                    string expected = string.IsNullOrWhiteSpace(author) ? feed.NameForDisplay : author;
+                    await WaitFor(() => Task.FromResult(DisplayedName() == expected), "Author or feed name fills the timeline byline");
+                }
+                row.Author = "Fixture author";
+                model.SelectedSidebarItem = model.SidebarItems.SelectMany(section => section.Children)
+                    .First(item => item.ItemType == Models.SidebarItemType.SmartFeed);
+                await model.WaitForCurrentTimelineAsync(System.Threading.CancellationToken.None);
+                model.ArticleItems = new ObservableCollection<Models.FeedItem> { row };
+                await WaitFor(() => Task.FromResult(list.ContainerFromIndex(0) is ListViewItem { IsLoaded: true }), "Aggregate byline row");
+                await WaitFor(() => Task.FromResult(DisplayedName() == feed.NameForDisplay), "Aggregate timelines show feed names");
+                return new { Author = true, MissingAuthorFallback = true, WhitespaceFallback = true, AggregateFeedName = true };
+            }
             if (recheck)
             {
                 AppDefaults.Shared.UseColumnLayout = false;

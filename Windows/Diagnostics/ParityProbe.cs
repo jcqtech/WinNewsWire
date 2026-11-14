@@ -181,6 +181,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineIconPolicyAsync(window, server.Url));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-byline-fallback"))
+            {
+                await CheckAsync("Timeline bylines choose authors for single feeds and never leave a missing-author gap",
+                    () => CheckTimelineIconPolicyAsync(window, server.Url, byline: true));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--timeline-icon-recheck"))
             {
                 await CheckAsync("Automatic timeline icons recheck avatars when article content changes without changing count or scope",
