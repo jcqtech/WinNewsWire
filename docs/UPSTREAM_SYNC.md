@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`966641c7230fbe0580685da15f10c5bf00faf756`**. This synchronization is in progress.
+`e166dbdd9c2c53bbed23d24239ed6a10a9c7b819`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is unified feed-icon precedence, `e3e7bf324111b8c75b7a14fae78d6a2e109d21de`;
+is keeping only scaled icon copies on disk, `5196592efe907c2b380d8e95aaa3dcb5f9e78529`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -67,7 +67,7 @@ HTML candidates plus negative results in memory, not in the database. The obsole
 article-thumbnail table is dropped, including during legacy Windows metadata
 migration. Failed URLs fall through to the next candidate. Cache resets and
 new finder instances parse current HTML again. Parsed results are retained until
-explicit thumbnail disabling or memory-pressure cleanup; the earlier 50,000-article
+memory-pressure cleanup; the earlier 50,000-article
 HTML-cache threshold is removed. Chosen URLs remain bounded separately per mode.
 Small mode tries the provided thumbnail first. Large mode tries provided full
 images and significant attachments, then HTML images, and the provided thumbnail
@@ -97,7 +97,7 @@ the await preserves intervening user changes. URL cache misses also parse HTML,
 on the Windows service's worker path, so later layout changes and failed provided
 sources resolve immediately without another discovery pass.
 Tracked operations remain cancellation-aware and drained at shutdown.
-Disabling thumbnails clears HTML choices without discarding decoded pixels.
+Disabling thumbnails and changing modes retain HTML choices and decoded pixels.
 Windows low-memory cleanup clears both; iOS background notifications are not
 reproduced as unrelated Windows window-deactivation behavior.
 Standard timeline rows now display
@@ -242,7 +242,9 @@ Homepage metadata already parses on its owned worker; non-YouTube pages now
 stop scanning at the body rather than allocating discarded body tags.
 Redirects to other hosts are logged and cannot replace real-site metadata.
 Apex/www aliases and same-host scheme/path changes remain valid; stale metadata
-retains its original success date after a rejected redirect.
+retains its original success date after a rejected redirect. The cross-host check
+now applies only to initially HTTP requests, allowing HTTPS homepage migrations
+to supply fresh metadata under the original key.
 Saved homepage icons stay visible while owned checks load a different advertised
 icon. Successful replacements update only matching current native rows; failed
 checks retain the old mapping. Saved favicons similarly check only candidates
@@ -259,8 +261,11 @@ timeline precedence, retaining healthy declared icons instead of replacing them
 with recovered favicons. Delayed lookups cannot undo a newer dispatched result.
 Windows now observes icon/favicon/homepage settings for current account feeds,
 detaches removed feeds and window observers, and refreshes existing consumers
-through its cancellable view queue. Old images remain until replacements arrive;
-already-warm replacements update without network or a later article refresh.
+through its cancellable view queue. Both sidebar and timeline now resolve declared
+icon, homepage icon, then favicon through one owned asynchronous policy, stopping
+before lower-precedence sources while an earlier source loads or succeeds.
+Old images remain until replacements arrive; already-warm replacements update
+without network or a later article refresh. Recovery uses the same policy.
 Favicon and feed-icon consumers now share one URL-keyed representation cache
 and in-flight load/scale task, retaining per-request activity ownership.
 Different feeds already shared that work; no per-Feed decode-task cache is needed.
@@ -410,8 +415,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **220 Ported, 79 Covered, 87 Skipped, and 119 Pending**
-source commits, backed by **235 source-attributed Windows port commits**.
+The inventory currently has **223 Ported, 82 Covered, 88 Skipped, and 112 Pending**
+source commits, backed by **238 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -451,7 +456,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **271 tests** after memory-only/fetch-time HTML
+The current image suite passes **274 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
 visible-only loading, priority-free queues, fixed retry dates, actual-file-size
 launch pruning, schema upgrades, icon recovery and saved-favicon rediscovery.
@@ -470,7 +475,9 @@ fail without byte comparison, while the 304 control remains unchanged.
 The metadata body-scanning allocation control fails pristine parsing with over
 2 MiB of discarded body allocations; all **538 parser tests** pass after stopping
 at body. Both cross-host redirect controls fail pristine metadata handling with
-three unchanged same-host controls; all **33 metadata tests** pass.
+three unchanged same-host controls. The later HTTP-only guard has three pristine
+HTTPS-migration failures and two unchanged HTTP-portal controls; all **36 metadata
+tests** pass after restoration.
 The six homepage/favicon recovery ports add 18 focused cases that fail pristine
 production, with only an event-signature adapter needed for the new favicon
 notification API. Both native observer negative controls leave the actual image
@@ -489,6 +496,13 @@ with signature-only API adapters. A separate delayed-initial-write control fails
 without its guard. Three favicon replacement/mapping-isolation controls also fail
 pristine production. Restored native recovery/settings selectors pass; the shared
 test project and both Windows configurations build without warnings.
+Unified sidebar/timeline precedence has four native negative controls: the
+pristine model replaces a healthy sidebar icon during favicon recovery and fails
+all three cold-lower-source settings cases. Operation barriers prevent
+success-shaped early exits. Restored recovery/settings selectors pass, along with
+three backend precedence controls. The focused `--thumbnail-cache-retention`
+selector detects original disable-time cache clearing, then passes mode changes
+and explicit memory-pressure cleanup after restoration.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
