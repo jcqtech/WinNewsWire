@@ -85,6 +85,8 @@ internal static partial class ParityProbe
             await SettleAsync();
             Require(!Descendants(list).OfType<Border>().Any(border => border.Name == "TimelineRowSeparator"
                 && border.Visibility == Visibility.Visible), "Column layout displayed standard-row separators.");
+            Require(!Descendants(list).OfType<Grid>().Any(grid => grid.Name == "TimelineColumnRow" && grid.BorderThickness.Bottom > 0),
+                "Column layout retained a drawn row border.");
             AppDefaults.Shared.UseColumnLayout = false;
             await Task.Run(() => AppDefaults.Shared.SetValue(key, false));
             await SettleAsync();

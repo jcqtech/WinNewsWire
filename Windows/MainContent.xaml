@@ -32,7 +32,6 @@
         </Style>
         <DataTemplate x:Key="ColumnArticleTemplate" x:DataType="models:FeedItem">
             <Grid x:Name="TimelineColumnRow" Padding="0,3,0,5"
-                  BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1"
                   Loaded="TimelineColumnRow_Loaded" Unloaded="TimelineColumnRow_Unloaded"
                   ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}">
                 <Grid.ColumnDefinitions>
