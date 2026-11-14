@@ -169,6 +169,12 @@ internal static partial class ParityProbe
                     () => CheckGrayscaleIconSourcesAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--grayscale-live"))
+            {
+                await CheckAsync("Grayscale changes update sidebar, timeline and reader icons without reloading the reader",
+                    () => CheckLiveGrayscaleIconsAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--sidebar-icons"))
             {
                 await CheckAsync("Sidebar feed, folder and smart-feed icons follow preferences without replacing rows",

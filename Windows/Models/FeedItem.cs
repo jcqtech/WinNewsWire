@@ -105,6 +105,8 @@ public partial class FeedItem : ObservableObject
         OnPropertyChanged(nameof(FaviconSource));
     }
 
+    internal void RefreshFaviconAppearance() => OnPropertyChanged(nameof(FaviconSource));
+
     public string FeedId { get; set; } = string.Empty;
     public string AccountID { get; set; } = string.Empty;
     private WinNewsWire.Articles.Article? _sourceArticle;

@@ -237,6 +237,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var item in ArticleItems) item.UpdateTimelineNumberOfLines(AppDefaults.Shared.GetTimelineNumberOfLines());
         if (key == AppDefaultsSharedExtensions.TimelineShowFullTitlesKey)
             foreach (var item in ArticleItems) item.UpdateTimelineShowFullTitles(AppDefaults.Shared.GetTimelineShowFullTitles());
+        if (key == AppDefaultsSharedExtensions.GrayscaleIconsKey)
+        {
+            foreach (var item in ArticleItems) item.RefreshFaviconAppearance();
+            if (SelectedArticle is { } selected && !ArticleItems.Contains(selected)) selected.RefreshFaviconAppearance();
+            void RefreshSidebar(SidebarItem item)
+            {
+                item.RefreshFaviconAppearance();
+                foreach (var child in item.Children) RefreshSidebar(child);
+            }
+            foreach (var item in SidebarItems) RefreshSidebar(item);
+        }
         if (key == AppDefaultsSharedExtensions.TimelineFeedIconsDisplayKey)
         {
             OnPropertyChanged(nameof(TimelineFeedIconsDisplay));
@@ -1875,7 +1886,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     internal static string ArticleIconSource(FeedItem item) => ArticleIconIdentityUrl(item)
         + "&state=" + (item.FaviconPath is null ? "pending" : "ready")
         + "&source=" + (item.FaviconPath?.Md5Hex() ?? "")
-        + "&revision=" + item.FaviconSource.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        + "&revision=" + item.FaviconSource.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        + "&grayscale=" + (AppDefaults.Shared.GetGrayscaleIcons() ? "1" : "0");
 }
 
 /// <summary>Payload for <see cref="MainViewModel.AddFeedCommand"/>.</summary>
