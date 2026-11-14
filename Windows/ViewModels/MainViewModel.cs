@@ -44,7 +44,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private Images.FeedImageDownloader? _feedImages;
     private readonly HashSet<string> _changedFeedImagePaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Images.FeedImageSource, (long Version, string Path)> _feedIconUpdates = [];
-    private readonly Dictionary<Images.FeedImageSource, (long Version, string Path)> _faviconUpdates = [];
     private long _feedIconVersion;
     private int _articleLoadGeneration;
     private bool _restoringArticleSelection;
@@ -317,25 +316,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var source = FeedImageSourceFor(feed);
         var version = _feedIconVersion;
         bool IsCurrent() => !_disposed && ReferenceEquals(service, _feedImages) && FeedImageSourceFor(feed) == source;
-        var favicon = hasSidebar ? service.FaviconAsync(source, ct) : null;
-        async Task UpdateFaviconAsync()
-        {
-            var image = await favicon!;
-            ct.ThrowIfCancellationRequested();
-            if (IsCurrent() && image is not null) ApplyFaviconUpdate(source, image.Path);
-        }
-        async Task UpdateIconAsync()
-        {
-            var image = await service.IconAsync(source, ct);
-            image ??= await (favicon ??= service.FaviconAsync(source, ct));
-            ct.ThrowIfCancellationRequested();
-            if (!IsCurrent() || image is null) return;
-            var path = image.Path;
-            if (_feedIconUpdates.TryGetValue(source, out var updated) && updated.Version > version) path = updated.Path;
-            ApplyFeedIconUpdate(source, path);
-        }
-        await Task.WhenAll(hasArticles ? UpdateIconAsync() : Task.CompletedTask,
-            hasSidebar ? UpdateFaviconAsync() : Task.CompletedTask);
+        var image = await service.PreferredIconAsync(source, ct);
+        ct.ThrowIfCancellationRequested();
+        if (!IsCurrent() || image is null) return;
+        var path = image.Path;
+        if (_feedIconUpdates.TryGetValue(source, out var updated) && updated.Version > version) path = updated.Path;
+        ApplyFeedIconUpdate(source, path);
     }
 
     private void OnArticleStatusesChanged(object? sender, AccountNs.StatusesChangedEventArgs args)
@@ -1042,8 +1028,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var source = FeedImageSourceFor(feed);
                 var version = _feedIconVersion;
-                var path = await FaviconDownloader.Shared.FaviconPathAsync(feed);
-                if (_faviconUpdates.TryGetValue(source, out var updated) && updated.Version > version)
+                var path = await FaviconDownloader.Shared.ImagePathAsync(feed);
+                if (_feedIconUpdates.TryGetValue(source, out var updated) && updated.Version > version)
                     path = updated.Path;
                 if (!string.IsNullOrEmpty(path))
                 {
@@ -1353,7 +1339,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         _feedImages = service;
         _feedIconUpdates.Clear();
-        _faviconUpdates.Clear();
         if (service is not null)
         {
             service.ImageDidBecomeAvailable += FeedImageDidBecomeAvailable;
@@ -1383,11 +1368,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (item.FeedUrl == feed.FeedUrl && item.FeedIconUrl == (feed.IconUrl ?? "")
                 && item.FeedHomePageUrl == feed.HomePageUrl && item.FeedFaviconUrl == feed.FaviconUrl)
                 item.FaviconPath = path;
-    }
-
-    private void ApplyFaviconUpdate(Images.FeedImageSource feed, string path)
-    {
-        _faviconUpdates[feed] = (++_feedIconVersion, path);
         void UpdateSidebar(SidebarItem item)
         {
             if (item.Tag is AccountNs.Feed candidate && FeedImageSourceFor(candidate) == feed) item.FaviconPath = path;
@@ -1405,9 +1385,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _viewOperations.Add(new MainThreadAsyncOperation(async ct =>
             {
                 if (_disposed || !ReferenceEquals(service, _feedImages)) return;
-                ApplyFaviconUpdate(recovered.Feed, recovered.Image.Path);
                 var version = _feedIconVersion;
-                var preferred = await service.IconAsync(recovered.Feed, ct);
+                var preferred = await service.PreferredIconAsync(recovered.Feed, ct);
                 ct.ThrowIfCancellationRequested();
                 if (_disposed || !ReferenceEquals(service, _feedImages)) return;
                 var path = preferred?.Path ?? recovered.Image.Path;

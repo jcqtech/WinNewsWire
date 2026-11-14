@@ -252,6 +252,10 @@ public sealed class FeedImageDownloader : IAsyncDisposable
     public Task<DownloadedImage?> IconAsync(FeedImageSource feed, CancellationToken ct = default)
         => RunOperationAsync(token => IconCoreAsync(feed, token), ct);
 
+    public Task<DownloadedImage?> PreferredIconAsync(FeedImageSource feed, CancellationToken ct = default)
+        => RunOperationAsync(async token => await IconCoreAsync(feed, token).ConfigureAwait(false)
+            ?? await FaviconCoreAsync(feed, token).ConfigureAwait(false), ct);
+
     private async Task<DownloadedImage?> IconCoreAsync(FeedImageSource feed, CancellationToken ct,
         HtmlMetadataRecord? homePageMetadata = null, bool announceRecovery = true)
     {

@@ -20,6 +20,52 @@ public sealed class FeedImageDownloaderTests
     private static readonly byte[] Image = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZssAAAAASUVORK5CYII=");
 
     [Fact]
+    public async Task PreferredIconsUseFaviconsOnlyAfterEarlierSourcesAreUnavailable()
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath switch
+        {
+            "/own.png" => Response(HttpStatusCode.NotFound),
+            "/" => HtmlResponse(""),
+            "/favicon.png" => Response(HttpStatusCode.OK, Image),
+            _ => throw new InvalidOperationException("Unexpected preferred-icon source.")
+        }));
+        var image = await fixture.Images.PreferredIconAsync(new(Feed, Home,
+            FaviconUrl: Home + "favicon.png", IconUrl: Home + "own.png"));
+        Assert.Equal(Home + "favicon.png", image?.Url);
+        Assert.Equal([Home + "own.png", Home, Home + "favicon.png"], fixture.Requests);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PreferredIconsDoNotStartLaterSourcesWhileAnEarlierOneIsLoading(bool declared)
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/" && !declared)
+                return HtmlResponse("<link rel='apple-touch-icon' href='/preferred.png'>");
+            Assert.Equal("/preferred.png", request.RequestUri.AbsolutePath);
+            started.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return Response(HttpStatusCode.OK, Image);
+        });
+        var pending = fixture.Images.PreferredIconAsync(new(Feed, Home, FaviconUrl: Home + "favicon.png",
+            IconUrl: declared ? Home + "preferred.png" : null));
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(pending.IsCompleted);
+            Assert.Equal(declared ? 1 : 2, fixture.Requests.Count);
+            release.TrySetResult();
+            Assert.Equal(Home + "preferred.png", (await pending)?.Url);
+            Assert.DoesNotContain(Home + "favicon.png", fixture.Requests);
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Fact]
     public async Task HomepageMappingAndReplacementAreSharedByEveryRequestingFeed()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

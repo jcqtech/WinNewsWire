@@ -41,8 +41,7 @@ public sealed class FaviconDownloader
         {
             ct.ThrowIfCancellationRequested();
             var service = await Images.FeedImageDownloader.GetSharedAsync().WaitAsync(ct);
-            var image = preferFeedIcon ? await service.IconAsync(source, ct) : null;
-            image ??= await service.FaviconAsync(source, ct);
+            var image = preferFeedIcon ? await service.PreferredIconAsync(source, ct) : await service.FaviconAsync(source, ct);
             if (image is not null) FaviconDidBecomeAvailable?.Invoke(this, image.Url);
             return image;
         }

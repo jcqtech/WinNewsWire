@@ -724,10 +724,12 @@ internal static partial class ParityProbe
             FeedHomePageUrl = feed.HomePageUrl, FeedFaviconUrl = feed.FaviconUrl, FeedIconUrl = feed.IconUrl ?? ""
         };
         var unrelated = new Models.FeedItem { Id = "unrelated-favicon", FaviconPath = preferred?.Path };
-        var sidebar = new Models.SidebarItem { Title = "Favicon fixture", Tag = feed, ItemType = Models.SidebarItemType.Feed };
+        var sidebar = new Models.SidebarItem
+        {
+            Title = "Favicon fixture", Tag = feed, ItemType = Models.SidebarItemType.Feed, FaviconPath = preferred?.Path
+        };
         var unrelatedSidebar = new Models.SidebarItem { Title = "Unrelated favicon" };
         var available = new TaskCompletionSource<DownloadedImage>(TaskCreationOptions.RunContinuationsAsynchronously);
-        images.FaviconDidBecomeAvailable += (_, update) => available.TrySetResult(update.Image);
         bool onUI = true;
         row.PropertyChanged += (_, args) =>
         {
@@ -740,6 +742,7 @@ internal static partial class ParityProbe
             Core.AppDefaults.Shared.UseColumnLayout = false;
             Core.AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Always);
             model.ProbeFeedImages = images;
+            images.FaviconDidBecomeAvailable += (_, update) => available.TrySetResult(update.Image);
             model.SelectedArticle = null;
             model.ArticleItems = new ObservableCollection<Models.FeedItem> { row, unrelated };
             model.SidebarItems.Clear();
@@ -754,7 +757,8 @@ internal static partial class ParityProbe
             typeof(FeedImageDownloader).GetMethod("NetworkStatusChanged",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(images, [null, true]);
             var recovered = await available.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitFor(() => Task.FromResult(sidebar.FaviconPath == recovered.Path
+            await model.ProbeDrainViewUpdatesAsync();
+            await WaitFor(() => Task.FromResult(sidebar.FaviconPath == (preferred?.Path ?? recovered.Path)
                 && row.FaviconPath == (preferred?.Path ?? recovered.Path)
                 && icon.ImageSource is BitmapImage bitmap && bitmap.PixelWidth == (preferredIcon ? 128 : 1600)),
                 "Recovered native favicon");
@@ -788,8 +792,8 @@ internal static partial class ParityProbe
         int requests = 0;
         using var http = new HttpClient(new ThumbnailHandler((request, _) =>
         {
-            Require(networkAllowed, "A warm image-setting change unexpectedly used the network.");
             Interlocked.Increment(ref requests);
+            Require(networkAllowed, "A warm image-setting change unexpectedly used the network.");
             var path = request.RequestUri!.AbsolutePath;
             bool newer = path.StartsWith("/new", StringComparison.Ordinal);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -814,7 +818,6 @@ internal static partial class ParityProbe
         };
         var oldSource = new FeedImageSource(feed.Url, feed.HomePageUrl, feed.FaviconUrl, feed.IconUrl);
         var originalIcon = await images.IconAsync(oldSource) ?? throw new InvalidOperationException("The initial icon did not load.");
-        var originalFavicon = await images.FaviconAsync(oldSource) ?? throw new InvalidOperationException("The initial favicon did not load.");
         var next = oldSource with
         {
             FeedUrl = "https://image-setting.test/warm-new",
@@ -823,7 +826,6 @@ internal static partial class ParityProbe
             HomePageUrl = setting == "homepage" ? "https://image-setting.test/new-home/" : oldSource.HomePageUrl
         };
         var expectedIcon = await images.IconAsync(next) ?? throw new InvalidOperationException("The replacement icon did not warm.");
-        var expectedFavicon = await images.FaviconAsync(next) ?? throw new InvalidOperationException("The replacement favicon did not warm.");
         var row = new Models.FeedItem
         {
             Id = setting + "-setting", AccountID = feed.AccountID, FeedId = feed.FeedID, FaviconPath = originalIcon.Path,
@@ -831,7 +833,7 @@ internal static partial class ParityProbe
             FeedFaviconUrl = oldSource.FaviconUrl
         };
         var unrelated = new Models.FeedItem { Id = "unrelated-setting", FaviconPath = originalIcon.Path };
-        var sidebar = new Models.SidebarItem { Title = "Changed image setting", Tag = feed, FaviconPath = originalFavicon.Path };
+        var sidebar = new Models.SidebarItem { Title = "Changed image setting", Tag = feed, FaviconPath = originalIcon.Path };
         bool onUI = true;
         row.PropertyChanged += (_, args) =>
         {
@@ -861,8 +863,12 @@ internal static partial class ParityProbe
                 case "homepage": feed.HomePageUrl = next.HomePageUrl; break;
                 default: throw new ArgumentOutOfRangeException(nameof(setting));
             }
+            await WaitFor(() => Task.FromResult(row.FeedIconUrl == (feed.IconUrl ?? "")
+                && row.FeedFaviconUrl == feed.FaviconUrl && row.FeedHomePageUrl == feed.HomePageUrl),
+                "Changed feed-image metadata");
+            await model.ProbeDrainViewUpdatesAsync();
             await WaitFor(() => Task.FromResult(row.FaviconPath == expectedIcon.Path
-                && sidebar.FaviconPath == expectedFavicon.Path
+                && sidebar.FaviconPath == expectedIcon.Path
                 && icon.ImageSource is BitmapImage bitmap && bitmap.PixelWidth == (setting == "favicon" ? 128 : 1600)),
                 "Changed native image setting");
             Require(onUI && requests == warmedRequests && unrelated.FaviconPath == originalIcon.Path
