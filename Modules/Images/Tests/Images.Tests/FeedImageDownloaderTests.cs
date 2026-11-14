@@ -208,7 +208,7 @@ public sealed class FeedImageDownloaderTests
             var recovered = await available.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(feed, recovered.Feed);
             Assert.Equal(Home + (declared ? "own.png" : "home.png"), recovered.Image.Url);
-            Assert.Equal(recovered.Image.Url, fixture.ImageDatabase.FaviconUrl(Home));
+            Assert.Equal(declared ? null : recovered.Image.Url, fixture.ImageDatabase.FaviconUrl(Home));
             await fixture.Images.DisposeAsync();
             Assert.Equal(1, notifications);
         }
@@ -271,7 +271,7 @@ public sealed class FeedImageDownloaderTests
         var second = Assert.IsType<DownloadedImage>(await fixture.Images.FaviconAsync(new(Feed, Home, Home + "icon.png")));
         Assert.Equal(first.Data, second.Data);
         Assert.Single(fixture.Requests);
-        Assert.Equal(Home + "icon.png", fixture.ImageDatabase.FaviconUrl(Home));
+        Assert.Null(fixture.ImageDatabase.FaviconUrl(Home));
     }
 
     [Fact]
@@ -377,10 +377,12 @@ public sealed class FeedImageDownloaderTests
     }
 
     [Fact]
-    public async Task SavedFaviconsAreReplacedOnTheNextLookupWithoutBlockingTheCurrentImage()
+    public async Task SavedFaviconReplacementsNotifyEveryConsumerWithoutAnotherLookup()
     {
         var metadataStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseMetadata = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var available = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var updated = new ConcurrentDictionary<string, bool>();
         await using var fixture = new Fixture(async (request, ct) =>
         {
             if (request.RequestUri!.AbsolutePath == "/")
@@ -392,19 +394,74 @@ public sealed class FeedImageDownloaderTests
             return Response(HttpStatusCode.OK, Image);
         });
         await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, Home + "saved.png");
+        fixture.Images.FaviconDidBecomeAvailable += (_, image) =>
+        {
+            if (image.Image.Url != Home + "new.png") return;
+            updated[image.Feed.FeedUrl] = true;
+            if (updated.Count == 2) available.TrySetResult();
+        };
         try
         {
             Assert.Equal(Home + "saved.png", (await fixture.Images.FaviconAsync(new(Feed, Home))
                 .WaitAsync(TimeSpan.FromSeconds(10)))?.Url);
+            Assert.Equal(Home + "saved.png", (await fixture.Images.FaviconAsync(new(Home + "second-feed", Home))
+                .WaitAsync(TimeSpan.FromSeconds(10)))?.Url);
             await metadataStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             releaseMetadata.TrySetResult();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (fixture.ImageDatabase.FaviconUrl(Home) != Home + "new.png")
-                await Task.Delay(10, timeout.Token);
+            await available.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(updated.ContainsKey(Feed));
+            Assert.True(updated.ContainsKey(Home + "second-feed"));
             Assert.Equal(Home + "new.png", (await fixture.Images.FaviconAsync(new(Feed, Home)))?.Url);
             Assert.Equal([Home + "saved.png", Home, Home + "new.png"], fixture.Requests);
         }
         finally { releaseMetadata.TrySetResult(); }
+    }
+
+    [Fact]
+    public async Task MetadataRefreshDuringAnOlderFaviconReplacementIsNotDropped()
+    {
+        int pages = 0;
+        var downloading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var available = new TaskCompletionSource<FeedIconImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = new Fixture(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/")
+                return HtmlResponse($"<link rel='icon' href='/{(++pages == 1 ? "middle" : "new")}.png'>");
+            if (request.RequestUri.AbsolutePath == "/middle.png")
+            {
+                downloading.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            }
+            return Response(HttpStatusCode.OK, Image);
+        });
+        await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, Home + "saved.png");
+        fixture.Images.FaviconDidBecomeAvailable += (_, image) =>
+        {
+            if (image.Image.Url == Home + "new.png") available.TrySetResult(image);
+        };
+        try
+        {
+            Assert.Equal(Home + "saved.png", (await fixture.Images.FaviconAsync(new(Feed, Home)))?.Url);
+            await downloading.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            fixture.Clock.Advance(TimeSpan.FromDays(7));
+            Assert.NotNull(await fixture.Metadata.GetMetadataAsync(Home));
+            release.TrySetResult();
+            Assert.Equal(Home + "new.png", (await available.Task.WaitAsync(TimeSpan.FromSeconds(10))).Image.Url);
+            Assert.Equal(Home + "new.png", fixture.ImageDatabase.FaviconUrl(Home));
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Fact]
+    public async Task DeclaredFaviconsCannotReplaceAnotherFeedsHomepageMapping()
+    {
+        await using var fixture = new Fixture((request, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath == "/" ? HtmlResponse("") : Response(HttpStatusCode.OK, Image)));
+        await fixture.ImageDatabase.SaveHomePageFaviconAsync(Home, Home + "saved.png");
+        Assert.Equal(Home + "own.png", (await fixture.Images.FaviconAsync(new(Feed, Home, FaviconUrl: Home + "own.png")))?.Url);
+        Assert.Equal(Home + "saved.png", fixture.ImageDatabase.FaviconUrl(Home));
+        Assert.Equal(Home + "saved.png", (await fixture.Images.FaviconAsync(new(Home + "second-feed", Home)))?.Url);
     }
 
     [Fact]

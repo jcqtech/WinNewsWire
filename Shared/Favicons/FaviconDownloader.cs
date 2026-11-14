@@ -1,66 +1,7 @@
 using System.Diagnostics;
 using WinNewsWire.Account;
-using WinNewsWire.Core;
-using WinNewsWire.Web;
 
 namespace WinNewsWire.AppShared.Favicons;
-
-/// <summary>Port of <c>SingleFaviconDownloader</c>. Downloads one favicon URL to disk and caches it.</summary>
-public sealed class SingleFaviconDownloader
-{
-    public string FaviconURL { get; }
-    public string CachePath { get; }
-    public byte[]? Data { get; private set; }
-    private readonly SemaphoreSlim _loadGate = new(1, 1);
-    private readonly Downloader _downloader;
-
-    public SingleFaviconDownloader(string faviconURL, string? cacheFolder = null, Downloader? downloader = null)
-    {
-        if (!Uri.TryCreate(faviconURL, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
-            throw new ArgumentException("A favicon URL must use HTTP or HTTPS.", nameof(faviconURL));
-        FaviconURL = faviconURL;
-        _downloader = downloader ?? Downloader.Shared;
-        var key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(faviconURL)));
-        var extension = Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
-        if (extension is not (".png" or ".jpg" or ".jpeg" or ".svg" or ".ico" or ".gif" or ".webp" or ".bmp")) extension = ".image";
-        CachePath = Path.Combine(cacheFolder ?? AppConfig.FaviconsDirectory, key + extension);
-    }
-
-    public async Task<byte[]?> LoadAsync(CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-        await _loadGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            if (Data is not null) return Data;
-            if (File.Exists(CachePath))
-            {
-                try
-                {
-                    var cached = await File.ReadAllBytesAsync(CachePath, ct).ConfigureAwait(false);
-                    if (cached.Length > 0) { Data = cached; return Data; }
-                }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-                {
-                    Trace.TraceWarning($"Could not read cached favicon {CachePath}: {error.Message}");
-                }
-            }
-            var result = await _downloader.DownloadAsync(FaviconURL, null, ct, UserAgentStyle.Browser).ConfigureAwait(false);
-            if (!result.Success) throw new HttpRequestException($"Favicon download returned HTTP {(int)result.StatusCode}.");
-            if (result.Data is not { Length: > 0 }) throw new InvalidDataException("The favicon response is empty.");
-            Directory.CreateDirectory(Path.GetDirectoryName(CachePath)!);
-            await FileUtilities.WriteAllBytesAtomicallyAsync(CachePath, result.Data, ct).ConfigureAwait(false);
-            Data = result.Data;
-            return Data;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or HttpRequestException)
-        {
-            Trace.TraceWarning($"Could not load favicon {FaviconURL}: {error.Message}");
-            return null;
-        }
-        finally { _loadGate.Release(); }
-    }
-}
 
 /// <summary>Windows feed-model adapter for the native Images/HTMLMetadata download pipeline.</summary>
 public sealed class FaviconDownloader
