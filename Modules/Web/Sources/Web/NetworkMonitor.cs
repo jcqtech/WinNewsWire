@@ -5,7 +5,16 @@ namespace WinNewsWire.Web;
 /// <summary>Port of NNW's NetworkMonitor. Monitors network connectivity status.</summary>
 public static class NetworkMonitor
 {
+#if PARITY_PROBE
+    private static bool _isAvailable = ReadInitialAvailability();
+    private static bool ReadInitialAvailability()
+    {
+        (AppContext.GetData("WinNewsWire.NetworkInitializationProbe") as Action)?.Invoke();
+        return NetworkInterface.GetIsNetworkAvailable();
+    }
+#else
     private static bool _isAvailable = NetworkInterface.GetIsNetworkAvailable();
+#endif
 
     static NetworkMonitor()
     {

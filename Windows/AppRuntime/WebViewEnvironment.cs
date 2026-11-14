@@ -11,6 +11,9 @@ internal static class WebViewEnvironment
     private static Task<CoreWebView2Environment>? _environment;
     internal static bool UsesSoftwareRasterization { get; }
     internal static bool UsesDirectScrolling { get; }
+#if PARITY_PROBE
+    internal static string? ProbeBrowserArguments;
+#endif
 
     static WebViewEnvironment()
     {
@@ -50,6 +53,9 @@ internal static class WebViewEnvironment
         }
 #endif
         options.AdditionalBrowserArguments = string.Join(" ", arguments);
+#if PARITY_PROBE
+        ProbeBrowserArguments = options.AdditionalBrowserArguments;
+#endif
         string userDataFolder = "";
 #if PARITY_PROBE
         userDataFolder = System.IO.Path.Combine(AppConfig.CachesDirectory, "WebView2");

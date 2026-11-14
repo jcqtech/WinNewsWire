@@ -129,7 +129,32 @@ internal static partial class ParityProbe
     private sealed record UiPerformanceSample(string Scenario, double ElapsedMs, double CpuMs, double AllocatedMB,
         double MaximumUiGapMs, int ToolbarStates, int ToolbarMeasurements, int ToolbarLayouts,
         int HeaderColumnRebuilds, int TitleBarChecks, int IconRenderReadbacks, int IconPixelDecodes,
-        double GcPauseMs, int Gen2Collections);
+        double GcPauseMs, int Gen2Collections, DateTimeOffset StartedAt, double MaximumDispatchDelayMs,
+        int DispatchSamples, int DispatchFailures);
+
+    private sealed record UiDelaySample(string Scenario, DateTimeOffset EndedAt, double DelayMs, string Kind);
+    private sealed record SelectionPerformanceSample(string Layout, int Index, DateTimeOffset StartedAt,
+        double SynchronousMs, double ReadyMs);
+
+    internal static void ConfigureNetworkStartupCheck()
+    {
+        var constructing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Services.ArticleThumbnailService.ProbeBeforeInitialization = () => constructing.TrySetResult();
+        AppContext.SetData("WinNewsWire.NetworkInitializationProbe", (Action)(() =>
+        {
+            if (!constructing.Task.Wait(TimeSpan.FromSeconds(5)))
+                throw new TimeoutException("The UI thumbnail service did not start during the network initialization check.");
+            Thread.Sleep(500);
+        }));
+    }
+
+    private static Task<object?> CheckNetworkStartupResponsivenessAsync()
+    {
+        double elapsed = Services.ArticleThumbnailService.ProbeFirstInitializationMs;
+        Require(elapsed >= 0 && elapsed < 150,
+            $"UI thumbnail initialization waited {elapsed:F1} ms for network monitoring.");
+        return Task.FromResult<object?>(new { ThumbnailInitializationMs = elapsed, SlowAdapterQueryMs = 500, BudgetMs = 150 });
+    }
 
     private static async Task<object?> CheckPerformanceAsync(MainWindow window, string serverUrl)
     {
@@ -147,6 +172,8 @@ internal static partial class ParityProbe
         var measurements = new List<int>();
         var rebuilds = new List<int>();
         var selectionLatency = new List<double>();
+        var selections = new List<SelectionPerformanceSample>();
+        var delays = new List<UiDelaySample>();
         int maximumRealizedRows = 0;
         const int articleCount = 2000;
         var now = DateTime.UtcNow;
@@ -171,6 +198,11 @@ internal static partial class ParityProbe
             using var process = Process.GetCurrentProcess();
             double cpu = process.TotalProcessorTime.TotalMilliseconds;
             double maximumGap = 0;
+            double maximumDispatchDelay = 0;
+            int dispatchPending = 0;
+            int dispatchSamples = 0;
+            int dispatchFailures = 0;
+            bool measuring = true;
             long lastTick = Stopwatch.GetTimestamp();
             var pulse = window.DispatcherQueue.CreateTimer();
             pulse.Interval = TimeSpan.FromMilliseconds(16);
@@ -178,12 +210,33 @@ internal static partial class ParityProbe
             void Tick(DispatcherQueueTimer sender, object args)
             {
                 long current = Stopwatch.GetTimestamp();
-                maximumGap = Math.Max(maximumGap, Stopwatch.GetElapsedTime(lastTick, current).TotalMilliseconds);
+                double gap = Stopwatch.GetElapsedTime(lastTick, current).TotalMilliseconds;
+                maximumGap = Math.Max(maximumGap, gap);
+                if (gap >= 100) delays.Add(new(scenario, DateTimeOffset.UtcNow, gap, "DispatcherTimer"));
                 lastTick = current;
             }
             pulse.Tick += Tick;
+            var startedAt = DateTimeOffset.UtcNow;
             var elapsed = Stopwatch.StartNew();
             pulse.Start();
+            using var dispatchTimer = new System.Threading.Timer(_ =>
+            {
+                if (Interlocked.Exchange(ref dispatchPending, 1) != 0) return;
+                long queued = Stopwatch.GetTimestamp();
+                if (!window.DispatcherQueue.TryEnqueue(() =>
+                {
+                    Interlocked.Exchange(ref dispatchPending, 0);
+                    if (!measuring) return;
+                    dispatchSamples++;
+                    double delay = Stopwatch.GetElapsedTime(queued).TotalMilliseconds;
+                    maximumDispatchDelay = Math.Max(maximumDispatchDelay, delay);
+                    if (delay >= 100) delays.Add(new(scenario, DateTimeOffset.UtcNow, delay, "DispatcherQueue"));
+                }))
+                {
+                    Interlocked.Increment(ref dispatchFailures);
+                    Interlocked.Exchange(ref dispatchPending, 0);
+                }
+            }, null, 16, 16);
             try
             {
                 await action();
@@ -191,6 +244,8 @@ internal static partial class ParityProbe
             }
             finally
             {
+                measuring = false;
+                await dispatchTimer.DisposeAsync();
                 pulse.Stop();
                 pulse.Tick -= Tick;
             }
@@ -201,7 +256,8 @@ internal static partial class ParityProbe
                 maximumGap, after.State - before.State, after.Presentation - before.Presentation,
                 after.Layout - before.Layout, after.Columns - before.Columns, window.ProbeTitleBarRegionChecks - titleChecks,
                 Helpers.IconView.ProbeRenderReadbacks - iconReadbacks, Helpers.IconView.ProbePixelDecodes - iconDecodes,
-                (GC.GetTotalPauseDuration() - gcPause).TotalMilliseconds, GC.CollectionCount(2) - gen2);
+                (GC.GetTotalPauseDuration() - gcPause).TotalMilliseconds, GC.CollectionCount(2) - gen2,
+                startedAt, maximumDispatchDelay, dispatchSamples, dispatchFailures);
             samples.Add(result);
             return result;
         }
@@ -239,10 +295,13 @@ internal static partial class ParityProbe
                 {
                     for (int index = 1; index <= 16; index++)
                     {
+                        var startedAt = DateTimeOffset.UtcNow;
                         var elapsed = Stopwatch.StartNew();
                         model.SelectedArticle = model.ArticleItems[index];
+                        double synchronousMs = elapsed.Elapsed.TotalMilliseconds;
                         await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Performance article selection");
                         selectionLatency.Add(elapsed.Elapsed.TotalMilliseconds);
+                        selections.Add(new(mode, index, startedAt, synchronousMs, elapsed.Elapsed.TotalMilliseconds));
                     }
                 });
                 measurements.Add(switching.ToolbarMeasurements);
@@ -305,6 +364,9 @@ internal static partial class ParityProbe
             }
             await content.GoBackAsync();
 
+            const double responsivenessBudgetMs = 100;
+            bool dispatchMeasured = samples.All(sample => sample.DispatchSamples > 0 && sample.DispatchFailures == 0);
+            bool responsive = dispatchMeasured && samples.All(sample => sample.MaximumDispatchDelayMs < responsivenessBudgetMs);
             var report = new
             {
                 ArticleCount = articleCount, Samples = samples, MaximumRealizedRows = maximumRealizedRows,
@@ -313,6 +375,8 @@ internal static partial class ParityProbe
                 HiddenWebPageSuspended = hiddenWebSuspended, ResumedWebStatePreserved = resumedState,
                 PhysicalInputMeasured = false,
                 ForegroundOwned = GetForegroundWindow() == WinRT.Interop.WindowNative.GetWindowHandle(window),
+                ResponsivenessBudgetMs = responsivenessBudgetMs, ResponsivenessPassed = responsive,
+                Selections = selections, DispatcherDelays = delays,
                 UiGapsOver100Ms = samples.Where(sample => sample.MaximumUiGapMs >= 100)
                     .Select(sample => new { sample.Scenario, sample.MaximumUiGapMs, sample.GcPauseMs }).ToArray()
             };
@@ -325,6 +389,11 @@ internal static partial class ParityProbe
                 .All(sample => sample.IconRenderReadbacks == 0), "Scrolling still snapshots each raster icon through the compositor.");
             Require(cancellationWrites == 0, "Handled cancellations still synchronously write first-chance stack traces.");
             Require(hiddenWebSuspended && resumedState, "An inactive publisher page keeps running or loses its state when resumed.");
+            Require(dispatchMeasured, "The dispatcher stopped admitting heartbeat callbacks or a scenario had no dispatch samples.");
+            if (Environment.GetCommandLineArgs().Contains("--require-responsiveness"))
+                Require(responsive, $"The UI dispatcher exceeded the {responsivenessBudgetMs:F0} ms responsiveness budget. "
+                    + $"Maximum queued-dispatch delay: {samples.Max(sample => sample.MaximumDispatchDelayMs):F1} ms. "
+                    + "See performance.json for scenario timestamps, GC pauses and selection timings.");
             return report;
         }
         finally

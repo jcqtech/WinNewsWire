@@ -161,7 +161,7 @@ try {
     if ($ToolbarControls) { $arguments += '--toolbar-controls' }
     if ($SidebarLayout) { $arguments += '--sidebar-layout' }
     if ($Navigation) { $arguments += '--navigation' }
-    if ($Performance) { $arguments += '--performance' }
+    if ($Performance) { $arguments += @('--performance', '--require-responsiveness') }
     if ($ArticleScrolling) { $arguments += '--article-scrolling' }
     if ($LongSession) { $arguments += '--long-session' }
     if ($RefreshScrolling) { $arguments += '--refresh-scrolling' }
@@ -222,7 +222,7 @@ try {
     )
     if ($LiveAtlantic) { $required += 'Live Atlantic subscription, every article and actual favicons' }
     if ($Performance) {
-        $required += @('Cached icon luminance, contrast and file invalidation', 'Reader responsiveness and bounded header work')
+        $required += @('Cached icon luminance, contrast and file invalidation', 'Reader workload measurements and bounded header work')
     }
     if ($ArticleScrolling) {
         $required += @('Trusted reader shortcuts, editing and hover with publisher scripts disabled', 'Direct article-body scrolling performance')

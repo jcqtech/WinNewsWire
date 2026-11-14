@@ -7,6 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(ParityProbe)' == 'true'">
+    <DefineConstants>$(DefineConstants);PARITY_PROBE</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Web.Tests" />
   </ItemGroup>

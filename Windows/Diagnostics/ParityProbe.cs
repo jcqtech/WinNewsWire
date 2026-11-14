@@ -104,9 +104,14 @@ internal static partial class ParityProbe
                 File.WriteAllText(Path.Combine(OutputDirectory, "runtime.json"), JsonSerializer.Serialize(new
                 {
                     runtime.FileName, runtime.FileVersionInfo.FileVersion,
+                    GraphicsDrivers = process.Modules.Cast<System.Diagnostics.ProcessModule>()
+                        .Where(module => module.ModuleName.StartsWith("igd", StringComparison.OrdinalIgnoreCase)
+                            || module.ModuleName.StartsWith("nvwg", StringComparison.OrdinalIgnoreCase))
+                        .Select(module => new { module.ModuleName, module.FileVersionInfo.FileVersion }).ToArray(),
                     BrowserVersion = window.ProbeContent.ProbeWebView.CoreWebView2.Environment.BrowserVersionString,
                     SoftwareRasterizationEnabled = AppRuntime.WebViewEnvironment.UsesSoftwareRasterization,
                     DirectScrollingEnabled = AppRuntime.WebViewEnvironment.UsesDirectScrolling,
+                    BrowserArguments = AppRuntime.WebViewEnvironment.ProbeBrowserArguments,
                     BrowserProcessID = window.ProbeContent.ProbeWebView.CoreWebView2.BrowserProcessId,
                     UserDataFolder = window.ProbeContent.ProbeWebView.CoreWebView2.Environment.UserDataFolder
                 }, new JsonSerializerOptions { WriteIndented = true }));
@@ -115,6 +120,12 @@ internal static partial class ParityProbe
                         "The probe did not load the installed Windows App Runtime used by normal Debug.");
             }
 
+            if (Environment.GetCommandLineArgs().Contains("--network-startup"))
+            {
+                await CheckAsync("Cold thumbnail initialization does not wait for the portable network monitor",
+                    CheckNetworkStartupResponsivenessAsync);
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-viewport")
                 || Environment.GetCommandLineArgs().Contains("--thumbnail-prefetch"))
             {
@@ -194,7 +205,7 @@ internal static partial class ParityProbe
             }
             if (Environment.GetCommandLineArgs().Contains("--performance-only"))
             {
-                await CheckAsync("Reader responsiveness and bounded header work", () => CheckPerformanceAsync(window, server.Url));
+                await CheckAsync("Reader workload measurements and bounded header work", () => CheckPerformanceAsync(window, server.Url));
                 return;
             }
             if (Environment.GetCommandLineArgs().Contains("--statusbar-invalidation"))
@@ -524,7 +535,7 @@ internal static partial class ParityProbe
                 if (Environment.GetCommandLineArgs().Contains("--performance"))
                 {
                     await CheckAsync("Cached icon luminance, contrast and file invalidation", () => CheckIconContrastAsync(window));
-                    await CheckAsync("Reader responsiveness and bounded header work", () => CheckPerformanceAsync(window, server.Url));
+                    await CheckAsync("Reader workload measurements and bounded header work", () => CheckPerformanceAsync(window, server.Url));
                 }
                 if (Environment.GetCommandLineArgs().Contains("--article-scrolling"))
                 {

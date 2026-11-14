@@ -16,7 +16,6 @@ using WinNewsWire.Articles;
 using WinNewsWire.Core;
 using WinNewsWire.Images;
 using WinNewsWire.Parsers;
-using WinNewsWire.Web;
 
 namespace WinNewsWire.Services;
 
@@ -48,6 +47,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
     internal event EventHandler? NetworkStatusChanged;
     internal bool NetworkDownloadsAllowed { get; private set; }
 #if PARITY_PROBE
+    internal static double ProbeFirstInitializationMs = -1;
+    internal static Action? ProbeBeforeInitialization;
     internal static Func<(bool Connected, bool Constrained)>? ProbeNetworkState;
     internal void ProbeNotifyNetworkStatusChanged() => OnNetworkStatusChanged(null);
     internal int ProbeDecodes;
@@ -68,6 +69,10 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
         Func<(ArticleThumbnailFinder Finder, ThumbnailDownloader Downloads)>? createBackend = null,
         long cacheByteLimit = 128 * 1024 * 1024, Func<bool>? networkAllowsDownloads = null)
     {
+#if PARITY_PROBE
+        long initializationStarted = Stopwatch.GetTimestamp();
+        ProbeBeforeInitialization?.Invoke();
+#endif
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(cacheByteLimit);
         _dispatcher = dispatcher;
@@ -85,10 +90,11 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             return backend;
         }));
         NetworkInformation.NetworkStatusChanged += OnNetworkStatusChanged;
-        NetworkMonitor.ConnectivityChanged += OnConnectivityChanged;
+#if PARITY_PROBE
+        if (ProbeFirstInitializationMs < 0)
+            ProbeFirstInitializationMs = Stopwatch.GetElapsedTime(initializationStarted).TotalMilliseconds;
+#endif
     }
-
-    private void OnConnectivityChanged(object? sender, bool available) => OnNetworkStatusChanged(sender);
 
     private void OnNetworkStatusChanged(object? sender)
         => DispatchNotification(() =>
@@ -123,9 +129,8 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
 #if PARITY_PROBE
         if (ProbeNetworkState is { } state) return state();
 #endif
-        if (!NetworkMonitor.IsAvailable) return (false, false);
         var profile = NetworkInformation.GetInternetConnectionProfile();
-        if (profile is null) return (false, false);
+        if (profile is null || profile.GetNetworkConnectivityLevel() == NetworkConnectivityLevel.None) return (false, false);
         var cost = profile.GetConnectionCost();
         return (true, cost.NetworkCostType != NetworkCostType.Unrestricted
             || cost.Roaming || cost.OverDataLimit || cost.ApproachingDataLimit);
@@ -453,7 +458,6 @@ internal sealed class ArticleThumbnailService : IAsyncDisposable
             if (_shutdown is not null) return new(_shutdown);
             _stopping = true;
             NetworkInformation.NetworkStatusChanged -= OnNetworkStatusChanged;
-            NetworkMonitor.ConnectivityChanged -= OnConnectivityChanged;
             _lifetime.Cancel();
             return new(_shutdown = DrainAsync(_operations.ToArray()));
         }

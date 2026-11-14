@@ -84,6 +84,8 @@ namespace WinNewsWire
         {
 #if PARITY_PROBE
             Core.AppConfig.SetDataDirectoryOverride(System.IO.Path.Combine(Diagnostics.ParityProbe.OutputDirectory, "profile"));
+            if (Array.Exists(Environment.GetCommandLineArgs(), argument => argument == "--network-startup"))
+                Diagnostics.ParityProbe.ConfigureNetworkStartupCheck();
 #endif
             WinNewsWire.Account.Account.LocalRefresherFactory = account => new WinNewsWire.Account.LocalAccountRefreshProcess(
                 account, System.IO.Path.Combine(AppContext.BaseDirectory, "RefreshWorker", "WinNewsWire.RefreshWorker.exe"));
