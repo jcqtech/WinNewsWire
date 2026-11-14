@@ -73,13 +73,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     internal int ProbeSubscriptionRefreshes;
     internal void ProbeObserveFeedImageSettings(AccountNs.Feed feed) => ObserveFeedImageSettings(feed);
     internal Action? ProbePreparingTimeline;
-    internal async Task ProbeDrainViewUpdatesAsync()
+    internal async Task ProbeDrainViewUpdatesAsync(bool waitForArticleIcons = true)
     {
         var barrier = new MainThreadAsyncOperation(_ => Task.CompletedTask, "Reader regression barrier");
         if (!_dispatcher.TryEnqueue(() => _viewOperations.Add(barrier)))
             throw new InvalidOperationException("The reader dispatcher is unavailable.");
         await barrier.Completion.WaitAsync(TimeSpan.FromSeconds(10));
-        await _articleIconTask.WaitAsync(TimeSpan.FromSeconds(10));
+        if (waitForArticleIcons) await _articleIconTask.WaitAsync(TimeSpan.FromSeconds(10));
     }
 #endif
     private readonly WinNewsWire.Core.MainThreadOperationQueue _viewOperations;

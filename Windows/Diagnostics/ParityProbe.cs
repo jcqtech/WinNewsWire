@@ -742,7 +742,7 @@ internal static partial class ParityProbe
             model.SetSelectedSidebarItems([model.SidebarItems.SelectMany(section => section.Children)
                 .Single(row => ReferenceEquals(row.Tag, feed))]);
             await model.FilterArticlesAsync();
-            await model.ProbeDrainViewUpdatesAsync();
+            await model.ProbeDrainViewUpdatesAsync(waitForArticleIcons: false);
             Require(model.ArticleItems.Count == 25, "The Atom download did not reach the timeline.");
             Require(model.ArticleItems.All(row => row.Content.Contains("readable-feed-body", StringComparison.Ordinal)),
                 "Media RSS metadata replaced an Atom article body.");
@@ -763,7 +763,7 @@ internal static partial class ParityProbe
             {
                 list.SelectedItem = row;
                 await model.PendingAutomaticReads.WaitAsync(TimeSpan.FromSeconds(10));
-                await model.ProbeDrainViewUpdatesAsync();
+                await model.ProbeDrainViewUpdatesAsync(waitForArticleIcons: false);
                 await WaitFor(async () => await ScriptBool(content,
                     "!!document.getElementById('readable-feed-body') && window.__wnwArticleProcessed === true"), "Feed article body");
                 Require(content.ProbeWebView.Visibility == Visibility.Visible && content.ProbeWebView.ActualWidth > 0
