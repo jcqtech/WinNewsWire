@@ -155,6 +155,22 @@ internal static partial class ParityProbe
                 });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-fit-geometry"))
+            {
+                await CheckAsync("Whole-point centered thumbnail aspect-fit geometry", () =>
+                {
+                    var container = new Rect(20, 40, 400, 180);
+                    Require(ThumbnailView.AspectFitRect(container, new Size(1500, 1000))
+                        .Equals(new Rect(85, 40, 270, 180)), "A landscape image was not fitted and centered.");
+                    Require(ThumbnailView.AspectFitRect(new Rect(0, 0, 80, 80), new Size(40, 120))
+                        .Equals(new Rect(26, 0, 27, 80)), "A fractional portrait fit was not rounded to whole points.");
+                    Require(ThumbnailView.AspectFitRect(container, new Size(0, 1000)).Equals(container)
+                        && ThumbnailView.AspectFitRect(container, new Size(1500, 0)).Equals(container),
+                        "An unloaded image did not retain its full placeholder rectangle.");
+                    return Task.FromResult<object?>(new { Landscape = true, RoundedPortrait = true, EmptyPlaceholder = true });
+                });
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-presentation"))
             {
                 await CheckAsync("Native thumbnails fit complete images without a background fill",
