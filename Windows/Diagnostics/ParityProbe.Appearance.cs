@@ -13,9 +13,10 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
-    private static Models.FeedItem AppearanceRow(string id, string title, string body = "Preview text.", bool read = true, string? thumbnail = null)
+    private static Models.FeedItem AppearanceRow(string id, string title, string body = "Preview text.", bool read = true,
+        string? thumbnail = null, string accountID = "appearance")
     {
-        var article = new Articles.Article("appearance", id, "appearance-feed", id, title, body, null, null,
+        var article = new Articles.Article(accountID, id, "appearance-feed", id, title, body, null, null,
             "https://appearance.test/" + id, null, null, null, null, null, null, null,
             new Articles.ArticleStatus(id, read, false, DateTime.UnixEpoch), thumbnailURL: thumbnail);
         return new Models.FeedItem { Id = id, AccountID = article.AccountID, SourceArticle = article,
@@ -319,6 +320,22 @@ internal static partial class ParityProbe
         await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
         list.UpdateLayout();
     }
+
+    private static Task<object?> CheckTimelineIdentityHeightsAsync(MainWindow window) =>
+        WithAppearanceTimelineAsync(window, async (_, list, rows, _) =>
+        {
+            rows[0] = AppearanceRow("same-id", string.Concat(Enumerable.Repeat("A long title for account one ", 8)), "", accountID: "first-account");
+            rows[1] = AppearanceRow("same-id", "Short title", "", accountID: "second-account");
+            double Height(int index) => ((ListViewItem)list.ContainerFromIndex(index)).ActualHeight;
+            await WaitFor(() => Task.FromResult(Height(0) > Height(1)), "Cross-account rows have independent text heights");
+            double otherHeight = Height(1);
+            rows[0] = AppearanceRow("same-id", "Short title", "", accountID: "first-account");
+            await WaitFor(() => Task.FromResult(Math.Abs(Height(0) - otherHeight) < 1), "Only the replaced account row changes height");
+            Require(Math.Abs(Height(1) - otherHeight) < 1
+                && !ViewModels.MainViewModel.Identity(rows[0]).Equals(ViewModels.MainViewModel.Identity(rows[1])),
+                "Rows from different accounts collided by article ID.");
+            return new { DuplicateArticleID = true, DifferentAccounts = true, IndependentHeights = true, ReplacementIsolated = true };
+        });
 
     private static async Task<object?> CheckTimelineIconPolicyAsync(MainWindow window, string serverUrl, bool recheck = false, bool byline = false)
     {

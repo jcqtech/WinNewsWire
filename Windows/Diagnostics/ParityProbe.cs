@@ -245,6 +245,12 @@ internal static partial class ParityProbe
                     () => CheckVariableTimelineHeightsAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-identity-heights"))
+            {
+                await CheckAsync("Rows with the same article ID in different accounts keep independent native heights",
+                    () => CheckTimelineIdentityHeightsAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-byline"))
             {
                 await CheckAsync("The top date spans small thumbnails while the thumbnail aligns with the title",
