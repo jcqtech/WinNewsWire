@@ -425,7 +425,17 @@ public sealed class AppDefaults
     /// <see cref="Appearance.System"/> — follow Windows.</summary>
     public Appearance AppearanceMode
     {
-        get => (Appearance)Get(Key.AppearanceMode, (int)Appearance.System);
-        set => Set(Key.AppearanceMode, (int)value);
+        get
+        {
+            var value = (Appearance)Get(Key.AppearanceMode, (int)Appearance.System);
+            if (Enum.IsDefined(value)) return value;
+            System.Diagnostics.Trace.TraceWarning($"Unknown appearance value {(int)value}; following the system.");
+            return Appearance.System;
+        }
+        set
+        {
+            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
+            Set(Key.AppearanceMode, (int)value);
+        }
     }
 }

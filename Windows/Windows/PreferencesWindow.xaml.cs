@@ -38,6 +38,7 @@ public sealed partial class PreferencesWindow : Window
         WindowIconHelper.ApplyFlatIcon(this);
         WindowThemeHelper.Attach(this);
         PopulateCombos();
+        PopulateAppearanceOptions();
         AppDefaults.Shared.Changed += PreferencesDefaultsChanged;
         AppService.Shared.AutomationStateChanged += AutomationStateChanged;
         _loaded = true;
@@ -105,6 +106,7 @@ public sealed partial class PreferencesWindow : Window
 
     private void PreferencesDefaultsChanged(object? sender, string key)
     {
+        if (!_closed && SyncAppearancePreference(key)) return;
         if (!_closed && key == AppDefaultsSharedExtensions.TimelineFeedIconsDisplayKey)
         {
             if (DispatcherQueue.HasThreadAccess) SyncTimelineFeedIcons();

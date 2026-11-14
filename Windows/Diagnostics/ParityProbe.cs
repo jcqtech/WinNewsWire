@@ -151,6 +151,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineSeparatorsAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--appearance-palette"))
+            {
+                await CheckAsync("Appearance settings apply and synchronize system, light and dark modes",
+                    () => CheckAppearancePaletteAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);
