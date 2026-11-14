@@ -23,7 +23,7 @@ internal static partial class ParityProbe
         list.UpdateLayout();
     }
 
-    private static async Task<object?> CheckTimelineIconPolicyAsync(MainWindow window, string serverUrl)
+    private static async Task<object?> CheckTimelineIconPolicyAsync(MainWindow window, string serverUrl, bool recheck = false)
     {
         var content = window.ProbeContent;
         var model = content.ViewModel;
@@ -41,6 +41,26 @@ internal static partial class ParityProbe
             model.IsUnifiedLayout = false;
             model.ArticleItems = new ObservableCollection<Models.FeedItem>
                 { new() { Id = "policy", Title = "Icon policy", FeedTitle = feed.NameForDisplay } };
+            if (recheck)
+            {
+                AppDefaults.Shared.UseColumnLayout = false;
+                AppDefaults.Shared.SetTimelineFeedIconsDisplay(TimelineFeedIconsDisplay.Automatic);
+                foreach (bool avatar in new[] { false, true, false })
+                {
+                    var author = Articles.Author.Create(null, "Fixture author", null, avatar ? serverUrl + "/avatar" : null, null)!;
+                    var article = new Articles.Article(account.AccountID, "policy", feed.FeedID, "policy",
+                        "Icon policy", "<p>Policy fixture.</p>", null, null, serverUrl + "/policy", null, null, null,
+                        null, null, authors: new System.Collections.Generic.HashSet<Articles.Author> { author },
+                        attachments: null, status: new Articles.ArticleStatus("policy", true, false, DateTime.UnixEpoch));
+                    model.ArticleItems[0] = new Models.FeedItem { Id = "policy", AccountID = account.AccountID, SourceArticle = article };
+                    await WaitFor(() => Task.FromResult(list.ContainerFromIndex(0) is ListViewItem { IsLoaded: true }), "Replaced icon-policy row");
+                    await SettleAppearanceAsync(window, list);
+                    var icon = Descendants((DependencyObject)list.ContainerFromIndex(0)).OfType<IconView>().Single();
+                    Require((icon.Visibility == Visibility.Visible) == avatar,
+                        "Automatic icons were not rechecked after the same-size timeline gained or lost an author avatar.");
+                }
+                return new { SameFeed = true, SameCount = true, AvatarAdded = true, AvatarRemoved = true };
+            }
             foreach (var (columns, mode, visible) in new[]
             {
                 (true, TimelineFeedIconsDisplay.Never, false),

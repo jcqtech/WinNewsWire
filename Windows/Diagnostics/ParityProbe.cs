@@ -181,6 +181,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineIconPolicyAsync(window, server.Url));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-icon-recheck"))
+            {
+                await CheckAsync("Automatic timeline icons recheck avatars when article content changes without changing count or scope",
+                    () => CheckTimelineIconPolicyAsync(window, server.Url, recheck: true));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);
