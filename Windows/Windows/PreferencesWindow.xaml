@@ -127,7 +127,14 @@
                         </Grid>
                     </Border>
 
-                    <TextBlock x:Name="TimelineHeading" Style="{StaticResource SectionHeadingStyle}" Margin="2,12,0,4" />
+                    <Expander x:Name="TimelinePane" Style="{StaticResource SettingsExpanderStyle}" IsExpanded="True" Margin="0,12,0,0">
+                        <Expander.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <SymbolIcon Symbol="List" Width="16" Height="16" Margin="0,0,12,0" />
+                                <TextBlock x:Name="TimelineHeading" Style="{StaticResource SectionHeadingStyle}" />
+                            </StackPanel>
+                        </Expander.Header>
+                        <StackPanel Spacing="8">
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel Spacing="6">
                             <Grid ColumnSpacing="12">
@@ -164,6 +171,8 @@
                     </Border>
 
                     <StackPanel x:Name="TimelineAppearanceOptions" Spacing="8" />
+                        </StackPanel>
+                    </Expander>
 
                     <!-- Reading -->
                     <TextBlock Text="Reading" Style="{StaticResource SectionHeadingStyle}"

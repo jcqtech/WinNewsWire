@@ -39,6 +39,7 @@ public sealed partial class PreferencesWindow : Window
         WindowThemeHelper.Attach(this);
         PopulateCombos();
         PopulateAppearanceOptions();
+        PopulateTimelineOptions();
         AppDefaults.Shared.Changed += PreferencesDefaultsChanged;
         AppService.Shared.AutomationStateChanged += AutomationStateChanged;
         _loaded = true;

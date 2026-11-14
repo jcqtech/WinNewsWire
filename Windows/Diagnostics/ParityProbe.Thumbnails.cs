@@ -934,6 +934,12 @@ internal static partial class ParityProbe
             preferences.Activate();
             var choices = (ComboBox)((FrameworkElement)preferences.Content).FindName("TimelineThumbnailsCombo");
             await WaitFor(() => Task.FromResult(choices.IsLoaded), "Thumbnail choice picker");
+            var timeline = ((FrameworkElement)preferences.Content).FindName("TimelinePane") as Expander;
+            Require(timeline is not null && Descendants(timeline).Contains(choices)
+                && new[] { "TimelineFeedIconsCombo", "TimelineIconSizeCombo", "TimelineTextSizeCombo", "TimelineNumberOfLinesCombo",
+                    "TimelineShowFullTitlesToggle", "TimelineFadeReadArticlesToggle", "TimelineShowSeparatorsToggle" }
+                    .All(name => Descendants(timeline).OfType<FrameworkElement>().Any(control => control.Name == name)),
+                "Timeline preferences are not grouped in their own pane.");
             var appearance = ((FrameworkElement)preferences.Content).FindName("AppearancePane") as Expander;
             Require(appearance is not null && Descendants(appearance).OfType<ComboBox>()
                 .Any(combo => combo.Name == "TextSizeCombo") && Descendants(appearance).OfType<ComboBox>()
