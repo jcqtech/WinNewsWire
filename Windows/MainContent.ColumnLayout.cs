@@ -193,10 +193,15 @@ public sealed partial class MainContent
     {
         var row = (Grid)sender;
         _timelineColumnRows.Add(row);
+        TimelineAppearanceRow_Loaded(sender, args);
         BindTimelineColumnRow(row);
     }
 
-    private void TimelineColumnRow_Unloaded(object sender, RoutedEventArgs args) => _timelineColumnRows.Remove((Grid)sender);
+    private void TimelineColumnRow_Unloaded(object sender, RoutedEventArgs args)
+    {
+        _timelineColumnRows.Remove((Grid)sender);
+        TimelineAppearanceRow_Unloaded(sender, args);
+    }
 
     private void TimelineColumn_WidthChanged(object? sender, EventArgs args) => UpdateTimelineTableWidth();
     private void TimelineColumn_ResizeCompleted(object? sender, EventArgs args) => SaveTimelineColumns();

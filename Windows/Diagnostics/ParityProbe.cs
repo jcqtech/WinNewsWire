@@ -217,6 +217,12 @@ internal static partial class ParityProbe
                     () => CheckTimelineFullTitlesAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--timeline-read-fading"))
+            {
+                await CheckAsync("Read fading preserves selections, unread rows and separators in both layouts",
+                    () => CheckTimelineReadFadingAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);

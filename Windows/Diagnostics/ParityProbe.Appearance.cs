@@ -204,6 +204,48 @@ internal static partial class ParityProbe
         finally { AppDefaults.Shared.SetValue(key, saved); AppDefaults.Shared.SetTimelineNumberOfLines(savedLines); }
     }
 
+    private static async Task<object?> CheckTimelineReadFadingAsync(MainWindow window)
+    {
+        const string key = "timelineFadeReadArticles";
+        bool saved = AppDefaults.Shared.GetValue(key, false);
+        try
+        {
+            return await WithAppearanceTimelineAsync(window, async (_, list, rows, preferences) =>
+            {
+                var toggle = Descendants(preferences.Content).OfType<ToggleSwitch>()
+                    .SingleOrDefault(control => control.Name == "TimelineFadeReadArticlesToggle");
+                Require(toggle is not null, "Preferences have no read-article fading control.");
+                Grid Root(int index) => Descendants((DependencyObject)list.ContainerFromIndex(index)).OfType<Grid>()
+                    .Single(grid => grid.Name is "TimelineRowContent" or "TimelineColumnRow");
+                double ContentOpacity(int index) => Root(index).Children.First(child => child is StackPanel or TextBlock).Opacity;
+                rows[1].IsRead = false;
+                toggle!.IsOn = true;
+                await SettleAppearanceAsync(window, list);
+                Require(Math.Abs(ContentOpacity(0) - 0.6) < 0.000001 && ContentOpacity(1) == 1,
+                    $"Read fading affected unread articles or did not fade read content: {ContentOpacity(0)}, {ContentOpacity(1)}.");
+                Require(Root(0).Opacity == 1 && Root(0).Children.OfType<Border>().Single(border => border.Name == "TimelineRowSeparator").Opacity == 1,
+                    "Read fading affected the row background or separator.");
+                list.SelectedItem = rows[0];
+                await SettleAppearanceAsync(window, list);
+                Require(ContentOpacity(0) == 1 && ((ListViewItem)list.ContainerFromIndex(0)).Opacity == 1,
+                    "The selected read row or its highlight was faded.");
+                list.SelectedItems.Clear();
+                rows[0].IsRead = false;
+                await SettleAppearanceAsync(window, list);
+                Require(ContentOpacity(0) == 1, "Marking an article unread retained its fade.");
+                rows[0].IsRead = true;
+                AppDefaults.Shared.UseColumnLayout = true;
+                await SettleAppearanceAsync(window, list);
+                Require(Math.Abs(ContentOpacity(0) - 0.6) < 0.000001 && ContentOpacity(1) == 1, "Column cells ignored read fading.");
+                await Task.Run(() => AppDefaults.Shared.SetValue(key, false));
+                await SettleAppearanceAsync(window, list);
+                Require(!toggle.IsOn && ContentOpacity(0) == 1, "Disabling read fading left visible cells dim.");
+                return new { SelectedProtected = true, UnreadProtected = true, SeparatorProtected = true, Columns = true, ReadChanges = true };
+            });
+        }
+        finally { AppDefaults.Shared.SetValue(key, saved); }
+    }
+
     private static async Task SettleAppearanceAsync(MainWindow window, ListView list)
     {
         list.UpdateLayout();

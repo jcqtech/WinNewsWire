@@ -18,6 +18,9 @@ public static class AppDefaultsSharedExtensions
     public const string TimelineTextSizeKey = "timelineTextSize";
     public const string TimelineNumberOfLinesKey = "timelineNumberOfLines";
     public const string TimelineShowFullTitlesKey = "timelineShowFullTitles";
+    public const string TimelineFadeReadArticlesKey = "timelineFadeReadArticles";
+    public static bool GetTimelineFadeReadArticles(this AppDefaults defaults) => defaults.GetValue(TimelineFadeReadArticlesKey, false);
+    public static void SetTimelineFadeReadArticles(this AppDefaults defaults, bool fade) => defaults.SetValue(TimelineFadeReadArticlesKey, fade);
     public static bool GetTimelineShowFullTitles(this AppDefaults defaults) => defaults.GetValue(TimelineShowFullTitlesKey, false);
     public static void SetTimelineShowFullTitles(this AppDefaults defaults, bool show) => defaults.SetValue(TimelineShowFullTitlesKey, show);
 

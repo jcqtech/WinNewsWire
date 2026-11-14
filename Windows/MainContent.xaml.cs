@@ -887,7 +887,7 @@ public sealed partial class MainContent : UserControl
                 throw new InvalidOperationException("The timeline icon-size dispatcher is unavailable.");
             return;
         }
-        if (key == AppDefaultsSharedExtensions.TimelineShowSeparatorsKey && !_shuttingDown)
+        if (key is AppDefaultsSharedExtensions.TimelineShowSeparatorsKey or AppDefaultsSharedExtensions.TimelineFadeReadArticlesKey && !_shuttingDown)
         {
             if (DispatcherQueue.HasThreadAccess) QueueTimelineAppearanceUpdate();
             else if (!DispatcherQueue.TryEnqueue(QueueTimelineAppearanceUpdate))

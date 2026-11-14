@@ -47,6 +47,9 @@ public sealed partial class PreferencesWindow
         AddAppearanceToggle(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineShowFullTitlesKey,
             "TimelineShowFullTitles", "TimelineShowFullTitlesToggle",
             () => AppDefaults.Shared.GetTimelineShowFullTitles(), value => AppDefaults.Shared.SetTimelineShowFullTitles(value));
+        AddAppearanceToggle(TimelineAppearanceOptions, AppDefaultsSharedExtensions.TimelineFadeReadArticlesKey,
+            "TimelineFadeReadArticles", "TimelineFadeReadArticlesToggle",
+            () => AppDefaults.Shared.GetTimelineFadeReadArticles(), value => AppDefaults.Shared.SetTimelineFadeReadArticles(value));
         SyncTimelineRowsAvailability();
     }
 
