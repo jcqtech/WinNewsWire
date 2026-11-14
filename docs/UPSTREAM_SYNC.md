@@ -18,10 +18,11 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`536c061f17f06455bf4fff525632944418f0bfe4`**. This synchronization is in progress.
+`d49c25abf9014e451cc732cbf4324ffbb2a74d74`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is skipping hidden timeline icon lookups, `c300d573f3e8377b0f92d0942cf1e22b94a6d2f1`;
+is separating oversized thumbnail rejections from icons and updating unchanged-response
+validators, `b24d552c816745c3bd5ec2937aa40dda7853665b`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -421,8 +422,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **226 Ported, 82 Covered, 88 Skipped, and 109 Pending**
-source commits, backed by **241 source-attributed Windows port commits**.
+The inventory currently has **230 Ported, 84 Covered, 94 Skipped, and 97 Pending**
+source commits, backed by **245 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -520,6 +521,24 @@ recovery and settings selectors pass after restoration. URL/homepage-indexed
 notifications preserve the same checks. A 512-cell negative metadata lookup
 allocation control fails pristine source and passes with session lookup tracking,
 including successful retry after explicit cache cleanup.
+Hidden timeline rows now skip image lookups without suppressing the selected
+reader's icon; preference changes populate newly visible rows. Its pristine-source
+native control fails, and all five restored image selectors pass.
+Every network notification refreshes thumbnail choices and realized row geometry,
+including unchanged permission and offline placeholders. Separate original-service
+and original-native-handler controls fail notification and row-height assertions.
+The restored geometry probe preserves the top row within one pixel in both directions
+without HTTP traffic. Reader thumbnail sharing now applies only to standard layouts
+with thumbnails enabled; its native column/None/standard/unified fixture passes,
+while the original column behavior fails.
+None now appears first in both native thumbnail choice controls, without renumbering
+saved Windows preferences. Each original control independently fails its ordering
+assertion; the restored native fixture preserves the selected mode. All five shared
+thumbnail preference tests and both warning-free x64 builds pass.
+The subsequent Swift transient-result alias and typed image-inserter base URL are
+already covered by Windows behavior. Swift launch instrumentation, private renames
+and singleton-constructor restrictions, plus UIKit preview/inspector changes, have
+explicit platform-specific dispositions in the inventory.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
@@ -534,6 +553,9 @@ viewport check covers overlapping moves in both directions, unchanged viewports
 and never-visible metadata discovery, and fails with the original lookahead.
 The updated viewport probe also verifies full fetch-operation completion off UI
 and decoded-pixel retention when only HTML choices are cleared.
+After the network-geometry port, one viewport run failed its offscreen-lookahead
+assertion; its immediate diagnostic rerun and the decode probe passed. The
+intermittent failure remains unexplained and is not a clean full-gate result.
 Regular and probe x64 builds at the fetch-time integration checkpoint are
 warning-free. All six focused cache retirement
 tests passed at their port checkpoint.
