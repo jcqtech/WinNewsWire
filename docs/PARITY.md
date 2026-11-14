@@ -1,5 +1,20 @@
 # NetNewsWire parity
 
+## Current review
+
+The current source checkpoint is
+`7908c801bf7c97fa7cca9ef78cf51b33fb853e6a`.
+See [PARITY_REVIEW.md](PARITY_REVIEW.md) for the 2026-11-14 comparison, confirmed
+remaining gaps, recovered intentional UX decisions, regression corrections and
+measured performance limits. [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md) records the
+completed 505-commit source inventory.
+
+The detailed checklist below is the **historical baseline**. Its older
+"blocked", "compile-only", test-count and reference-version statements must not
+be read as current results. In particular, source-ledger completion does not
+close the CloudKit, retention, avatar, theme, keyboard and deployment gaps
+identified in the new review.
+
 ## Reference and scope
 
 The reference is Ranchero-Software/NetNewsWire at

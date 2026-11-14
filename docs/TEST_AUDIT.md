@@ -1,5 +1,20 @@
 # Test parity audit
 
+## Current verification
+
+The 2026-11-14 follow-up review is in [PARITY_REVIEW.md](PARITY_REVIEW.md).
+The complete backend solution executed 2,460 cases: **2,459 passed, one
+pre-existing AccountManager fixture failed, none skipped**. Current regular and
+Probe x64 builds pass, as do focused native regressions for the recent ports and
+audit corrections. A pre-sync production build was also measured for comparison.
+The foreground input/screen-presentation gate could not be certified on the
+available desktop; long-tail UI pauses remain an explicit limitation.
+
+The suite mapping and dated results below describe the older baseline and
+subsequent historical runs, not a current claim of exact test parity or complete
+runtime verification. Counts of source test functions and expanded xUnit cases
+must not be used as a product-parity percentage.
+
 Reference: NetNewsWire `fb086eb7684e9fdb90855c4e033a6beba4325c5e`
 (2026-10-16 checkout at `D:\NetNewsWire`).
 

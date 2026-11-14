@@ -128,7 +128,8 @@ internal static partial class ParityProbe
 
     private sealed record UiPerformanceSample(string Scenario, double ElapsedMs, double CpuMs, double AllocatedMB,
         double MaximumUiGapMs, int ToolbarStates, int ToolbarMeasurements, int ToolbarLayouts,
-        int HeaderColumnRebuilds, int TitleBarChecks, int IconRenderReadbacks, int IconPixelDecodes);
+        int HeaderColumnRebuilds, int TitleBarChecks, int IconRenderReadbacks, int IconPixelDecodes,
+        double GcPauseMs, int Gen2Collections);
 
     private static async Task<object?> CheckPerformanceAsync(MainWindow window, string serverUrl)
     {
@@ -165,6 +166,8 @@ internal static partial class ParityProbe
             int iconReadbacks = Helpers.IconView.ProbeRenderReadbacks;
             int iconDecodes = Helpers.IconView.ProbePixelDecodes;
             long allocated = GC.GetTotalAllocatedBytes();
+            var gcPause = GC.GetTotalPauseDuration();
+            int gen2 = GC.CollectionCount(2);
             using var process = Process.GetCurrentProcess();
             double cpu = process.TotalProcessorTime.TotalMilliseconds;
             double maximumGap = 0;
@@ -197,7 +200,8 @@ internal static partial class ParityProbe
                 process.TotalProcessorTime.TotalMilliseconds - cpu, (GC.GetTotalAllocatedBytes() - allocated) / 1048576d,
                 maximumGap, after.State - before.State, after.Presentation - before.Presentation,
                 after.Layout - before.Layout, after.Columns - before.Columns, window.ProbeTitleBarRegionChecks - titleChecks,
-                Helpers.IconView.ProbeRenderReadbacks - iconReadbacks, Helpers.IconView.ProbePixelDecodes - iconDecodes);
+                Helpers.IconView.ProbeRenderReadbacks - iconReadbacks, Helpers.IconView.ProbePixelDecodes - iconDecodes,
+                (GC.GetTotalPauseDuration() - gcPause).TotalMilliseconds, GC.CollectionCount(2) - gen2);
             samples.Add(result);
             return result;
         }
@@ -306,7 +310,11 @@ internal static partial class ParityProbe
                 ArticleCount = articleCount, Samples = samples, MaximumRealizedRows = maximumRealizedRows,
                 SelectionMedianMs = selectionLatency.Order().ElementAt(selectionLatency.Count / 2),
                 SelectionMaximumMs = selectionLatency.Max(), CancellationLogWrites = cancellationWrites,
-                HiddenWebPageSuspended = hiddenWebSuspended, ResumedWebStatePreserved = resumedState
+                HiddenWebPageSuspended = hiddenWebSuspended, ResumedWebStatePreserved = resumedState,
+                PhysicalInputMeasured = false,
+                ForegroundOwned = GetForegroundWindow() == WinRT.Interop.WindowNative.GetWindowHandle(window),
+                UiGapsOver100Ms = samples.Where(sample => sample.MaximumUiGapMs >= 100)
+                    .Select(sample => new { sample.Scenario, sample.MaximumUiGapMs, sample.GcPauseMs }).ToArray()
             };
             File.WriteAllText(Path.Combine(OutputDirectory, "performance.json"),
                 JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));

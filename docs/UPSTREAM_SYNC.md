@@ -23,8 +23,9 @@ The **fully incorporated watermark is now
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped; there are no unresolved inventory entries.
 This is a source-processing checkpoint, not a claim of complete application
-parity. The requested overall parity and performance/regression review follows
-this checkpoint and may identify earlier gaps or revisit exclusions.
+parity. The subsequent [parity and regression review](PARITY_REVIEW.md) identifies
+remaining product gaps, verified user exceptions, audit corrections and
+performance/verification limits.
 
 The latest individually ported change by source-history order is
 `7908c801bf7c97fa7cca9ef78cf51b33fb853e6a`, ported in Windows commit `2c18f30`:
@@ -434,7 +435,8 @@ Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
 The inventory has **270 Ported, 99 Covered, 136 Skipped, and 0 Pending**
-source commits, backed by **290 source-attributed Windows commits**.
+source commits, backed by **294 source-attributed Windows commits**, including
+source-specific corrections from the post-sync review.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -448,8 +450,9 @@ without reproducing the intermediate Swift shadowing/build error.
 These counts describe commit dispositions, not a percentage of product parity.
 The temporary true Mac hidden-separator default and its immediate reversal are
 not reproduced in Windows. Native row separators now have a persisted preference,
-suppress final and selected rows, update after insertions/removals, and do not
-leak column-cell borders into column layout. The case-insensitive XML lookup rename is ported
+suppress final and selected rows, and update after insertions/removals. Column
+layout independently retains the thin gray dividers explicitly requested for
+Windows; the audit corrected their accidental removal. The case-insensitive XML lookup rename is ported
 with unchanged parser behavior. Apple's Swift/Foundation beta Date-comparison
 workaround is skipped, preserving Windows' safe inclusive timestamp boundaries.
 Reviewed cache-specific platform adaptations retain the Windows binary-cache
@@ -476,8 +479,9 @@ defaults above the title, spans small thumbnails and preserves explicit user
 choices. Native rows measure independently and reserve the full small-thumbnail
 height; replacement rows retry image loading after visible indices settle.
 
-Grayscale feed icons use cached native variants with off-UI conversion and
-luminance measurement. Sidebar, timeline and reader icons update without changing
+Grayscale feed icons use shared file-based native variants with off-UI version
+checks, conversion and luminance measurement. Local view-notification counters
+are not treated as global file versions. Sidebar, timeline and reader icons update without changing
 source revisions or reloading the reading document; thumbnails and original files
 retain color. Automatic memory-pressure purges are removed, while explicit
 cleanup and independent thumbnail memory bounds remain. Confirmed sidebar
@@ -499,8 +503,13 @@ geometry, cross-account row heights, grayscale pixels and actual reader response
 bytes, unchanged reader state, deletion during sidebar changes, and the final
 network policy. New behavior has original-production negative controls; new APIs
 use explicitly identified signature/input-boundary adapters where necessary.
-The upcoming overall regression/performance audit is separate from these focused
-port checks. Historical verification details and baseline failures follow.
+The completed follow-up audit ran the full backend solution: **2,459 passed,
+one pre-existing failure, 2,460 total**. It fixed four introduced regressions and
+compared the current reader with an isolated pre-sync build. Native foreground
+input could not be certified, and both builds showed intermittent long UI gaps.
+See [PARITY_REVIEW.md](PARITY_REVIEW.md); passing structural checks are not a
+claim of lag-free scrolling. Historical verification details and baseline
+failures follow.
 
 The current image suite passes **287 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
@@ -961,9 +970,10 @@ git -C D:\NetNewsWire log --ancestry-path --reverse --topo-order --format='%H %s
 git -C D:\NetNewsWire diff $baseline HEAD
 ```
 
-Use the ancestry-path filter: this target contains a merge of old historical
-ancestry. Plain `BASELINE..HEAD` lists 11,565 commits, whereas the descendant
-range contains 505 commits (480 on the first-parent mainline). Do not re-port
+Use the ancestry-path filter: the original synchronization range contained a
+merge of old historical ancestry. From the original `fb086eb...` baseline,
+plain `BASELINE..HEAD` listed 11,565 commits, whereas the descendant range
+contained 505 commits (480 on the first-parent mainline). Do not re-port
 unrelated historical commits merely because they became reachable in that merge.
 
 The historical audit in `TEST_AUDIT.md` remains pinned to its original baseline;
