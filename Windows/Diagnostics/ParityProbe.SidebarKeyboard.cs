@@ -18,6 +18,72 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckSidebarDeletionIdentityAsync(MainWindow window, string serverUrl)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var original = window.CaptureState();
+        var account = AccountManager.Shared.DefaultAccount;
+        var first = account.AddFeed(serverUrl + "/identity-first", "A identity delete");
+        var survivor = account.AddFeed(serverUrl + "/identity-survivor", "B identity survivor");
+        var stale = account.AddFeed(serverUrl + "/identity-stale", "C identity stale");
+        var folder = account.AddFolder("D identity folder");
+        var child = account.AddFeed(serverUrl + "/identity-child", "Deleted folder child", folder);
+        var nextFolder = account.AddFolder("E identity survivor folder");
+        Feed? inserted = null;
+        var sidebar = SidebarList(content);
+        SidebarItem Row(object value) => sidebar.Items.OfType<SidebarItem>().Single(item => ReferenceEquals(item.Tag, value));
+        ContentDialog? Dialog() => VisualTreeHelper.GetOpenPopupsForXamlRoot(content.XamlRoot)
+            .SelectMany(popup => Descendants(popup.Child)).OfType<ContentDialog>().FirstOrDefault();
+        async Task Confirm(Task deletion)
+        {
+            InvokeDialogButton(Dialog() ?? throw new InvalidOperationException("The Delete confirmation disappeared."), "PrimaryButton");
+            await deletion.WaitAsync(TimeSpan.FromSeconds(15));
+        }
+        try
+        {
+            model.BuildSidebar();
+            model.SelectedSidebarItem = Row(first);
+            var deletion = content.DeleteSelectedAsync();
+            await WaitFor(() => Task.FromResult(Dialog()?.IsLoaded == true), "Identity Delete confirmation");
+            inserted = account.AddFeed(serverUrl + "/identity-inserted", "0 inserted during confirmation");
+            model.BuildSidebar();
+            await Confirm(deletion);
+            Require(!account.TopLevelFeeds.Contains(first) && account.TopLevelFeeds.Contains(inserted)
+                && account.TopLevelFeeds.Contains(survivor), "Deleting after an insertion removed the wrong subscription.");
+            Require(ReferenceEquals(model.SelectedSidebarItem?.Tag, survivor), "Deletion did not select the next surviving sidebar row.");
+            model.SelectedSidebarItem = Row(folder);
+            deletion = content.DeleteSelectedAsync();
+            await WaitFor(() => Task.FromResult(Dialog()?.IsLoaded == true), "Folder identity Delete confirmation");
+            await Confirm(deletion);
+            Require(!account.Folders.Contains(folder) && ReferenceEquals(model.SelectedSidebarItem?.Tag, nextFolder),
+                "Deleting a folder selected its removed child instead of the next surviving row.");
+            await model.UndoAsync();
+            Require(account.Folders.Contains(folder) && folder.Feeds.Contains(child), "Undo did not restore the deleted folder and child.");
+            model.UndoManager.RemoveAll();
+            model.SelectedSidebarItem = Row(stale);
+            deletion = content.DeleteSelectedAsync();
+            await WaitFor(() => Task.FromResult(Dialog()?.IsLoaded == true), "Stale identity Delete confirmation");
+            account.RemoveFeed(stale);
+            model.BuildSidebar();
+            await Confirm(deletion);
+            Require(!model.CanUndo && account.TopLevelFeeds.Contains(survivor),
+                "A vanished confirmed row created a stale deletion command.");
+            return new { InsertedRowPreserved = true, SurvivorSelected = true, FolderChildrenSkipped = true, StaleConfirmation = true, Undo = true };
+        }
+        finally
+        {
+            Dialog()?.Hide();
+            model.UndoManager.RemoveAll();
+            foreach (var feed in new[] { first, survivor, stale, child, inserted }.OfType<Feed>()) account.RemoveFeed(feed);
+            account.RemoveFolder(folder);
+            account.RemoveFolder(nextFolder);
+            model.BuildSidebar();
+            await content.RestoreStateAsync(original);
+            window.Activate();
+        }
+    }
+
     private static async Task<object?> CheckSidebarDeleteKeyAsync(MainWindow window, string serverUrl)
     {
         var content = window.ProbeContent;

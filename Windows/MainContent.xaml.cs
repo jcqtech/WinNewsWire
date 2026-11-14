@@ -1998,6 +1998,7 @@ public sealed partial class MainContent : UserControl
         _sidebarDeleteInProgress = true;
         try
         {
+            var requested = items.Select(item => item.Identity).ToHashSet();
             var confirm = new ContentDialog
             {
                 Title = "Delete?",
@@ -2012,13 +2013,46 @@ public sealed partial class MainContent : UserControl
             AppWindows.WindowThemeHelper.Apply(confirm);
             if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
 
+            var visible = _sidebarRows.ToArray();
+            var liveItems = visible.Where(item => requested.Contains(item.Identity)).ToArray();
+            if (!CanDeleteSidebarItems(liveItems))
+            {
+                ViewModel.StatusMessage = AppStrings.Get("SidebarDeleteUnavailable");
+                return;
+            }
+            var folders = liveItems.Select(item => item.Tag).OfType<AccountNs.Folder>()
+                .Select(folder => (folder.AccountID, folder.FolderID)).ToHashSet();
+            bool IsDeleted(SidebarItem item) => requested.Contains(item.Identity)
+                || item.ParentFolder is { } parent && folders.Contains((parent.AccountID, parent.FolderID));
+            bool selectionDeleted = ViewModel.SelectedSidebarItems.Any(IsDeleted);
+            SidebarItemKey? nextIdentity = null;
+            if (selectionDeleted)
+            {
+                var indices = Enumerable.Range(0, visible.Length).Where(index => liveItems.Contains(visible[index])).ToArray();
+                for (int index = indices[^1] + 1; index < visible.Length; index++)
+                {
+                    if (IsDeleted(visible[index])) continue;
+                    if (visible[index].IsSelectable) nextIdentity = visible[index].Identity;
+                    break;
+                }
+                if (nextIdentity is null && indices[0] > 0 && visible[indices[0] - 1].IsSelectable)
+                    nextIdentity = visible[indices[0] - 1].Identity;
+            }
+            bool completed = false;
             await ViewModel.RunSidebarActionAsync("Delete", async () =>
             {
-                var nodes = items.Select(item => new WinNewsWire.Tree.Node(item.Tag!,
+                var nodes = liveItems.Select(item => new WinNewsWire.Tree.Node(item.Tag!,
                     item.ParentFolder is { } folder ? new WinNewsWire.Tree.Node(folder) : null));
                 var command = DeleteCommand.Create(nodes) ?? throw new InvalidOperationException("The selected subscriptions are no longer available.");
                 await ViewModel.UndoManager.ExecuteAsync(command);
+                completed = true;
             });
+            if (completed && !_shuttingDown && selectionDeleted && ViewModel.SelectedSidebarItems.Count == 0
+                && nextIdentity is { } key && _sidebarRows.FirstOrDefault(item => item.Identity == key) is { } next)
+            {
+                ViewModel.SetSelectedSidebarItems([next]);
+                SidebarListView.ScrollIntoView(next);
+            }
         }
         finally { _sidebarDeleteInProgress = false; }
     }

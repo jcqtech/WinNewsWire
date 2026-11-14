@@ -255,4 +255,5 @@
   <data name="TimelineFadeReadArticles" xml:space="preserve"><value>Fade read articles</value></data>
   <data name="TimelineFeedNameAndDateAboveTitle" xml:space="preserve"><value>Feed name and date above title</value></data>
   <data name="GrayscaleIcons" xml:space="preserve"><value>Grayscale icons</value></data>
+  <data name="SidebarDeleteUnavailable" xml:space="preserve"><value>The selected subscriptions are no longer available in the sidebar.</value></data>
 </root>

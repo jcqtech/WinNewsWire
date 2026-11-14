@@ -185,6 +185,12 @@ internal static partial class ParityProbe
                 });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--sidebar-delete-identity"))
+            {
+                await CheckAsync("Confirmed sidebar deletion uses live identities and selects a surviving row",
+                    () => CheckSidebarDeletionIdentityAsync(window, server.Url));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--sidebar-icons"))
             {
                 await CheckAsync("Sidebar feed, folder and smart-feed icons follow preferences without replacing rows",
