@@ -18,11 +18,11 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`d49c25abf9014e451cc732cbf4324ffbb2a74d74`**. This synchronization is in progress.
+`ec90003718da2ac88783e61fb34854dcd6d6afde`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is separating oversized thumbnail rejections from icons and updating unchanged-response
-validators, `b24d552c816745c3bd5ec2937aa40dda7853665b`;
+is the reader scroll-anchor merge, `169139101d464466510f67fa9bdfc08d1e161150`
+(including source change `fc2a39f5ffc2daea943733e3732ee5494665863e`);
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -422,8 +422,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **230 Ported, 84 Covered, 94 Skipped, and 97 Pending**
-source commits, backed by **245 source-attributed Windows port commits**.
+The inventory currently has **232 Ported, 85 Covered, 106 Skipped, and 82 Pending**
+source commits, backed by **247 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -463,7 +463,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **283 tests** after memory-only/fetch-time HTML
+The current image suite passes **287 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
 visible-only loading, priority-free queues, fixed retry dates, actual-file-size
 launch pruning, schema upgrades, icon recovery and saved-favicon rediscovery.
@@ -539,6 +539,23 @@ The subsequent Swift transient-result alias and typed image-inserter base URL ar
 already covered by Windows behavior. Swift launch instrumentation, private renames
 and singleton-constructor restrictions, plus UIKit preview/inspector changes, have
 explicit platform-specific dispositions in the inventory.
+Unchanged HTTP 200 and 304 image checks now save new ETag/Last-Modified values
+alongside the next-check date, without rewriting pixels or announcing replacement.
+Later responses without validators preserve the saved values; a new ETag-only
+response clears an obsolete Last-Modified value. Three pristine-source controls
+fail and all 287 image tests pass after restoration. Existing Windows oversized
+thumbnail isolation also passes a direct same-URL feed-icon recovery regression.
+The desktop View menu now groups sidebar, timeline, status-bar and toolbar
+commands, preserving Windows commands and accelerators. Its native original-order
+control fails, then passes after restoration; both x64 builds remain warning-free.
+Reviewed UIKit edge-swipe, translucent find controls, image-viewer rotation and
+iPhone Duo navigation-bar fixes, including their first-parent merge patches, are
+explicitly skipped. The shared footnote-positioning merge is covered by its
+earlier Windows port, not skipped with the iOS changes.
+The AppKit vector-icon rasterization optimization is also skipped: Windows'
+shared native icon path uses worker-side WIC raster decoding, not NSImage vector
+drawing. This does **not** claim shared SVG icon support; that format remains
+unsupported by the Windows shared native icon decoder.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
