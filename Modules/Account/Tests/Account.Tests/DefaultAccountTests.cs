@@ -112,10 +112,12 @@ public sealed class DefaultAccountTests : IDisposable
         Assert.Equal(directory, Assert.Single(Directory.GetDirectories(AppConfig.AccountsDirectory)));
     }
 
-    [Fact]
-    public void ARemoteProfileAtTheReservedDefaultPathIsNotReinterpretedOrOverwritten()
+    [Theory]
+    [InlineData(AccountType.Feedbin)]
+    [InlineData(AccountType.CloudKit)]
+    public void ARemoteProfileAtTheReservedDefaultPathIsNotReinterpretedOrOverwritten(AccountType type)
     {
-        var path = WriteMetadata("OnMyMac", AccountType.Feedbin, "Existing remote data");
+        var path = WriteMetadata("OnMyMac", type, "Existing remote data");
         var metadata = File.ReadAllText(path);
         Assert.Throws<InvalidDataException>(() => new AccountManager());
         Assert.Equal(metadata, File.ReadAllText(path));

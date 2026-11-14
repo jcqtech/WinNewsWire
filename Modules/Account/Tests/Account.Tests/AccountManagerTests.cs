@@ -106,17 +106,25 @@ public class AccountManagerTests : IDisposable
         finally { AccountDelegateFactory.Resolver = previous; }
     }
 
-    [Fact]
-    public void UnsupportedAccountFilesAreKept()
+    [Theory]
+    [InlineData((int)AccountType.CloudKit)]
+    [InlineData(999)]
+    public void UnsupportedAccountFilesAreKept(int accountType)
     {
-        var directory = Path.Combine(AppConfig.AccountsDirectory, "OnMyMac");
+        const string accountID = "Unsupported-profile";
+        var directory = Path.Combine(AppConfig.AccountsDirectory, accountID);
         Directory.CreateDirectory(directory);
         var metadata = Path.Combine(directory, "Meta.json");
-        const string original = """{"Type":2,"Name":"iCloud","IsActive":true}""";
+        var original = JsonSerializer.Serialize(new { Type = accountType, Name = "Unsupported account", IsActive = true });
+        var payload = Path.Combine(directory, "preserved-history.bin");
+        byte[] originalPayload = [1, 3, 5, 7];
         File.WriteAllText(metadata, original);
+        File.WriteAllBytes(payload, originalPayload);
         using var manager = new AccountManager();
         Assert.Equal(original, File.ReadAllText(metadata));
-        Assert.DoesNotContain(manager.Accounts, a => a.AccountID == "OnMyMac");
+        Assert.Equal(originalPayload, File.ReadAllBytes(payload));
+        Assert.DoesNotContain(manager.Accounts, a => a.AccountID == accountID);
+        Assert.Equal(AccountManager.DefaultAccountID, manager.DefaultAccount.AccountID);
         Assert.IsType<LocalAccountDelegate>(Assert.Single(manager.Accounts).Delegate);
     }
 
