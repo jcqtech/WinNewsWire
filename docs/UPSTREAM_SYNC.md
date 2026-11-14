@@ -18,11 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`ec90003718da2ac88783e61fb34854dcd6d6afde`**. This synchronization is in progress.
+`257edf35fd33f696c6da50158b1a7bfe8b4b8fa9`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is the reader scroll-anchor merge, `169139101d464466510f67fa9bdfc08d1e161150`
-(including source change `fc2a39f5ffc2daea943733e3732ee5494665863e`);
+is removing thumbnail background fills, `a9b0e48726ea2a423eb95b7ce2f04c66a13932ef`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -422,8 +421,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **232 Ported, 85 Covered, 106 Skipped, and 82 Pending**
-source commits, backed by **247 source-attributed Windows port commits**.
+The inventory currently has **233 Ported, 88 Covered, 118 Skipped, and 66 Pending**
+source commits, backed by **250 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -556,6 +555,25 @@ The AppKit vector-icon rasterization optimization is also skipped: Windows'
 shared native icon path uses worker-side WIC raster decoding, not NSImage vector
 drawing. This does **not** claim shared SVG icon support; that format remains
 unsupported by the Windows shared native icon decoder.
+Basic reader paragraph/top-offset anchoring was already supplied by Chromium and
+is verified across actual narrow/wide WinUI reader-host sizes. The later fractional
+anchor is now adapted: skip whitespace-only containers, retain the proportion
+read within a paragraph and any gap offset, and ignore intermediate resize
+telemetry. A native host timer restores the isolated-world anchor and reports the
+settled scroll position, without enabling publisher JavaScript. This avoids
+document timers that do not execute with the reader's script policy disabled.
+The timer and handlers are released at shutdown; stale navigation contexts cannot
+modify a new article. The WKWebView inline-script extraction is intentionally not
+copied into publisher-accessible page globals.
+The exact original reader, with a probe-only context accessor, fails proportional
+reading-place preservation. A separate original-first-hit control records the
+wrong whitespace-only container. All three restored native paragraph/fraction/gap
+selectors pass in both resize directions and verify current saved positions.
+The broader reader gate initially timed out because its deliberately held favicon
+request was included in the hidden-icon port's new completion barrier. Its two
+pre-release barriers now await only view operations, keeping complete image drains
+after release and elsewhere. All **12 reader groups and both shutdown checks**
+pass after this dependent probe correction; the older full-UI caveats below remain.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
