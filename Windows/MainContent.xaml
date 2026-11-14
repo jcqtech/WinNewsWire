@@ -22,12 +22,6 @@
         <converters:IsReadToUnreadDotConverter x:Key="IsReadToUnreadDot" />
         <converters:StarredToGlyphConverter x:Key="StarredToGlyph" />
         <converters:PathToImageSourceConverter x:Key="PathToImage" />
-        <Style x:Key="SmallTimelineThumbnailStyle" TargetType="helpers:ThumbnailView">
-            <Setter Property="FillBrush" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
-        </Style>
-        <Style x:Key="LargeTimelineThumbnailStyle" TargetType="helpers:ThumbnailView">
-            <Setter Property="FillBrush" Value="{ThemeResource ControlAltFillColorTertiaryBrush}" />
-        </Style>
         <AcrylicBrush x:Key="TimelineHeaderAcrylic" TintColor="{ThemeResource LayerFillColorDefault}"
                       TintOpacity="0.65" FallbackColor="{ThemeResource SolidBackgroundFillColorBase}" />
         <Style x:Key="ColumnTimelineItemStyle" TargetType="ListViewItem">

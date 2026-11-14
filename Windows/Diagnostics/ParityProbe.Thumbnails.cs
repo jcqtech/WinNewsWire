@@ -29,6 +29,67 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckThumbnailPresentationAsync(MainWindow window)
+    {
+        var host = Descendants(window.ProbeContent).OfType<Grid>().First();
+        var image = new ThumbnailView { Width = 80, Height = 80, CornerRadius = new CornerRadius(12) };
+        Grid.SetRowSpan(image, Math.Max(1, host.RowDefinitions.Count));
+        host.Children.Add(image);
+        async Task SetImageAsync(ImageSource? source)
+        {
+            var rendered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            int frames = 0;
+            void Rendering(object? sender, object args) { if (++frames >= 2) rendered.TrySetResult(); }
+            CompositionTarget.Rendering += Rendering;
+            try
+            {
+                image.ImageSource = source;
+                await rendered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            finally { CompositionTarget.Rendering -= Rendering; }
+        }
+        try
+        {
+            await WaitFor(() => Task.FromResult(image.IsLoaded && image.ActualWidth == 80), "Thumbnail presentation fixture");
+            var raster = new RenderTargetBitmap();
+            foreach (var theme in new[] { ElementTheme.Light, ElementTheme.Dark })
+            {
+                image.RequestedTheme = theme;
+                await WaitFor(() => Task.FromResult(image.ActualTheme == theme), "Thumbnail presentation theme");
+                await raster.RenderAsync(image, 80, 80);
+                var empty = (await raster.GetPixelsAsync()).ToArray();
+                Require(empty.All(value => value == 0), "An empty thumbnail retained a background fill.");
+            }
+            await SetImageAsync(ThumbnailBands(portrait: true));
+            await raster.RenderAsync(image, 80, 80);
+            var portrait = (await raster.GetPixelsAsync()).ToArray();
+            int side = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 8) * 4;
+            int top = (raster.PixelHeight / 8 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+            int bottom = (raster.PixelHeight * 13 / 16 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+            Require(portrait[side + 3] == 0 && portrait[top + 2] > 200 && portrait[top] < 50
+                && portrait[bottom] > 200 && portrait[bottom + 2] < 50,
+                $"The loaded portrait retained a fill or lost its top/bottom pixels: side alpha {portrait[side + 3]}, "
+                + $"top R/B/A {portrait[top + 2]}/{portrait[top]}/{portrait[top + 3]}, "
+                + $"bottom R/B/A {portrait[bottom + 2]}/{portrait[bottom]}/{portrait[bottom + 3]}, "
+                + $"raster {raster.PixelWidth}x{raster.PixelHeight}.");
+            await SetImageAsync(ThumbnailBands(portrait: false));
+            image.Width = 160;
+            await WaitFor(() => Task.FromResult(image.ActualWidth == 160), "Wide thumbnail presentation");
+            await raster.RenderAsync(image, 160, 80);
+            var wide = (await raster.GetPixelsAsync()).ToArray();
+            int left = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 16) * 4;
+            int right = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth * 15 / 16) * 4;
+            Require(wide[left + 2] > 200 && wide[left] < 50 && wide[right] > 200 && wide[right + 2] < 50 && wide[3] == 0,
+                "The wide thumbnail lost an image edge or rounded clipping.");
+            await SetImageAsync(null);
+            await raster.RenderAsync(image, 160, 80);
+            Require((await raster.GetPixelsAsync()).ToArray().All(value => value == 0),
+                "Recycling a thumbnail restored an obsolete fill.");
+            return new { TransparentEmpty = true, TransparentLetterbox = true, CompleteImages = true, RoundedClipping = true };
+        }
+        finally { host.Children.Remove(image); }
+    }
+
     private static async Task<object?> CheckThumbnailsAsync(MainWindow window)
     {
         int largeHeight = Math.Min(600, (int)Math.Ceiling(180 * WindowsScreen.MaxScreenScale()));
@@ -173,15 +234,15 @@ internal static partial class ParityProbe
             await raster.RenderAsync(image, 80, 80);
             var dark = (await raster.GetPixelsAsync()).ToArray();
             int center = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
-            Require(!light.AsSpan(center, 4).SequenceEqual(dark.AsSpan(center, 4)),
-                "The empty thumbnail placeholder did not follow its actual light/dark theme.");
+            Require(light[center + 3] == 0 && dark[center + 3] == 0,
+                "The empty thumbnail retained a background fill.");
             image.ImageSource = reloaded;
             await raster.RenderAsync(image, 80, 80);
             var pixels = (await raster.GetPixelsAsync()).ToArray();
             int offset = (raster.PixelHeight / 8 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
             Require(pixels.AsSpan(offset, 4).SequenceEqual(dark.AsSpan(offset, 4))
                 && pixels[center] < 50 && pixels[center + 1] < 50 && pixels[center + 2] > 200 && pixels[center + 3] == 255,
-                "The default thumbnail presentation did not fit the whole image on its fill.");
+                "The default thumbnail presentation did not fit the whole image without a fill.");
             Require(pixels[3] == 0, "The thumbnail image was not clipped to its rounded corner.");
             image.ImageSource = null;
             await raster.RenderAsync(image, 80, 80);
@@ -190,15 +251,14 @@ internal static partial class ParityProbe
                 "Recycling the thumbnail view did not restore its placeholder.");
 
             image.ImageSource = ThumbnailBands(portrait: true);
-            image.FillBrush = new SolidColorBrush(Microsoft.UI.Colors.Magenta);
             await raster.RenderAsync(image, 80, 80);
             var fullPortrait = (await raster.GetPixelsAsync()).ToArray();
             int side = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 8) * 4;
             int bottom = (raster.PixelHeight * 13 / 16 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
-            Require(fullPortrait[side] > 200 && fullPortrait[side + 1] < 50 && fullPortrait[side + 2] > 200
+            Require(fullPortrait[side + 3] == 0
                 && fullPortrait[offset + 2] > 200 && fullPortrait[offset] < 50
                 && fullPortrait[bottom] > 200 && fullPortrait[bottom + 2] < 50,
-                "Fit mode lost the custom fill or cropped the portrait's top/bottom.");
+                "Fit mode retained a fill or cropped the portrait's top/bottom.");
             image.ImageSource = ThumbnailBands(portrait: false);
             await raster.RenderAsync(image, 80, 80);
             var wide = (await raster.GetPixelsAsync()).ToArray();

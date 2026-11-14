@@ -251,7 +251,6 @@ public sealed partial class MainContent
         Grid.SetColumnSpan(view, large ? 4 - largeColumn : 1);
         Grid.SetRow(view, large ? 1 : 0);
         view.Margin = large ? new Thickness(0, 8, 0, 0) : new Thickness(0);
-        view.Style = (Style)Resources[large ? "LargeTimelineThumbnailStyle" : "SmallTimelineThumbnailStyle"];
         if (large)
         {
             view.Width = double.NaN;

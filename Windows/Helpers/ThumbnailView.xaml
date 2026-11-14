@@ -6,20 +6,10 @@
     xmlns:local="using:WinNewsWire.Helpers"
     IsHitTestVisible="False"
     AutomationProperties.AccessibilityView="Raw">
-    <UserControl.Style>
-        <Style TargetType="local:ThumbnailView">
-            <Setter Property="FillBrush" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
-        </Style>
-    </UserControl.Style>
     <Border CornerRadius="{Binding CornerRadius, ElementName=Root}">
-        <Grid>
-            <Border Background="{Binding FillBrush, ElementName=Root}" />
-            <Border>
-                <Border.Background>
-                    <ImageBrush ImageSource="{Binding ImageSource, ElementName=Root}"
-                                Stretch="Uniform" AlignmentX="Center" AlignmentY="Center" />
-                </Border.Background>
-            </Border>
-        </Grid>
+        <Border.Background>
+            <ImageBrush ImageSource="{Binding ImageSource, ElementName=Root}"
+                        Stretch="Uniform" AlignmentX="Center" AlignmentY="Center" />
+        </Border.Background>
     </Border>
 </UserControl>

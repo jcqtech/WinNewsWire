@@ -145,6 +145,12 @@ internal static partial class ParityProbe
                 });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-presentation"))
+            {
+                await CheckAsync("Native thumbnails fit complete images without a background fill",
+                    () => CheckThumbnailPresentationAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--feed-icon-recovery"))
             {
                 await CheckAsync("Recovered feed icons replace native timeline fallbacks", async () =>
