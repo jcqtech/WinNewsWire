@@ -503,10 +503,14 @@ geometry, cross-account row heights, grayscale pixels and actual reader response
 bytes, unchanged reader state, deletion during sidebar changes, and the final
 network policy. New behavior has original-production negative controls; new APIs
 use explicitly identified signature/input-boundary adapters where necessary.
-The completed follow-up audit ran the full backend solution: **2,459 passed,
-one pre-existing failure, 2,460 total**. It fixed four introduced regressions and
+The follow-up now runs the full backend solution with **2,462 passed, no failures
+or skips**. The pre-existing contradictory default-profile fixture is fixed
+without weakening data protection. The audit fixed four introduced regressions and
 compared the current reader with an isolated pre-sync build. Native foreground
-input could not be certified, and both builds showed intermittent long UI gaps.
+input could not be certified. A traced network-initializer startup block is now
+fixed; recurring native WinUI/DXGI pauses are still unresolved, including with
+the installed production runtime. The performance gate now enforces a 100 ms
+queued-dispatch budget. iCloud/CloudKit is an accepted Windows exclusion.
 See [PARITY_REVIEW.md](PARITY_REVIEW.md); passing structural checks are not a
 claim of lag-free scrolling. Historical verification details and baseline
 failures follow.

@@ -12,8 +12,9 @@ completed 505-commit source inventory.
 The detailed checklist below is the **historical baseline**. Its older
 "blocked", "compile-only", test-count and reference-version statements must not
 be read as current results. In particular, source-ledger completion does not
-close the CloudKit, retention, avatar, theme, keyboard and deployment gaps
-identified in the new review.
+close the retention, avatar, theme, keyboard and deployment gaps identified in
+the new review. **CloudKit is now an explicitly accepted Windows exclusion**;
+the older P30 requirement below is superseded by that user decision.
 
 ## Reference and scope
 
@@ -193,14 +194,16 @@ Completed implementation will be recorded without erasing its runtime gate.
 | P27 | L-XL | Verify | Implemented incoming Uri/WebLink share-target registration, URL-only normalization, primary-instance processing, progress reporting and user-confirmed account/folder/name selection. Cancellation and failed subscription creation do not report completed subscriptions. Outgoing sharing remains available. | Sixteen Core cases execute; the new data/dialog/failure probe compiles. OS ShareOperation completion, cold/warm/two-process routing and existing outgoing-share delivery still need deployed verification. Desktop share activation requires Windows 10 version 2004 or later. |
 | P28 | L-XL | Partial/verify | Added an Edge/Chrome Manifest V3 extension with activeTab/storage only, active-page URL handoff, dedicated/default-reader choice and visible errors/rollback. Thirty standalone Node cases execute. Source and bundled files are present; store publication, real browser installation and Windows handoff remain open. | Pinned Safari code forwards the current page URL to app-owned FeedFinder; it does not scan the DOM. Windows uses an explicit popup link for the external-protocol gesture and browser-local preferences rather than an Apple app group. No broad site permissions or page scripts. |
 | P29 | XL | Verify/adapter | Implemented an opt-in local scripting service with native object properties, get/count/exists/make/delete/set/openLocation, container-scoped mutations and active-window selection. Article IDs are feed-supplied UniqueIDs. Windows pipe access is current-user-only with explicit remote rejection; a bounded PowerShell client is included. | Six native scripting counterparts and four added service cases compile in the original Shared suite; ten Core transport/opt-in cases execute. This is a documented JSON/pipe equivalent, not an AppleEvent implementation. Installed application, cross-user denial and UI behavior remain unverified. |
-| P30 | XL | Open | Resolve iCloud/CloudKit synchronization and storage-statistics parity using an actually supported Windows integration. Another RSS provider is not equivalent cross-device iCloud sync; never present unsupported account types as local accounts. | `CloudKitSync`, CloudKit account delegate/stats/test; absent on Windows. Requires platform/service and product decisions. |
+| P30 | XL | Accepted exclusion (2026-11-14) | The user explicitly does not expect iCloud provider setup on Windows. No existing NetNewsWire iCloud bridge is claimed; never present unsupported account types as local accounts. | `CloudKitSync`, CloudKit account delegate/stats/test; intentionally absent on Windows. See current review for alternative-provider boundaries. |
 | P31 | XL | Open/Verify | Establish signed installation/upgrade/update-channel equivalents, update checks, crash collection with explicit privacy/consent and support resources. Preserve profiles across update/uninstall choices. | Native Sparkle/Advanced preferences/CrashReporter; current unsigned archive has not been deployed. |
 | P32 | Gate | Blocked | Obtain approved execution of original Parser/Account/Shared assemblies and the application; run current suites with nonzero TRX counts, all UI groups, live authorized provider sessions and macOS comparison. Close P01-P31 only with their required evidence. | Application Control error `0x800711C7`; no policy changes, renamed/repackaged assemblies, alternate loaders or execution evasions. |
 
 The hard platform decisions are not grounds to silently narrow the original
-request. CloudKit, automation, browser-extension support, update distribution and
+request. Automation, browser-extension support, update distribution and
 legacy-history retention remain explicit open requirements until an agreed
-Windows contract or an explicitly accepted exclusion is recorded.
+Windows contract or an explicitly accepted exclusion is recorded. The user has
+now recorded that exclusion for CloudKit; this does not exclude the portable
+behavior of the other providers.
 
 ## Execution evidence and limits
 

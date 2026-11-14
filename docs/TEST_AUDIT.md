@@ -3,12 +3,16 @@
 ## Current verification
 
 The 2026-11-14 follow-up review is in [PARITY_REVIEW.md](PARITY_REVIEW.md).
-The complete backend solution executed 2,460 cases: **2,459 passed, one
-pre-existing AccountManager fixture failed, none skipped**. Current regular and
+The complete backend solution now executes **2,462 passing cases, none skipped**,
+including all 363 Account tests. The contradictory unsupported/default-profile
+fixture is corrected without weakening profile protection. Current regular and
 Probe x64 builds pass, as do focused native regressions for the recent ports and
 audit corrections. A pre-sync production build was also measured for comparison.
 The foreground input/screen-presentation gate could not be certified on the
-available desktop; long-tail UI pauses remain an explicit limitation.
+available desktop. A UI/network-initializer block is fixed with a controlled
+reverted-production check. Recurring native WinUI/DXGI pauses remain unresolved;
+the performance gate now enforces a 100 ms queued-dispatch budget rather than
+treating structural success as responsiveness.
 
 The suite mapping and dated results below describe the older baseline and
 subsequent historical runs, not a current claim of exact test parity or complete
