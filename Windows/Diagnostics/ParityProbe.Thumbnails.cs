@@ -885,6 +885,10 @@ internal static partial class ParityProbe
             preferences.Activate();
             var choices = (ComboBox)((FrameworkElement)preferences.Content).FindName("TimelineThumbnailsCombo");
             await WaitFor(() => Task.FromResult(choices.IsLoaded), "Thumbnail choice picker");
+            var appearance = ((FrameworkElement)preferences.Content).FindName("AppearancePane") as Expander;
+            Require(appearance is not null && Descendants(appearance).OfType<ComboBox>()
+                .Any(combo => combo.Name == "TextSizeCombo") && Descendants(appearance).OfType<ComboBox>()
+                .Any(combo => combo.Name == "ThemeCombo"), "Appearance preferences do not own article text-size and theme controls.");
             Require(choices.Items.OfType<ComboBoxItem>().Select(item => item.Tag).SequenceEqual(expected.Cast<object>()),
                 "Preferences does not put None before Small and Large.");
             Require(choices.SelectedItem is ComboBoxItem { Tag: TimelineThumbnailsDisplay selected } && selected == saved

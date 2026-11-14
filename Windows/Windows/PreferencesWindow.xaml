@@ -195,20 +195,6 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <FontIcon Grid.Column="0" Glyph="&#xE7C3;" Style="{StaticResource OptionIconStyle}" />
-                            <TextBlock Grid.Column="1" Text="Article text size" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="2" x:Name="TextSizeCombo" MinWidth="180"
-                                      SelectionChanged="TextSizeCombo_SelectionChanged" />
-                        </Grid>
-                    </Border>
-
-                    <Border Style="{StaticResource SettingsCardStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
                             <FontIcon Grid.Column="0" Glyph="&#xE774;" Style="{StaticResource OptionIconStyle}" />
                             <TextBlock Grid.Column="1" Text="Open links in browser in background" VerticalAlignment="Center" />
                             <ToggleSwitch Grid.Column="2" x:Name="OpenBackgroundToggle"
@@ -218,27 +204,52 @@
                         </Grid>
                     </Border>
 
-                    <Border Style="{StaticResource SettingsCardStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <FontIcon Grid.Column="0" Glyph="&#xE790;" Style="{StaticResource OptionIconStyle}" />
-                            <TextBlock Grid.Column="1" Text="Article theme" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
-                                <ComboBox x:Name="ThemeCombo" MinWidth="160"
-                                          SelectionChanged="ThemeCombo_SelectionChanged" />
-                                <Button x:Name="OpenThemesFolderButton" Click="OpenThemesFolder_Click"
-                                        ToolTipService.ToolTip="Open Themes folder in Explorer"
-                                        AutomationProperties.Name="Open Themes folder in Explorer">
-                                    <FontIcon Glyph="&#xE838;" FontSize="14"
-                                              AutomationProperties.AccessibilityView="Raw" />
-                                </Button>
+                    <Expander x:Name="AppearancePane" Style="{StaticResource SettingsExpanderStyle}" IsExpanded="True">
+                        <Expander.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <FontIcon Glyph="{StaticResource AppearanceIconGlyph}" Style="{StaticResource OptionIconStyle}" />
+                                <TextBlock Text="Appearance" VerticalAlignment="Center" />
                             </StackPanel>
-                        </Grid>
-                    </Border>
+                        </Expander.Header>
+                        <StackPanel Spacing="8">
+                            <StackPanel x:Name="AppearanceOptions" Spacing="8" />
+                            <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Grid.Column="0" Glyph="&#xE7C3;" Style="{StaticResource OptionIconStyle}" />
+                                    <TextBlock Grid.Column="1" Text="Article text size" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Column="2" x:Name="TextSizeCombo" MinWidth="180"
+                                              SelectionChanged="TextSizeCombo_SelectionChanged" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Grid.Column="0" Glyph="&#xE790;" Style="{StaticResource OptionIconStyle}" />
+                                    <TextBlock Grid.Column="1" Text="Article theme" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                                        <ComboBox x:Name="ThemeCombo" MinWidth="160"
+                                                  SelectionChanged="ThemeCombo_SelectionChanged" />
+                                        <Button x:Name="OpenThemesFolderButton" Click="OpenThemesFolder_Click"
+                                                ToolTipService.ToolTip="Open Themes folder in Explorer"
+                                                AutomationProperties.Name="Open Themes folder in Explorer">
+                                            <FontIcon Glyph="&#xE838;" FontSize="14"
+                                                      AutomationProperties.AccessibilityView="Raw" />
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Expander>
 
                     <!-- Notifications -->
                     <TextBlock Text="Notifications" Style="{StaticResource SectionHeadingStyle}"
