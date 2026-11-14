@@ -18,10 +18,10 @@ its notes identify the missing integration. Source commit IDs are also recorded 
 ## Incorporation checkpoint
 
 The **fully incorporated watermark is now
-`16e54269d7c19e7f10c79a0a5eb92556e34d2dac`**. This synchronization is in progress.
+`1972d25f2010e4cb075451c779f2a2c36a445570`**. This synchronization is in progress.
 Every inventoried ancestor between the original baseline and this watermark is
 ported, covered, or explicitly skipped. The next unresolved first-parent change
-is checking for changed homepage icon URLs, `7f63c3703338604e8d7ca2fec70577d2fb165ef4`;
+is invalidating feed images after metadata changes, `713a93715d989f574db080c59f9c78fc0bb16db1`;
 media, image-cache, and appearance work also remains beyond the watermark.
 
 The latest individually ported change by source-history order is
@@ -243,6 +243,19 @@ stop scanning at the body rather than allocating discarded body tags.
 Redirects to other hosts are logged and cannot replace real-site metadata.
 Apex/www aliases and same-host scheme/path changes remain valid; stale metadata
 retains its original success date after a rejected redirect.
+Saved homepage icons stay visible while owned checks load a different advertised
+icon. Successful replacements update only matching current native rows; failed
+checks retain the old mapping. Saved favicons similarly check only candidates
+ahead of the saved one and use a successful replacement on the next lookup.
+Metadata refreshes recheck feeds with no homepage icon, preserving declared-icon
+precedence and the newest refresh if an earlier download is still pending.
+Failed declared icons use an available saved homepage image before metadata;
+failed declared favicons continue to homepage candidates within the same request.
+Connectivity recovery retries eligible transient favicon URLs/searches with
+deduplicated, shutdown-owned operations, preserving server retry deadlines.
+The cancellable native view queue updates matching sidebar rows and recomputes
+timeline precedence, retaining healthy declared icons instead of replacing them
+with recovered favicons. Delayed lookups cannot undo a newer dispatched result.
 Retired favicon
 folders, including the former SHA1 cache, are removed once on upgrade; they are
 no longer imported or periodically purged. Windows retains native decoder
@@ -380,8 +393,8 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory currently has **210 Ported, 78 Covered, 87 Skipped, and 130 Pending**
-source commits, backed by **225 source-attributed Windows port commits**.
+The inventory currently has **216 Ported, 78 Covered, 87 Skipped, and 124 Pending**
+source commits, backed by **231 source-attributed Windows port commits**.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
@@ -421,7 +434,7 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The current image suite passes **241 tests** after memory-only/fetch-time HTML
+The current image suite passes **259 tests** after memory-only/fetch-time HTML
 discovery and Large-mode HTML-before-thumbnail selection, in addition to
 visible-only loading, priority-free queues, fixed retry dates, actual-file-size
 launch pruning, schema upgrades, icon recovery and saved-favicon rediscovery.
@@ -441,6 +454,13 @@ The metadata body-scanning allocation control fails pristine parsing with over
 2 MiB of discarded body allocations; all **538 parser tests** pass after stopping
 at body. Both cross-host redirect controls fail pristine metadata handling with
 three unchanged same-host controls; all **33 metadata tests** pass.
+The six homepage/favicon recovery ports add 18 focused cases that fail pristine
+production, with only an event-signature adapter needed for the new favicon
+notification API. Both native observer negative controls leave the actual image
+stale; restored `--feed-icon-recovery` and `--favicon-recovery` probes pass,
+including homepage replacement, sidebar recovery, retained preferred timeline
+icons, UI dispatch, unrelated rows and drained shutdown. Both x64 configurations
+build without warnings.
 Six memory-only migration/reparse controls, six fetch-time/cache-miss controls
 and both Large-mode selection cases fail their pristine implementations.
 The temporary first-1,000 stage was ported and verified separately before its
