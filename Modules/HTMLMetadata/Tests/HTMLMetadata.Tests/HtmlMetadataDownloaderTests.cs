@@ -65,26 +65,50 @@ public sealed class HtmlMetadataDownloaderTests
     }
 
     [Theory]
+    [InlineData(false, "https://moved.test/news/")]
+    [InlineData(true, "https://moved.test/news/")]
+    [InlineData(false, "http://moved.test/news/")]
+    public async Task HttpsHomepageMovesAcceptMetadataFromAnotherHost(bool hasStaleRecord, string redirected)
+    {
+        var clock = new HtmlMetadataDatabaseTests.TestClock();
+        using var database = new HtmlMetadataDatabase(":memory:", clock);
+        if (hasStaleRecord) await database.SaveAsync(new(Url, twitterImageUrl: Url + "old.png"));
+        clock.Advance(TimeSpan.FromDays(7));
+        using var handler = new Handler(_ => Task.FromResult(Response(HttpStatusCode.OK, Html, redirected)));
+        using var http = new HttpClient(handler);
+        var log = new ActivityLogger(clock);
+        await using var downloader = new HtmlMetadataDownloader(database, new Downloader(http, clock), clock, log);
+        var result = Assert.IsType<HtmlMetadataRecord>(await downloader.GetMetadataAsync(Url));
+        Assert.Equal(Url, result.Url);
+        Assert.Equal(new Uri(new Uri(redirected), "icon.png").AbsoluteUri, Assert.Single(result.Favicons).UrlString);
+        Assert.Equal(clock.GetUtcNow(), await database.LastDownloadDateAsync(Url));
+        Assert.NotNull(await database.CachedRecordAsync(Url));
+        Assert.Null(await database.CachedRecordAsync(redirected));
+        Assert.Null(Assert.Single(log.CompletedActivities).Error);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task CrossHostRedirectsCannotPoisonSavedHomepageMetadata(bool hasStaleRecord)
+    public async Task HttpCrossHostRedirectsCannotPoisonSavedHomepageMetadata(bool hasStaleRecord)
     {
+        const string requested = "http://original.test/";
         var clock = new HtmlMetadataDatabaseTests.TestClock();
         using var database = new HtmlMetadataDatabase(":memory:", clock);
         var savedDate = clock.GetUtcNow();
         const string old = "https://original.test/old.png";
-        if (hasStaleRecord) await database.SaveAsync(new(Url, twitterImageUrl: old));
+        if (hasStaleRecord) await database.SaveAsync(new(requested, twitterImageUrl: old));
         clock.Advance(TimeSpan.FromDays(7));
         using var handler = new Handler(_ => Task.FromResult(Response(HttpStatusCode.OK, Html, "https://portal.test/login/")));
         using var http = new HttpClient(handler);
         var log = new ActivityLogger(clock);
         await using var downloader = new HtmlMetadataDownloader(database, new Downloader(http, clock), clock, log);
-        var result = await downloader.GetMetadataAsync(Url);
+        var result = await downloader.GetMetadataAsync(requested);
         if (hasStaleRecord) Assert.Equal(old, result?.TwitterImageUrl);
         else Assert.Null(result);
-        Assert.Equal(hasStaleRecord ? (DateTimeOffset?)savedDate : null, await database.LastDownloadDateAsync(Url));
-        Assert.Null(await database.CachedRecordAsync(Url));
-        Assert.False(await database.RecentlyFailedAsync(Url));
+        Assert.Equal(hasStaleRecord ? (DateTimeOffset?)savedDate : null, await database.LastDownloadDateAsync(requested));
+        Assert.Null(await database.CachedRecordAsync(requested));
+        Assert.False(await database.RecentlyFailedAsync(requested));
         Assert.NotNull(Assert.Single(log.CompletedActivities).Error);
     }
 

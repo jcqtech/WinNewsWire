@@ -116,7 +116,9 @@ public sealed class HtmlMetadataDownloader : IAsyncDisposable
         }
 
         var responseUrl = new Uri(response.Url);
-        if (!string.Equals(HostIgnoringWww(new Uri(url)), HostIgnoringWww(responseUrl), StringComparison.OrdinalIgnoreCase))
+        var requestedUrl = new Uri(url);
+        if (requestedUrl.Scheme == Uri.UriSchemeHttp
+            && !string.Equals(HostIgnoringWww(requestedUrl), HostIgnoringWww(responseUrl), StringComparison.OrdinalIgnoreCase))
         {
             _log.DidFail(activity, new HttpRequestException("HTML metadata redirected to a different host: " + responseUrl.IdnHost));
             return await ReturnStaleAsync(url).ConfigureAwait(false);
