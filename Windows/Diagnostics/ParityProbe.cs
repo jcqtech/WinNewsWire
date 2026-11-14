@@ -157,6 +157,12 @@ internal static partial class ParityProbe
                     () => CheckAppearancePaletteAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--grayscale-setting"))
+            {
+                await CheckAsync("The grayscale icon preference persists and synchronizes",
+                    () => CheckGrayscalePreferenceAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--sidebar-icons"))
             {
                 await CheckAsync("Sidebar feed, folder and smart-feed icons follow preferences without replacing rows",

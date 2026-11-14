@@ -20,6 +20,9 @@ public static class AppDefaultsSharedExtensions
     public const string TimelineShowFullTitlesKey = "timelineShowFullTitles";
     public const string TimelineFadeReadArticlesKey = "timelineFadeReadArticles";
     public const string TimelineFeedNameAndDateAboveTitleKey = "timelineFeedNameAndDateAboveTitle";
+    public const string GrayscaleIconsKey = "grayscaleIcons";
+    public static bool GetGrayscaleIcons(this AppDefaults defaults) => defaults.GetValue(GrayscaleIconsKey, false);
+    public static void SetGrayscaleIcons(this AppDefaults defaults, bool grayscale) => defaults.SetValue(GrayscaleIconsKey, grayscale);
     public static bool GetTimelineFeedNameAndDateAboveTitle(this AppDefaults defaults) => defaults.GetValue(TimelineFeedNameAndDateAboveTitleKey, true);
     public static void SetTimelineFeedNameAndDateAboveTitle(this AppDefaults defaults, bool above) => defaults.SetValue(TimelineFeedNameAndDateAboveTitleKey, above);
     public static bool GetTimelineFadeReadArticles(this AppDefaults defaults) => defaults.GetValue(TimelineFadeReadArticlesKey, false);

@@ -618,5 +618,25 @@ internal static partial class ParityProbe
             window.Activate();
         }
     }
+
+    private static async Task<object?> CheckGrayscalePreferenceAsync(MainWindow window)
+    {
+        const string key = "grayscaleIcons";
+        bool saved = AppDefaults.Shared.GetValue(key, false);
+        var preferences = new AppWindows.PreferencesWindow();
+        try
+        {
+            preferences.Activate();
+            await WaitFor(() => Task.FromResult(((FrameworkElement)preferences.Content).IsLoaded), "Grayscale preferences");
+            var toggle = Descendants(preferences.Content).OfType<ToggleSwitch>().SingleOrDefault(control => control.Name == "GrayscaleIconsToggle");
+            Require(toggle is not null, "Appearance preferences have no grayscale icon control.");
+            toggle!.IsOn = true;
+            Require(new AppDefaults().GetValue(key, false), "The grayscale preference did not persist.");
+            await Task.Run(() => AppDefaults.Shared.SetValue(key, false));
+            await WaitFor(() => Task.FromResult(!toggle.IsOn), "Grayscale preference synchronization");
+            return new { Persisted = true, WorkerNotification = true, InitiallyOff = !saved };
+        }
+        finally { preferences.Close(); AppDefaults.Shared.SetValue(key, saved); window.Activate(); }
+    }
 }
 #endif

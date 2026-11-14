@@ -20,6 +20,9 @@ public sealed partial class PreferencesWindow
         AddAppearanceChoice(AppearanceOptions, AppDefaults.Key.AppearanceMode, "Appearance", "AppearanceModeCombo",
             new[] { ("System", AppDefaults.Appearance.System), ("Light", AppDefaults.Appearance.Light), ("Dark", AppDefaults.Appearance.Dark) },
             () => AppDefaults.Shared.AppearanceMode, value => AppDefaults.Shared.AppearanceMode = value);
+        AddAppearanceToggle(AppearanceOptions, AppDefaultsSharedExtensions.GrayscaleIconsKey,
+            "GrayscaleIcons", "GrayscaleIconsToggle",
+            () => AppDefaults.Shared.GetGrayscaleIcons(), value => AppDefaults.Shared.SetGrayscaleIcons(value));
         AddAppearanceToggle(AppearanceOptions, AppDefaultsSharedExtensions.SidebarShowsIconsKey,
             "SidebarShowIcons", "SidebarShowIconsToggle",
             () => AppDefaults.Shared.GetSidebarShowsIcons(), value => AppDefaults.Shared.SetSidebarShowsIcons(value));
