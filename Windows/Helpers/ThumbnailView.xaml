@@ -6,10 +6,13 @@
     xmlns:local="using:WinNewsWire.Helpers"
     IsHitTestVisible="False"
     AutomationProperties.AccessibilityView="Raw">
-    <Border CornerRadius="{Binding CornerRadius, ElementName=Root}">
-        <Border.Background>
-            <ImageBrush ImageSource="{Binding ImageSource, ElementName=Root}"
-                        Stretch="Uniform" AlignmentX="Center" AlignmentY="Center" />
-        </Border.Background>
-    </Border>
+    <Grid>
+        <Border x:Name="Placeholder" CornerRadius="{Binding CornerRadius, ElementName=Root}"
+                Style="{StaticResource ThumbnailPlaceholderStyle}" />
+        <local:AspectFitPanel x:Name="ImageHost">
+            <Border CornerRadius="{Binding CornerRadius, ElementName=Root}">
+                <Image x:Name="ThumbnailImage" Stretch="Uniform" />
+            </Border>
+        </local:AspectFitPanel>
+    </Grid>
 </UserControl>

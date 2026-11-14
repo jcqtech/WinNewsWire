@@ -38,7 +38,7 @@ public sealed class IconView : UserControl
 
     private readonly Image _image = new() { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private readonly Border _border = new() { CornerRadius = new CornerRadius(4) };
-    private readonly SolidColorBrush _background = new();
+    private readonly Style _backgroundStyle;
     private ImageLuminanceType _luminance;
     private int _generation;
     private int _measuringGeneration = -1;
@@ -46,6 +46,7 @@ public sealed class IconView : UserControl
 
     public IconView()
     {
+        _backgroundStyle = (Style)Application.Current.Resources["FeedIconBackgroundStyle"];
         _border.Child = _image;
         Content = _border;
         _image.ImageOpened += async (_, _) => await UpdateImageAsync();
@@ -154,10 +155,7 @@ public sealed class IconView : UserControl
         var dark = ActualTheme == ElementTheme.Dark;
         var show = _image.ActualHeight < ActualHeight ||
             _luminance == (dark ? ImageLuminanceType.Dark : ImageLuminanceType.Bright);
-        var value = (byte)(dark ? 56 : 242);
-        var color = global::Windows.UI.Color.FromArgb(255, value, value, value);
-        if (_background.Color != color) _background.Color = color;
-        var brush = show ? _background : null;
-        if (!ReferenceEquals(_border.Background, brush)) _border.Background = brush;
+        var style = show ? _backgroundStyle : null;
+        if (!ReferenceEquals(_border.Style, style)) _border.Style = style;
     }
 }

@@ -173,8 +173,20 @@ internal static partial class ParityProbe
             }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-presentation"))
             {
-                await CheckAsync("Native thumbnails fit complete images without a background fill",
+                await CheckAsync("Native thumbnail placeholders and image-sized rounded clipping",
                     () => CheckThumbnailPresentationAsync(window));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--thumbnail-fit-corners"))
+            {
+                await CheckAsync("Thumbnail corners clip the fitted image, not its slot",
+                    () => CheckThumbnailPresentationAsync(window, checkPlaceholder: false));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--icon-system-fill"))
+            {
+                await CheckAsync("System-themed icon fills blend over their backing surface",
+                    () => CheckIconSystemFillAsync(window));
                 return;
             }
             if (Environment.GetCommandLineArgs().Contains("--feed-icon-recovery"))

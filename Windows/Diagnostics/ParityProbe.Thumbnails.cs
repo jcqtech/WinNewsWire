@@ -29,12 +29,15 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
-    private static async Task<object?> CheckThumbnailPresentationAsync(MainWindow window)
+    private static async Task<object?> CheckThumbnailPresentationAsync(MainWindow window, bool checkPlaceholder = true)
     {
         var host = Descendants(window.ProbeContent).OfType<Grid>().First();
         var image = new ThumbnailView { Width = 80, Height = 80, CornerRadius = new CornerRadius(12) };
-        Grid.SetRowSpan(image, Math.Max(1, host.RowDefinitions.Count));
-        host.Children.Add(image);
+        // RenderTargetBitmap crops to drawn bounds; this transparent backing preserves the whole slot.
+        var capture = new Border { Width = 80, Height = 80, Child = image,
+            Background = new SolidColorBrush(global::Windows.UI.Color.FromArgb(0, 0, 0, 0)) };
+        Grid.SetRowSpan(capture, Math.Max(1, host.RowDefinitions.Count));
+        host.Children.Add(capture);
         async Task SetImageAsync(ImageSource? source)
         {
             var rendered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -52,16 +55,26 @@ internal static partial class ParityProbe
         {
             await WaitFor(() => Task.FromResult(image.IsLoaded && image.ActualWidth == 80), "Thumbnail presentation fixture");
             var raster = new RenderTargetBitmap();
+            byte[]? previousPlaceholder = null;
             foreach (var theme in new[] { ElementTheme.Light, ElementTheme.Dark })
             {
                 image.RequestedTheme = theme;
                 await WaitFor(() => Task.FromResult(image.ActualTheme == theme), "Thumbnail presentation theme");
-                await raster.RenderAsync(image, 80, 80);
+                await raster.RenderAsync(capture, 80, 80);
                 var empty = (await raster.GetPixelsAsync()).ToArray();
-                Require(empty.All(value => value == 0), "An empty thumbnail retained a background fill.");
+                if (checkPlaceholder)
+                {
+                    int center = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+                    Require(empty[center + 3] is > 0 and < 255,
+                        "An unloaded thumbnail did not show a faint translucent placeholder.");
+                    if (previousPlaceholder is not null)
+                        Require(!empty.AsSpan(center, 4).SequenceEqual(previousPlaceholder.AsSpan(center, 4)),
+                            "The thumbnail placeholder did not follow its actual light/dark theme.");
+                    previousPlaceholder = empty;
+                }
             }
             await SetImageAsync(ThumbnailBands(portrait: true));
-            await raster.RenderAsync(image, 80, 80);
+            await raster.RenderAsync(capture, 80, 80);
             var portrait = (await raster.GetPixelsAsync()).ToArray();
             int side = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 8) * 4;
             int top = (raster.PixelHeight / 8 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
@@ -72,22 +85,72 @@ internal static partial class ParityProbe
                 + $"top R/B/A {portrait[top + 2]}/{portrait[top]}/{portrait[top + 3]}, "
                 + $"bottom R/B/A {portrait[bottom + 2]}/{portrait[bottom]}/{portrait[bottom + 3]}, "
                 + $"raster {raster.PixelWidth}x{raster.PixelHeight}.");
+            var portraitRect = ThumbnailView.AspectFitRect(new global::Windows.Foundation.Rect(0, 0, 80, 80),
+                new global::Windows.Foundation.Size(40, 120));
+            int portraitCorner = ((int)Math.Ceiling(portraitRect.X * raster.PixelWidth / 80) + 1 + raster.PixelWidth) * 4;
+            Require(portrait[portraitCorner + 3] == 0,
+                "The portrait's fitted image corner was not rounded; only the outer slot was clipped.");
             await SetImageAsync(ThumbnailBands(portrait: false));
             image.Width = 160;
+            capture.Width = 160;
             await WaitFor(() => Task.FromResult(image.ActualWidth == 160), "Wide thumbnail presentation");
-            await raster.RenderAsync(image, 160, 80);
+            await raster.RenderAsync(capture, 160, 80);
             var wide = (await raster.GetPixelsAsync()).ToArray();
             int left = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 16) * 4;
             int right = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth * 15 / 16) * 4;
             Require(wide[left + 2] > 200 && wide[left] < 50 && wide[right] > 200 && wide[right + 2] < 50 && wide[3] == 0,
                 "The wide thumbnail lost an image edge or rounded clipping.");
+            var wideRect = ThumbnailView.AspectFitRect(new global::Windows.Foundation.Rect(0, 0, 160, 80),
+                new global::Windows.Foundation.Size(120, 40));
+            int wideCorner = (((int)Math.Ceiling(wideRect.Y * raster.PixelHeight / 80) + 1) * raster.PixelWidth + 1) * 4;
+            Require(wide[wideCorner + 3] == 0, "Resizing did not round the fitted wide image itself.");
             await SetImageAsync(null);
-            await raster.RenderAsync(image, 160, 80);
-            Require((await raster.GetPixelsAsync()).ToArray().All(value => value == 0),
-                "Recycling a thumbnail restored an obsolete fill.");
-            return new { TransparentEmpty = true, TransparentLetterbox = true, CompleteImages = true, RoundedClipping = true };
+            await raster.RenderAsync(capture, 160, 80);
+            if (checkPlaceholder)
+            {
+                var recycled = (await raster.GetPixelsAsync()).ToArray();
+                int center = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+                Require(recycled[center + 3] is > 0 and < 255,
+                    "Recycling a thumbnail did not restore its placeholder.");
+            }
+            return new { ThemedPlaceholder = checkPlaceholder, TransparentLetterbox = true,
+                CompleteImages = true, ImageSizedRoundedClipping = true };
         }
-        finally { host.Children.Remove(image); }
+        finally { host.Children.Remove(capture); }
+    }
+
+    private static async Task<object?> CheckIconSystemFillAsync(MainWindow window)
+    {
+        var host = Descendants(window.ProbeContent).OfType<Grid>().First();
+        var icon = new IconView { Width = 80, Height = 80, ImageSource = ThumbnailBands(portrait: false) };
+        var backdrop = new Border { Width = 80, Height = 80, Child = icon,
+            Background = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 0, 0, 255)) };
+        Grid.SetRowSpan(backdrop, Math.Max(1, host.RowDefinitions.Count));
+        host.Children.Add(backdrop);
+        try
+        {
+            await WaitFor(() => Task.FromResult(icon.IsLoaded && icon.ActualHeight == 80
+                && icon.ProbeBackground is SolidColorBrush), "Exposed icon background");
+            foreach (var theme in new[] { ElementTheme.Light, ElementTheme.Dark })
+            {
+                icon.RequestedTheme = theme;
+                await WaitFor(() => Task.FromResult(icon.ActualTheme == theme), "Icon background theme");
+                var fill = ((SolidColorBrush)icon.ProbeBackground!).Color;
+                Require(fill.A is > 0 and < 255, "The icon background was opaque instead of a faint system fill.");
+                var raster = new RenderTargetBitmap();
+                await raster.RenderAsync(backdrop, 80, 80);
+                var pixels = (await raster.GetPixelsAsync()).ToArray();
+                int offset = (raster.PixelHeight / 16 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
+                int red = fill.R * fill.A / 255;
+                int green = fill.G * fill.A / 255;
+                int blue = (fill.B * fill.A + 255 * (255 - fill.A)) / 255;
+                Require(Math.Abs(pixels[offset + 2] - red) <= 2 && Math.Abs(pixels[offset + 1] - green) <= 2
+                    && Math.Abs(pixels[offset] - blue) <= 2 && pixels[offset + 3] == 255,
+                    "The icon fill replaced its backing pixels rather than compositing source-over.");
+            }
+            return new { LightAndDark = true, TranslucentFill = true, SourceOverPixels = true };
+        }
+        finally { host.Children.Remove(backdrop); }
     }
 
     private static async Task<object?> CheckThumbnailsAsync(MainWindow window)
@@ -219,25 +282,28 @@ internal static partial class ParityProbe
 
         var host = Descendants(window.ProbeContent).OfType<Grid>().First();
         var image = new ThumbnailView { Width = 80, Height = 80, CornerRadius = new CornerRadius(12) };
-        Grid.SetRowSpan(image, Math.Max(1, host.RowDefinitions.Count));
-        host.Children.Add(image);
+        var capture = new Border { Width = 80, Height = 80, Child = image,
+            Background = new SolidColorBrush(global::Windows.UI.Color.FromArgb(0, 0, 0, 0)) };
+        Grid.SetRowSpan(capture, Math.Max(1, host.RowDefinitions.Count));
+        host.Children.Add(capture);
         try
         {
             await WaitFor(() => Task.FromResult(image.IsLoaded && image.ActualWidth == 80), "Native thumbnail layout");
             image.RequestedTheme = ElementTheme.Light;
             await WaitFor(() => Task.FromResult(image.ActualTheme == ElementTheme.Light), "Light thumbnail placeholder");
             var raster = new RenderTargetBitmap();
-            await raster.RenderAsync(image, 80, 80);
+            await raster.RenderAsync(capture, 80, 80);
             var light = (await raster.GetPixelsAsync()).ToArray();
             image.RequestedTheme = ElementTheme.Dark;
             await WaitFor(() => Task.FromResult(image.ActualTheme == ElementTheme.Dark), "Dark thumbnail placeholder");
-            await raster.RenderAsync(image, 80, 80);
+            await raster.RenderAsync(capture, 80, 80);
             var dark = (await raster.GetPixelsAsync()).ToArray();
             int center = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
-            Require(light[center + 3] == 0 && dark[center + 3] == 0,
-                "The empty thumbnail retained a background fill.");
+            Require(light[center + 3] is > 0 and < 255 && dark[center + 3] is > 0 and < 255
+                && !light.AsSpan(center, 4).SequenceEqual(dark.AsSpan(center, 4)),
+                "The empty thumbnail did not show its faint themed placeholder.");
             image.ImageSource = reloaded;
-            await raster.RenderAsync(image, 80, 80);
+            await raster.RenderAsync(capture, 80, 80);
             var pixels = (await raster.GetPixelsAsync()).ToArray();
             int offset = (raster.PixelHeight / 8 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
             Require(pixels[offset] < 50 && pixels[offset + 2] > 200 && pixels[offset + 3] == 255
@@ -245,13 +311,13 @@ internal static partial class ParityProbe
                 "The default thumbnail presentation did not fit the decoded square without a fill.");
             Require(pixels[3] == 0, "The thumbnail image was not clipped to its rounded corner.");
             image.ImageSource = null;
-            await raster.RenderAsync(image, 80, 80);
+            await raster.RenderAsync(capture, 80, 80);
             var reset = (await raster.GetPixelsAsync()).ToArray();
             Require(reset.AsSpan(center, 4).SequenceEqual(dark.AsSpan(center, 4)),
-                "Recycling the thumbnail view did not restore its transparent empty state.");
+                "Recycling the thumbnail view did not restore its themed placeholder.");
 
             image.ImageSource = ThumbnailBands(portrait: true);
-            await raster.RenderAsync(image, 80, 80);
+            await raster.RenderAsync(capture, 80, 80);
             var fullPortrait = (await raster.GetPixelsAsync()).ToArray();
             int side = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 8) * 4;
             int bottom = (raster.PixelHeight * 13 / 16 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
@@ -260,7 +326,7 @@ internal static partial class ParityProbe
                 && fullPortrait[bottom] > 200 && fullPortrait[bottom + 2] < 50,
                 "Fit mode retained a fill or cropped the portrait's top/bottom.");
             image.ImageSource = ThumbnailBands(portrait: false);
-            await raster.RenderAsync(image, 80, 80);
+            await raster.RenderAsync(capture, 80, 80);
             var wide = (await raster.GetPixelsAsync()).ToArray();
             int wideLeft = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 16) * 4;
             int wideRight = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth * 15 / 16) * 4;
@@ -269,8 +335,9 @@ internal static partial class ParityProbe
                 && wide[wideRight] > 200 && wide[wideRight + 2] < 50,
                 "The thumbnail cropped the wide image's left or right edge.");
             image.Width = 160;
+            capture.Width = 160;
             await WaitFor(() => Task.FromResult(image.ActualWidth == 160), "Resized thumbnail layout");
-            await raster.RenderAsync(image, 160, 80);
+            await raster.RenderAsync(capture, 160, 80);
             var resized = (await raster.GetPixelsAsync()).ToArray();
             int left = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth / 16) * 4;
             int right = (raster.PixelHeight / 2 * raster.PixelWidth + raster.PixelWidth * 15 / 16) * 4;
@@ -279,7 +346,7 @@ internal static partial class ParityProbe
                 "Resizing did not preserve the whole image and rounded clipping.");
 
             image.ImageSource = oriented;
-            await raster.RenderAsync(image, 160, 80);
+            await raster.RenderAsync(capture, 160, 80);
             var rotated = (await raster.GetPixelsAsync()).ToArray();
             int topHalf = (raster.PixelHeight / 4 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
             int bottomHalf = (raster.PixelHeight * 3 / 4 * raster.PixelWidth + raster.PixelWidth / 2) * 4;
@@ -287,7 +354,7 @@ internal static partial class ParityProbe
                 && rotated[bottomHalf + 2] > 200 && rotated[bottomHalf] < 50,
                 "The EXIF-oriented square did not preserve the displayed red top half.");
         }
-        finally { host.Children.Remove(image); }
+        finally { host.Children.Remove(capture); }
 
         int downloaded = requests;
         service.EmptyCache();
@@ -341,8 +408,8 @@ internal static partial class ParityProbe
             ReaderAndDiscoveryShareBaseUrls = true, FeedBasesCapturedOnUI = true,
             ConnectivityRecoveryRetriesVisiblePlaceholders = true,
             DecoderFailureStopsRetriesWithoutSuppressingIcons = true,
-            VisibleNativePixels = true, RoundedClipping = true, TransparentEmpty = true,
-            RecycledEmpty = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
+            VisibleNativePixels = true, RoundedClipping = true, ThemedPlaceholder = true,
+            RecycledPlaceholder = true, LowMemoryCleanup = true, OfflineDiskReuse = true, Shutdown = true,
             TimelineRows = true, HTMLDiscovery = true, FailedCandidateFallback = true, FailureNotificationsOnUI = true, VisibleOnlyDownloads = true,
             RecycledRowRejectsLateImage = true, ColumnLayoutExcludesThumbnails = true,
             LargeRows = true, LargeModePersists = true, SharedModeNotificationsOnUI = true,

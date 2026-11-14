@@ -10,7 +10,7 @@ public sealed partial class ThumbnailView : UserControl
 {
     public static readonly DependencyProperty ImageSourceProperty =
         DependencyProperty.Register(nameof(ImageSource), typeof(ImageSource), typeof(ThumbnailView),
-            new PropertyMetadata(null));
+            new PropertyMetadata(null, SourceChanged));
 
     public ImageSource? ImageSource
     {
@@ -28,8 +28,17 @@ public sealed partial class ThumbnailView : UserControl
             container.Y + Math.Floor((container.Height - height) / 2), width, height);
     }
 
+    private static void SourceChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
+    {
+        var view = (ThumbnailView)sender;
+        view.ThumbnailImage.Source = (ImageSource?)args.NewValue;
+        view.Placeholder.Visibility = args.NewValue is null ? Visibility.Visible : Visibility.Collapsed;
+        view.ImageHost.InvalidateMeasure();
+    }
+
     public ThumbnailView()
     {
         InitializeComponent();
+        ThumbnailImage.ImageOpened += (_, _) => ImageHost.InvalidateMeasure();
     }
 }
