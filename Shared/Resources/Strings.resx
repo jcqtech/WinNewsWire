@@ -239,4 +239,8 @@
   <data name="Dark" xml:space="preserve"><value>Dark</value></data>
   <data name="AppearanceSaveError" xml:space="preserve"><value>Could not save appearance setting: {0}</value></data>
   <data name="SidebarShowIcons" xml:space="preserve"><value>Show sidebar icons</value></data>
+  <data name="SidebarTextSize" xml:space="preserve"><value>Sidebar text size</value></data>
+  <data name="Medium" xml:space="preserve"><value>Medium</value></data>
+  <data name="ExtraLarge" xml:space="preserve"><value>Extra Large</value></data>
+  <data name="ExtraExtraLarge" xml:space="preserve"><value>Extra Extra Large</value></data>
 </root>

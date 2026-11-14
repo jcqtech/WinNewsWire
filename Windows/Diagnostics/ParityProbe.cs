@@ -163,6 +163,12 @@ internal static partial class ParityProbe
                     () => CheckSidebarIconsAsync(window, server.Url));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--sidebar-text-size"))
+            {
+                await CheckAsync("Sidebar text size updates labels, icons and native row heights while preserving selection",
+                    () => CheckSidebarTextSizeAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--thumbnail-squares"))
             {
                 await CheckThumbnailSquaresAsync(window);

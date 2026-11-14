@@ -22,6 +22,9 @@ public sealed partial class PreferencesWindow
         AddAppearanceToggle(AppearanceOptions, AppDefaultsSharedExtensions.SidebarShowsIconsKey,
             "SidebarShowIcons", "SidebarShowIconsToggle",
             () => AppDefaults.Shared.GetSidebarShowsIcons(), value => AppDefaults.Shared.SetSidebarShowsIcons(value));
+        AddAppearanceChoice(AppearanceOptions, AppDefaultsSharedExtensions.SidebarTextSizeKey, "SidebarTextSize", "SidebarTextSizeCombo",
+            Enum.GetValues<SidebarTextSize>().Select(size => (size.ToString(), size)),
+            () => AppDefaults.Shared.GetSidebarTextSize(), value => AppDefaults.Shared.SetSidebarTextSize(value));
     }
 
     private void AddAppearanceChoice<T>(StackPanel panel, string key, string labelKey, string name,

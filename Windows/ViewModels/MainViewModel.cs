@@ -244,6 +244,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var item in SidebarItems) Update(item);
             if (show) _ = PopulateSidebarFaviconsAsync();
         }
+        if (key == AppDefaultsSharedExtensions.SidebarTextSizeKey)
+        {
+            var size = AppDefaults.Shared.GetSidebarTextSize();
+            void Update(SidebarItem item)
+            {
+                item.UpdateTextSize(size);
+                foreach (var child in item.Children) Update(child);
+            }
+            foreach (var item in SidebarItems) Update(item);
+        }
         if (key == AppDefaultsSharedExtensions.UnreadCountDisplayKey)
         {
             _unreadDisplayMode = AppDefaults.Shared.GetUnreadCountDisplay();

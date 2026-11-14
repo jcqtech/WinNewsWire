@@ -11,6 +11,42 @@ public partial class SidebarItem : ObservableObject
 {
     private UnreadCountDisplay _unreadDisplay = AppDefaults.Shared.GetUnreadCountDisplay();
     private bool _showsIcons = AppDefaults.Shared.GetSidebarShowsIcons();
+    private SidebarTextSize _textSize = AppDefaults.Shared.GetSidebarTextSize();
+
+    public double TextFontSize => _textSize switch
+    {
+        SidebarTextSize.Small => 11,
+        SidebarTextSize.Medium => 13,
+        SidebarTextSize.Large => 15,
+        SidebarTextSize.ExtraLarge => 17,
+        SidebarTextSize.ExtraExtraLarge => 20,
+        _ => 14
+    };
+    public double IconDimension => _textSize switch
+    {
+        SidebarTextSize.Medium => 19,
+        SidebarTextSize.Large => 22,
+        SidebarTextSize.ExtraLarge => 25,
+        SidebarTextSize.ExtraExtraLarge => 28,
+        _ => 16
+    };
+    public double SymbolFontSize => IconDimension - 2;
+    public double RowContentMinHeight => _textSize switch
+    {
+        SidebarTextSize.ExtraLarge => 24,
+        SidebarTextSize.ExtraExtraLarge => 30,
+        _ => 0
+    };
+
+    internal void UpdateTextSize(SidebarTextSize size)
+    {
+        if (_textSize == size) return;
+        _textSize = size;
+        OnPropertyChanged(nameof(TextFontSize));
+        OnPropertyChanged(nameof(IconDimension));
+        OnPropertyChanged(nameof(SymbolFontSize));
+        OnPropertyChanged(nameof(RowContentMinHeight));
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpansionLabel))]

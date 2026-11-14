@@ -10,6 +10,21 @@ public static class AppDefaultsSharedExtensions
     public const string TimelineFeedIconsDisplayKey = "timelineFeedIconsDisplay";
     public const string TimelineShowSeparatorsKey = "timelineShowSeparators";
     public const string SidebarShowsIconsKey = "sidebarShowsIcons";
+    public const string SidebarTextSizeKey = "sidebarTextSize";
+
+    public static SidebarTextSize GetSidebarTextSize(this AppDefaults defaults)
+    {
+        var value = (SidebarTextSize)defaults.GetValue(SidebarTextSizeKey, 0);
+        if (Enum.IsDefined(value)) return value;
+        Trace.TraceWarning($"Unknown sidebar text size {(int)value}; following the system.");
+        return SidebarTextSize.System;
+    }
+
+    public static void SetSidebarTextSize(this AppDefaults defaults, SidebarTextSize size)
+    {
+        if (!Enum.IsDefined(size)) throw new ArgumentOutOfRangeException(nameof(size));
+        defaults.SetValue(SidebarTextSizeKey, (int)size);
+    }
 
     public static bool GetSidebarShowsIcons(this AppDefaults defaults) =>
         defaults.GetValue(SidebarShowsIconsKey, true);
