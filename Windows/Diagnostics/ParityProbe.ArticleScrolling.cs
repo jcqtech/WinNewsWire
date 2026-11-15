@@ -171,8 +171,12 @@ internal static partial class ParityProbe
                 content.ProbeWebView.MaxWidth = width;
                 await WaitFor(() => ScriptBool(content, $"Math.abs(window.innerWidth - {width}) < 3"),
                     "Reader host width changes");
-                await WaitFor(async () => !(await content.ProbeResizeAnchorStateAsync()).GetProperty("changingSize").GetBoolean(),
-                    "Reader resize restoration settles");
+                await WaitFor(async () =>
+                {
+                    var state = await content.ProbeResizeAnchorStateAsync();
+                    return !state.GetProperty("changingSize").GetBoolean()
+                        && Math.Abs(state.GetProperty("viewportWidth").GetDouble() - width) < 3;
+                }, "Reader resize restoration settles for the current viewport");
                 anchors.Add(await content.ProbeResizeAnchorStateAsync());
                 Require(await ScriptBool(content, atTarget),
                     "Reader resize lost the visible paragraph or its top offset: " + JsonSerializer.Serialize(anchors));

@@ -12,6 +12,7 @@ public sealed class ArticleThemesManager : IDisposable
     public static ArticleThemesManager Shared => SharedManager.Value;
 
     public event EventHandler? CurrentThemeChanged;
+    public event EventHandler? ThemeNamesChanged;
 
     public string FolderPath { get; }
     private readonly FileSystemWatcher? _watcher;
@@ -30,11 +31,21 @@ public sealed class ArticleThemesManager : IDisposable
         get { lock (_gate) return _currentTheme; }
         set
         {
-            ArticleTheme previous;
-            lock (_gate) { previous = _currentTheme; _currentTheme = value; }
-            try { _defaults.CurrentThemeName = value.Name; }
-            catch { lock (_gate) _currentTheme = previous; throw; }
-            CurrentThemeChanged?.Invoke(this, EventArgs.Empty);
+            ArgumentNullException.ThrowIfNull(value);
+            bool changed;
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                var previous = _currentTheme;
+                changed = !previous.HasSameContent(value);
+                _currentTheme = value;
+                try
+                {
+                    if (_defaults.CurrentThemeName != value.Name) _defaults.CurrentThemeName = value.Name;
+                }
+                catch { _currentTheme = previous; throw; }
+            }
+            if (changed) CurrentThemeChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -46,6 +57,7 @@ public sealed class ArticleThemesManager : IDisposable
         _currentTheme = BuiltInDefault();
         Rescan();
         SelectByName(_defaults.CurrentThemeName);
+        _defaults.Changed += DefaultsChanged;
 
         try
         {
@@ -64,7 +76,7 @@ public sealed class ArticleThemesManager : IDisposable
     public void Rescan()
     {
         bool changed;
-        ArticleTheme selected;
+        bool namesChanged;
         lock (_gate)
         {
             if (_disposed) return;
@@ -85,12 +97,33 @@ public sealed class ArticleThemesManager : IDisposable
                 var theme = ArticleTheme.LoadFromFolder(dir, isAppTheme: false);
                 if (theme is not null) found.Add(theme);
             }
-            _themes = found;
-            selected = _themes.FirstOrDefault(t => string.Equals(t.Name, _currentTheme.Name, StringComparison.OrdinalIgnoreCase)) ?? _themes[0];
-            changed = selected.Name != _currentTheme.Name || selected.TemplateHtml != _currentTheme.TemplateHtml || selected.StylesheetCss != _currentTheme.StylesheetCss;
+            found = found.DistinctBy(theme => theme.Name, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(theme => !theme.IsBuiltInDefault)
+                .ThenBy(theme => theme.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            namesChanged = !_themes.Select(theme => theme.Name).SequenceEqual(found.Select(theme => theme.Name));
+            var selected = found.FirstOrDefault(t => string.Equals(t.Name, _currentTheme.Name, StringComparison.OrdinalIgnoreCase)) ?? found[0];
+            changed = !_currentTheme.HasSameContent(selected);
+            var previous = _currentTheme;
             _currentTheme = selected;
+            try
+            {
+                if (previous.Name != selected.Name) _defaults.CurrentThemeName = selected.Name;
+            }
+            catch { _currentTheme = previous; throw; }
+            _themes = found;
         }
-        if (changed) CurrentTheme = selected;
+        if (namesChanged) ThemeNamesChanged?.Invoke(this, EventArgs.Empty);
+        if (changed) CurrentThemeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void DefaultsChanged(object? sender, string key)
+    {
+        if (key != AppDefaults.Key.CurrentThemeName) return;
+        lock (_gate)
+        {
+            if (_disposed || _currentTheme.Name == _defaults.CurrentThemeName) return;
+        }
+        SelectByName(_defaults.CurrentThemeName);
     }
 
     public void SelectByName(string name)
@@ -103,50 +136,67 @@ public sealed class ArticleThemesManager : IDisposable
     /// <summary>Install a <c>.nnwtheme</c> zip file: expand into the Themes folder and rescan.</summary>
     public ArticleTheme InstallFromZip(string zipPath)
     {
+        using var prepared = PrepareImport(zipPath);
+        return prepared.Install(overwriteExisting: true);
+    }
+
+    public ArticleThemeImport PrepareImport(string zipPath)
+    {
+        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
         var tmpRoot = Path.Combine(FolderPath, ".tmp-" + Guid.NewGuid().ToString("N"));
-        var backup = Path.Combine(FolderPath, ".backup-" + Guid.NewGuid().ToString("N"));
         try
         {
             var themeRoot = ArticleThemeDownloader.UnzipTheme(zipPath, tmpRoot);
-            _ = ArticleTheme.LoadFromFolder(themeRoot, isAppTheme: false)
+            var theme = ArticleTheme.LoadFromFolder(themeRoot, isAppTheme: false)
                 ?? throw new InvalidDataException("The archive does not contain a valid article theme.");
-            var target = Path.Combine(FolderPath, Path.GetFileName(themeRoot));
-            lock (_gate)
-            {
-                bool replacing = Directory.Exists(target);
-                if (replacing)
-                {
-                    if ((File.GetAttributes(target) & FileAttributes.ReparsePoint) != 0)
-                        throw new IOException("Cannot replace a linked article theme directory.");
-                    Directory.Move(target, backup);
-                }
-                try { Directory.Move(themeRoot, target); }
-                catch
-                {
-                    if (replacing) Directory.Move(backup, target);
-                    throw;
-                }
-                if (replacing) Directory.Delete(backup, recursive: true);
-            }
-            Rescan();
-            return Themes.FirstOrDefault(theme => string.Equals(theme.Path, target, StringComparison.OrdinalIgnoreCase))
-                ?? throw new InvalidDataException("The installed article theme could not be loaded.");
+            return new(this, tmpRoot, theme, Directory.Exists(Path.Combine(FolderPath, Path.GetFileName(themeRoot))));
         }
-        finally
+        catch
         {
             try { if (Directory.Exists(tmpRoot)) Directory.Delete(tmpRoot, recursive: true); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 Trace.TraceError($"Could not clean up theme extraction directory {tmpRoot}: {ex.Message}");
             }
+            throw;
         }
+    }
+
+    internal ArticleTheme InstallPreparedTheme(ArticleThemeImport prepared, bool overwriteExisting)
+    {
+        if (!ReferenceEquals(prepared.Manager, this)) throw new ArgumentException("The theme belongs to another import session.", nameof(prepared));
+        var target = Path.Combine(FolderPath, Path.GetFileName(prepared.Theme.Path));
+        var backup = Path.Combine(prepared.TemporaryRoot, ".previous-theme");
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (prepared.Installed) throw new InvalidOperationException("This theme has already been installed.");
+            bool replacing = Directory.Exists(target);
+            if (replacing)
+            {
+                if (!overwriteExisting) throw new IOException("The theme already exists and replacement was not confirmed.");
+                if ((File.GetAttributes(target) & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("Cannot replace a linked article theme directory.");
+                Directory.Move(target, backup);
+            }
+            try { Directory.Move(prepared.Theme.Path, target); }
+            catch
+            {
+                if (replacing) Directory.Move(backup, target);
+                throw;
+            }
+            prepared.Installed = true;
+        }
+        Rescan();
+        return ArticleTheme.LoadFromFolder(target, isAppTheme: false)
+            ?? throw new InvalidDataException("The installed article theme could not be loaded.");
     }
 
     private static ArticleTheme BuiltInDefault()
     {
         var template = ArticleTheme.ReadResource("template.html");
         var style = ArticleTheme.ReadResource("core.css") + "\n" + ArticleTheme.ReadResource("stylesheet.css");
-        return new ArticleTheme("(builtin)", isAppTheme: true)
+        return new ArticleTheme(ArticleTheme.BuiltInDefaultPath, isAppTheme: true)
         {
             Name = ArticleTheme.DefaultThemeName,
             ThemeIdentifier = "com.winnewswire.default",
@@ -170,6 +220,7 @@ public sealed class ArticleThemesManager : IDisposable
     public void Dispose()
     {
         lock (_gate) _disposed = true;
+        _defaults.Changed -= DefaultsChanged;
         _watcher?.Dispose();
     }
 }

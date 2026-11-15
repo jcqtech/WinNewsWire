@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
   <data name="StatusBar" xml:space="preserve"><value>Status Bar</value></data>
+  <data name="ThemeImportTitle" xml:space="preserve"><value>Install theme "{0}" by {1}?</value></data>
+  <data name="ThemeVersion" xml:space="preserve"><value>Version: {0}</value></data>
+  <data name="ThemeAuthorWebsite" xml:space="preserve"><value>Author's website: {0}</value></data>
+  <data name="ThemeInstall" xml:space="preserve"><value>Install Theme</value></data>
+  <data name="ThemeReplaceTitle" xml:space="preserve"><value>Replace existing theme?</value></data>
+  <data name="ThemeReplaceConfirmation" xml:space="preserve"><value>The theme "{0}" already exists. Overwrite it?</value></data>
+  <data name="ThemeOverwrite" xml:space="preserve"><value>Overwrite</value></data>
+  <data name="ThemeInstalled" xml:space="preserve"><value>Theme "{0}" installed.</value></data>
+  <data name="ThemeAlreadyBundledTitle" xml:space="preserve"><value>Theme already included</value></data>
+  <data name="ThemeAlreadyBundled" xml:space="preserve"><value>"{0}" is already a built-in theme. Rename a customized theme bundle before importing it so the built-in theme remains available.</value></data>
   <data name="StatusBarGear" xml:space="preserve"><value>Subscription commands</value></data>
   <data name="StatusBarUnread" xml:space="preserve"><value>{0:N0} unread</value></data>
   <data name="StatusBarFolder" xml:space="preserve"><value>{0:N0} folder</value></data>

@@ -41,6 +41,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private int _accountUpdateQueued;
     private long _lastAccountChange;
     private int _urgentAccountUpdate;
+    private int _themeUpdateQueued;
     private volatile bool _disposed;
     private Images.FeedImageDownloader? _feedImages;
     private readonly HashSet<string> _changedFeedImagePaths = new(StringComparer.OrdinalIgnoreCase);
@@ -151,6 +152,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public const string ThemeResourceHost = "winnewswire-theme.local";
     public const string ThemeStylesheetPath = "/stylesheet.css";
+    public string? CurrentThemeResourceHost { get; private set; }
+    public string? CurrentThemeStylesheetUrl { get; private set; }
     public const string ArticleIconUrl = "https://winnewswire.local/article-icon";
     public ArticleRendering? CurrentRendering { get; private set; }
 
@@ -213,6 +216,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // changes, so the new size takes effect immediately without requiring the
         // user to navigate away and back.
         WinNewsWire.Core.AppDefaults.Shared.Changed += OnDefaultsChanged;
+        AppShared.ArticleThemes.ArticleThemesManager.Shared.CurrentThemeChanged += OnArticleThemeChanged;
+    }
+
+    private void OnArticleThemeChanged(object? sender, EventArgs args)
+    {
+        if (_disposed || Interlocked.Exchange(ref _themeUpdateQueued, 1) != 0) return;
+        if (!_dispatcher.TryEnqueue(() =>
+        {
+            Interlocked.Exchange(ref _themeUpdateQueued, 0);
+            if (!_disposed) RefreshArticleHtml();
+        }))
+        {
+            Interlocked.Exchange(ref _themeUpdateQueued, 0);
+            if (!_disposed) App.LogException("Update article theme", new InvalidOperationException("The reader dispatcher is unavailable."));
+        }
     }
 
     private void OnDefaultsChanged(object? sender, string key)
@@ -223,7 +241,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _dispatcher.TryEnqueue(() => OnDefaultsChanged(sender, key));
             return;
         }
-        if (key is WinNewsWire.Core.AppDefaults.Key.ArticleTextSize or WinNewsWire.Core.AppDefaults.Key.CurrentThemeName)
+        if (key == WinNewsWire.Core.AppDefaults.Key.ArticleTextSize)
             RefreshArticleHtml();
         if (key == AppDefaults.Key.UseColumnLayout)
         {
@@ -492,6 +510,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _viewOperations.CancelAll();
         AppService.Shared.Accounts.AccountsDidChange -= OnAccountChanged;
         WinNewsWire.Core.AppDefaults.Shared.Changed -= OnDefaultsChanged;
+        AppShared.ArticleThemes.ArticleThemesManager.Shared.CurrentThemeChanged -= OnArticleThemeChanged;
         UndoManager.StackChanged -= OnUndoHistoryChanged;
         foreach (var account in _observedAccounts) UnobserveAccount(account);
         _observedAccounts.Clear();
@@ -1873,11 +1892,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Loading an icon must not change the document when the same article is rebound.
         var avatar = ArticleIconIdentityUrl(item);
         CurrentRendering = ArticleRenderer.Render(article, extracted, CurrentArticleTextSize, feed, avatarUrl: avatar, accountType: account?.Type);
-        var token = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(CurrentRendering.Style)));
-        var stylesheet = CurrentRendering.ThemeFolder is { } folder &&
-            System.IO.File.Exists(System.IO.Path.Combine(folder, AppShared.ArticleThemes.ArticleTheme.StylesheetFilename))
-                ? $"https://{ThemeResourceHost}{ThemeStylesheetPath}?v={token}" : null;
-        return ArticleRenderer.Document(CurrentRendering, stylesheet, includeScripts: false);
+        var token = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            CurrentRendering.ThemeFolder + "\0" + CurrentRendering.Style)));
+        CurrentThemeResourceHost = CurrentRendering.ThemeFolder is null ? null
+            : "theme-" + token[..32].ToLowerInvariant() + "." + ThemeResourceHost;
+        CurrentThemeStylesheetUrl = CurrentThemeResourceHost is null ? null
+            : $"https://{CurrentThemeResourceHost}{ThemeStylesheetPath}?v={token}";
+        return ArticleRenderer.Document(CurrentRendering, CurrentThemeStylesheetUrl, includeScripts: false);
     }
 
     private static string ArticleIconIdentityUrl(FeedItem item) => ArticleIconUrl

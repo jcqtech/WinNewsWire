@@ -27,6 +27,7 @@ public sealed partial class MainWindow : Window
     private Windows.Graphics.RectInt32[] _titleBarInputRects = [];
     private bool _titleBarInputErrorReported;
     private bool _titleBarInputDirty = true;
+    private int _themeMenuUpdateQueued;
     internal System.Threading.Tasks.Task ContentInitialization => MainContentControl.Initialization;
     internal System.Collections.Generic.IEnumerable<WinNewsWire.Articles.Article> TimelineArticles
         => MainContentControl.ViewModel.ArticleItems.Select(item => item.SourceArticle).OfType<WinNewsWire.Articles.Article>();
@@ -103,6 +104,8 @@ public sealed partial class MainWindow : Window
         Activated += MainWindow_Activated;
         Core.AppDefaults.Shared.Changed += WindowDefaultsChanged;
         AppRuntime.AppService.Shared.Speech.StateChanged += SpeechStateChanged;
+        AppShared.ArticleThemes.ArticleThemesManager.Shared.ThemeNamesChanged += ArticleThemesChanged;
+        AppShared.ArticleThemes.ArticleThemesManager.Shared.CurrentThemeChanged += ArticleThemesChanged;
         Closed += MainWindow_Closed;
 
         // Restore the saved appearance preference once the content tree is up.
@@ -138,11 +141,15 @@ public sealed partial class MainWindow : Window
         AppTitleBar.LayoutUpdated -= TitleBar_LayoutUpdated;
         Core.AppDefaults.Shared.Changed -= WindowDefaultsChanged;
         AppRuntime.AppService.Shared.Speech.StateChanged -= SpeechStateChanged;
+        AppShared.ArticleThemes.ArticleThemesManager.Shared.ThemeNamesChanged -= ArticleThemesChanged;
+        AppShared.ArticleThemes.ArticleThemesManager.Shared.CurrentThemeChanged -= ArticleThemesChanged;
+        _themeImportLifetime.Dispose();
         if (_titleBarRoot is not null) _titleBarRoot.Changed -= TitleBarRootChanged;
     }
 
     internal async System.Threading.Tasks.Task ShutdownContentAsync()
     {
+        await StopThemeImportAsync();
         try { await MainContentControl.ShutdownAsync(); }
         catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException or ArgumentException)
         {
@@ -717,6 +724,20 @@ public sealed partial class MainWindow : Window
     }
 
     // --- Theme submenu population + menu toggle sync ---
+
+    private void ArticleThemesChanged(object? sender, EventArgs args)
+    {
+        if (_closed || System.Threading.Interlocked.Exchange(ref _themeMenuUpdateQueued, 1) != 0) return;
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            System.Threading.Interlocked.Exchange(ref _themeMenuUpdateQueued, 0);
+            if (!_closed) PopulateThemesMenu();
+        }))
+        {
+            System.Threading.Interlocked.Exchange(ref _themeMenuUpdateQueued, 0);
+            if (!_closed) App.LogException("Update theme menu", new InvalidOperationException("The theme-menu dispatcher is unavailable."));
+        }
+    }
 
     private void PopulateThemesMenu()
     {

@@ -29,6 +29,21 @@ public sealed class ArticleThemeDownloadTests : IDisposable
         Assert.Equal(UserAgent.BrowserValue, userAgent);
     }
 
+    [Fact]
+    public async Task DownloadedThemeCanBeInspectedAndCancelledWithoutInstalling()
+    {
+        using var manager = Manager();
+        using var http = new HttpClient(new Handler(_ => new(HttpStatusCode.OK) { Content = new ByteArrayContent(Archive()) }));
+        await using (var prepared = await ArticleThemeDownloader.PrepareFromUrlAsync(Url(), manager, downloader: new Downloader(http)))
+        {
+            Assert.Equal("Author", prepared.Theme.CreatorName);
+            Assert.All(manager.Themes, theme => Assert.True(theme.IsAppTheme));
+            Assert.False(Directory.Exists(Path.Combine(manager.FolderPath, "Downloaded.nnwtheme")));
+        }
+        Assert.Empty(Directory.EnumerateDirectories(manager.FolderPath, ".tmp-*"));
+        Assert.Empty(Directory.EnumerateFiles(manager.FolderPath, ".download-*"));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

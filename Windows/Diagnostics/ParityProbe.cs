@@ -120,6 +120,18 @@ internal static partial class ParityProbe
                         "The probe did not load the installed Windows App Runtime used by normal Debug.");
             }
 
+            if (Environment.GetCommandLineArgs().Contains("--theme-parity"))
+            {
+                await CheckAsync("All bundled themes render through native menus with live CSS, fonts and isolated local assets",
+                    () => CheckThemeParityAsync(window, server.Url));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--theme-import"))
+            {
+                await CheckAsync("Theme imports require metadata and overwrite confirmation before changing installed files",
+                    () => CheckThemeImportConfirmationAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--network-startup"))
             {
                 await CheckAsync("Cold thumbnail initialization does not wait for the portable network monitor",

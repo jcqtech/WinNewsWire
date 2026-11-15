@@ -82,7 +82,7 @@
 		reposition() {
 			const refRect = this.fnref.getBoundingClientRect();
 			const containerRect = this.fnref.closest(`.${CONTAINER_CLS}`).getBoundingClientRect();
-			const articleBody = this.fnref.closest(".articleBody");
+			const articleBody = this.fnref.closest(".articleBody, .article-body");
 			const visibleRect = articleBody ? articleBody.getBoundingClientRect() : document.documentElement.getBoundingClientRect();
 			const maximumWidth = stripPx(this.style.maxWidth);
 			const popoverWidth = Math.min(visibleRect.width, maximumWidth);

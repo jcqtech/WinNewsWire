@@ -547,7 +547,9 @@ public sealed partial class MainContent : UserControl
     }
 
     private const string IframeProxyBase = "https://winnewswire.local/iframe-proxy";
-    private string? _mappedThemeFolder;
+    private string? _renderedThemeFolder;
+    private string? _renderedThemeHost;
+    private string _renderedThemeStyle = "";
     private ulong _articleNavigationId;
     private ArticleIdentityKey? _renderedArticleIdentity;
     private double _articleScrollPosition;
@@ -607,6 +609,11 @@ public sealed partial class MainContent : UserControl
             // Embeds need an HTTP(S) parent origin; theme assets stay in their mapped folder.
             ContentWebView.CoreWebView2.AddWebResourceRequestedFilter(
                 "https://winnewswire.local/*", CoreWebView2WebResourceContext.All);
+            // Folder mappings bypass request interception, including processed theme CSS.
+            ContentWebView.CoreWebView2.AddWebResourceRequestedFilter(
+                "https://winnewswire-theme.local/*", CoreWebView2WebResourceContext.All);
+            ContentWebView.CoreWebView2.AddWebResourceRequestedFilter(
+                "https://*.winnewswire-theme.local/*", CoreWebView2WebResourceContext.All);
             ContentWebView.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
             ContentWebView.CoreWebView2.NavigationStarting += (sender, navigation) =>
             {
@@ -819,7 +826,7 @@ public sealed partial class MainContent : UserControl
             && thumbnailMode == ViewModel.TimelineThumbnailsDisplay.ToThumbnailMode()
             && routesThumbnailImages == ShowsTimelineThumbnails;
         if (!forceReload && _pendingRestoredScroll is null && identity == _renderedArticleIdentity
-            && html == _renderedArticleHtml && string.Equals(themeFolder, _mappedThemeFolder, StringComparison.OrdinalIgnoreCase)) return;
+            && html == _renderedArticleHtml && string.Equals(themeFolder, _renderedThemeFolder, StringComparison.OrdinalIgnoreCase)) return;
         try
         {
             if (identity == _renderedArticleIdentity && _pendingRestoredScroll is null)
@@ -856,15 +863,9 @@ public sealed partial class MainContent : UserControl
         }
         _renderedArticleIdentity = identity;
         _articleScrollPosition = _restoreArticleScrollPosition;
-        if (!string.Equals(_mappedThemeFolder, themeFolder, StringComparison.OrdinalIgnoreCase))
-        {
-            if (_mappedThemeFolder is not null)
-                ContentWebView.CoreWebView2.ClearVirtualHostNameToFolderMapping(MainViewModel.ThemeResourceHost);
-            if (themeFolder is not null)
-                ContentWebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    MainViewModel.ThemeResourceHost, themeFolder, CoreWebView2HostResourceAccessKind.DenyCors);
-            _mappedThemeFolder = themeFolder;
-        }
+        _renderedThemeFolder = themeFolder;
+        _renderedThemeHost = ViewModel.CurrentThemeResourceHost;
+        _renderedThemeStyle = ViewModel.CurrentRendering?.Style ?? "";
         ContentWebView.CoreWebView2.Settings.IsScriptEnabled =
             WinNewsWire.Core.AppDefaults.Shared.ArticleContentJavascriptEnabled
             && !AppShared.ArticleRendering.ArticleRenderingSpecialCases.ShouldDisableJavaScript(
@@ -916,8 +917,11 @@ public sealed partial class MainContent : UserControl
         {
             await ContentWebView.ExecuteScriptAsync("if (window.__wnwNavigationId === "
                 + JsonSerializer.Serialize(navigation.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                + ") { const icon = document.getElementById('nnwImageIcon'); const source = "
-                + JsonSerializer.Serialize(source) + "; if (icon && icon.getAttribute('src') !== source) icon.src = source; }");
+                + ") { const source = " + JsonSerializer.Serialize(source)
+                + "; const identity = source.split('&state=')[0];"
+                + " const icon = document.getElementById('nnwImageIcon') || Array.from(document.images)"
+                + ".find(image => image.getAttribute('src') === identity || image.getAttribute('src')?.startsWith(identity + '&'));"
+                + " if (icon) { icon.id = 'nnwImageIcon'; if (icon.getAttribute('src') !== source) icon.src = source; } }");
         }
         catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException)
         {
@@ -946,6 +950,13 @@ public sealed partial class MainContent : UserControl
         try
         {
             var uri = new Uri(args.Request.Uri);
+            if (uri.Host == MainViewModel.ThemeResourceHost
+                || uri.Host.EndsWith("." + MainViewModel.ThemeResourceHost, StringComparison.Ordinal))
+            {
+                var deferral = args.GetDeferral();
+                TrackBrowserTask(ServeThemeResourceAsync(sender, args, uri, deferral, _articleNavigationId));
+                return;
+            }
             if (uri.AbsolutePath == AppShared.ArticleRendering.ArticleImageResource.ResourcePath)
             {
                 var deferral = args.GetDeferral();
@@ -1017,11 +1028,13 @@ public sealed partial class MainContent : UserControl
         }
     }
 
-    private static void SetWebResource(CoreWebView2 sender, CoreWebView2WebResourceRequestedEventArgs args, byte[] bytes, string contentType, int status = 200)
+    private static void SetWebResource(CoreWebView2 sender, CoreWebView2WebResourceRequestedEventArgs args, byte[] bytes,
+        string contentType, int status = 200, bool allowCrossOrigin = false)
     {
         var stream = System.IO.WindowsRuntimeStreamExtensions.AsRandomAccessStream(new System.IO.MemoryStream(bytes, writable: false));
         args.Response = sender.Environment.CreateWebResourceResponse(
-            stream, status, status == 200 ? "OK" : "Resource unavailable", "Content-Type: " + contentType + "\r\nCache-Control: no-store");
+            stream, status, status == 200 ? "OK" : "Resource unavailable", "Content-Type: " + contentType
+                + "\r\nCache-Control: no-store" + (allowCrossOrigin ? "\r\nAccess-Control-Allow-Origin: *" : ""));
     }
 
     private FeedItem? _starWatchedArticle;

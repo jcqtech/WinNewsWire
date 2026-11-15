@@ -22,6 +22,8 @@ public sealed partial class PreferencesWindow : Window
     private bool _updatingTimelineFeedIcons;
     private bool _updatingAutomation;
     private bool _updatingRendering;
+    private bool _updatingThemes;
+    private int _themeUpdateQueued;
 
     public PreferencesWindow()
     {
@@ -33,6 +35,8 @@ public sealed partial class PreferencesWindow : Window
             _closed = true;
             AppDefaults.Shared.Changed -= PreferencesDefaultsChanged;
             AppService.Shared.AutomationStateChanged -= AutomationStateChanged;
+            WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared.ThemeNamesChanged -= ArticleThemesChanged;
+            WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared.CurrentThemeChanged -= ArticleThemesChanged;
         }
         Closed += OnClosed;
         WindowIconHelper.ApplyFlatIcon(this);
@@ -42,6 +46,8 @@ public sealed partial class PreferencesWindow : Window
         PopulateTimelineOptions();
         AppDefaults.Shared.Changed += PreferencesDefaultsChanged;
         AppService.Shared.AutomationStateChanged += AutomationStateChanged;
+        WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared.ThemeNamesChanged += ArticleThemesChanged;
+        WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared.CurrentThemeChanged += ArticleThemesChanged;
         _loaded = true;
     }
 
@@ -361,28 +367,58 @@ public sealed partial class PreferencesWindow : Window
 
     private void PopulateThemeCombo()
     {
-        ThemeCombo.Items.Clear();
-        var themeMgr = WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared;
-        foreach (var theme in themeMgr.Themes)
-            ThemeCombo.Items.Add(new ComboBoxItem { Content = theme.Name, Tag = theme.Name });
-        var current = themeMgr.CurrentTheme.Name;
-        for (int i = 0; i < ThemeCombo.Items.Count; i++)
+        _updatingThemes = true;
+        try
         {
-            if (ThemeCombo.Items[i] is ComboBoxItem cbi && (cbi.Tag as string) == current)
+            ThemeCombo.Items.Clear();
+            var themeMgr = WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared;
+            foreach (var theme in themeMgr.Themes)
+                ThemeCombo.Items.Add(new ComboBoxItem { Content = theme.Name, Tag = theme.Name });
+            var current = themeMgr.CurrentTheme.Name;
+            for (int i = 0; i < ThemeCombo.Items.Count; i++)
             {
-                ThemeCombo.SelectedIndex = i;
-                break;
+                if (ThemeCombo.Items[i] is ComboBoxItem cbi && (cbi.Tag as string) == current)
+                {
+                    ThemeCombo.SelectedIndex = i;
+                    break;
+                }
             }
+            if (ThemeCombo.SelectedIndex < 0 && ThemeCombo.Items.Count > 0)
+                ThemeCombo.SelectedIndex = 0;
         }
-        if (ThemeCombo.SelectedIndex < 0 && ThemeCombo.Items.Count > 0)
-            ThemeCombo.SelectedIndex = 0;
+        finally { _updatingThemes = false; }
+    }
+
+    private void ArticleThemesChanged(object? sender, EventArgs args)
+    {
+        if (_closed || System.Threading.Interlocked.Exchange(ref _themeUpdateQueued, 1) != 0) return;
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            System.Threading.Interlocked.Exchange(ref _themeUpdateQueued, 0);
+            if (!_closed) PopulateThemeCombo();
+        }))
+        {
+            System.Threading.Interlocked.Exchange(ref _themeUpdateQueued, 0);
+            if (!_closed) App.LogException("Update theme preferences", new InvalidOperationException("The preferences dispatcher is unavailable."));
+        }
     }
 
     private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_loaded || ThemeCombo.SelectedItem is not ComboBoxItem cbi) return;
-        if (cbi.Tag is string name)
+        if (!_loaded || _updatingThemes || ThemeCombo.SelectedItem is not ComboBoxItem { Tag: string name }) return;
+        try
+        {
             WinNewsWire.AppShared.ArticleThemes.ArticleThemesManager.Shared.SelectByName(name);
+            ThemeErrorText.Visibility = Visibility.Collapsed;
+        }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
+        {
+            PopulateThemeCombo();
+            ThemeErrorText.Text = string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                AppStrings.Get("ToolbarThemeSaveError"), error.Message);
+            ThemeErrorText.Visibility = Visibility.Visible;
+            App.LogException("Select article theme", error);
+        }
     }
 
     private void OpenThemesFolder_Click(object sender, RoutedEventArgs e)

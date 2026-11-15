@@ -16,7 +16,8 @@ public sealed record ArticleRendering(string Style, string Html, string Title, s
 public static partial class ArticleRenderer
 {
     private static readonly Regex LegacyMacro = new(@"\[\[\[([A-Za-z_]+)\]\]\]", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly Regex AppleFontFamily = new(@"(font-family\s*:\s*)-apple-system(?=\s*[,;])", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex FontFamily = new(@"(\bfont-family\s*:\s*)([^;{}]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex AppleSystemFont = new(@"(?<![\w""'-])-apple-system(?:-body)?(?![\w-])", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Lazy<string> Scripts = new(() => ArticleTheme.ReadResource("main_windows.js") + "\n;\n"
         + ArticleTheme.ReadResource("main.js") + "\n;\n" + ArticleTheme.ReadResource("newsfoot.js"));
 
@@ -117,7 +118,7 @@ public static partial class ArticleRenderer
     public static string Document(ArticleRendering rendering, string? stylesheetUrl = null, bool includeScripts = true)
     {
         var style = stylesheetUrl is null ? "<style>" + rendering.Style + "</style>"
-            : "<style>" + ArticleTheme.ReadResource("core.css") + "</style><link rel=\"stylesheet\" href=\"" + Html(stylesheetUrl) + "\">";
+            : "<link rel=\"stylesheet\" href=\"" + Html(stylesheetUrl) + "\">";
         var baseTag = rendering.BaseUrl.Length == 0 ? "" : "<base href=\"" + Html(rendering.BaseUrl) + "\">";
         return "<html dir=\"auto\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
             + "<title>" + Html(SimpleHtml.Parse(rendering.Title).Text) + "</title>" + style + baseTag
@@ -140,7 +141,7 @@ public static partial class ArticleRenderer
     private static ArticleRendering Message(string message, ArticleTheme theme, ArticleTextSize size)
         => new(Style(theme, size), "<h3 class='systemMessage'>" + Html(message) + "</h3>", "", "", ThemeFolder(theme));
 
-    private static string? ThemeFolder(ArticleTheme theme) => theme.IsAppTheme ? null : theme.Path;
+    private static string? ThemeFolder(ArticleTheme theme) => theme.IsBuiltInDefault ? null : theme.Path;
 
     private static string Style(ArticleTheme theme, ArticleTextSize size)
     {
@@ -148,7 +149,8 @@ public static partial class ArticleRenderer
         var style = MacroProcessor.RenderedTextWith(theme.StylesheetCss,
             new Dictionary<string, string> { ["font-size"] = pixels.ToString(CultureInfo.InvariantCulture) });
         if (theme.UsesGrayscaleIcon) style += "\n#nnwImageIcon { filter: grayscale(1); }\n";
-        return AppleFontFamily.Replace(style, "$1\"Segoe UI Variable\", \"Segoe UI\", sans-serif");
+        return FontFamily.Replace(style, match => match.Groups[1].Value
+            + AppleSystemFont.Replace(match.Groups[2].Value, "\"Segoe UI Variable\", \"Segoe UI\", sans-serif"));
     }
 
     private static string BaseUrl(Article article, Account.Feed? feed, string? extractedUrl)

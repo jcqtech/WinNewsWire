@@ -245,6 +245,10 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
                                     <FontIcon Grid.Column="0" Glyph="&#xE790;" Style="{StaticResource OptionIconStyle}" />
                                     <TextBlock Grid.Column="1" Text="Article theme" VerticalAlignment="Center" />
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
@@ -257,6 +261,9 @@
                                                       AutomationProperties.AccessibilityView="Raw" />
                                         </Button>
                                     </StackPanel>
+                                    <TextBlock x:Name="ThemeErrorText" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                               Visibility="Collapsed" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               AutomationProperties.LiveSetting="Polite" />
                                 </Grid>
                             </Border>
                         </StackPanel>

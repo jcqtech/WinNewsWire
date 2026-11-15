@@ -4,6 +4,8 @@ https://github.com/Ranchero-Software/NetNewsWire
 WinNewsWire includes source ports and test fixtures from NetNewsWire.
 The upstream reference for the current parity audit is
 fb086eb7684e9fdb90855c4e033a6beba4325c5e.
+The bundled article themes additionally include the canonical collection at
+7908c801bf7c97fa7cca9ef78cf51b33fb853e6a.
 
 MIT License
 
@@ -26,6 +28,22 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Atkinson Hyperlegible
+https://www.brailleinstitute.org/freefont/
+
+The Hyperlegible theme retains the upstream embedded Atkinson Hyperlegible font.
+Copyright 2020 Braille Institute of America, Inc.
+Licensed under the SIL Open Font License, Version 1.1.
+The complete license is included in Themes\Hyperlegible.nnwtheme\OFL.txt.
+
+ModeSeven
+https://www.fontspace.com/modeseven-font-f2369
+
+The NewsFax theme retains the upstream embedded ModeSeven font and its edits.
+The embedded font identifies the rendition as freely distributable, with
+accented-letter edits by Georg Seifert. The upstream attribution and distribution
+notice is included in Themes\NewsFax.nnwtheme\License.md.
 
 Fluent UI System Icons
 https://github.com/microsoft/fluentui-system-icons

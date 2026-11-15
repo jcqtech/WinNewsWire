@@ -59,6 +59,46 @@ public sealed class ThemeUnzipTests : IDisposable
         Assert.Equal(template, File.ReadAllText(templatePath));
     }
 
+    [Fact]
+    public void PreparedThemeDoesNotInstallUntilConfirmedAndUsesItsInspectedSnapshot()
+    {
+        using var manager = Manager();
+        string archive = WriteZip(BenignThemeZip);
+        using var prepared = manager.PrepareImport(archive);
+        string target = Path.Combine(manager.FolderPath, "Good Theme.nnwtheme");
+        Assert.False(Directory.Exists(target));
+        Assert.Equal("Good Theme", prepared.Theme.Name);
+        File.WriteAllBytes(archive, Convert.FromBase64String(PathTraversalZip));
+        var installed = prepared.Install();
+        Assert.Equal(target, installed.Path);
+        Assert.True(File.Exists(Path.Combine(target, "template.html")));
+        Assert.False(File.Exists(Path.Combine(_root, "escaped.txt")));
+    }
+
+    [Fact]
+    public void CancelledPreparationPreservesExistingThemeAndRemovesStaging()
+    {
+        using var manager = Manager();
+        var installed = manager.InstallFromZip(WriteZip(BenignThemeZip));
+        string original = File.ReadAllText(Path.Combine(installed.Path, "stylesheet.css"));
+        using (var prepared = manager.PrepareImport(WriteZip(BenignThemeZip)))
+            Assert.True(prepared.ReplacesExisting);
+        Assert.Equal(original, File.ReadAllText(Path.Combine(installed.Path, "stylesheet.css")));
+        Assert.Empty(Directory.EnumerateDirectories(manager.FolderPath, ".tmp-*"));
+    }
+
+    [Fact]
+    public void ThemeAppearingAfterInspectionCannotBeOverwrittenWithoutConfirmation()
+    {
+        using var manager = Manager();
+        using var prepared = manager.PrepareImport(WriteZip(BenignThemeZip));
+        var installed = manager.InstallFromZip(WriteZip(BenignThemeZip));
+        File.WriteAllText(Path.Combine(installed.Path, "stylesheet.css"), "body { color: red; }");
+        Assert.False(prepared.ReplacesExisting);
+        Assert.Throws<IOException>(() => prepared.Install());
+        Assert.Equal("body { color: red; }", File.ReadAllText(Path.Combine(installed.Path, "stylesheet.css")));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
@@ -122,6 +162,60 @@ public sealed class ThemeUnzipTests : IDisposable
         Directory.CreateDirectory(path);
         File.WriteAllText(Path.Combine(path, "Info.json"), """{"grayscaleIcon":42}""");
         Assert.Null(ArticleTheme.LoadFromFolder(path, false));
+    }
+
+    [Fact]
+    public void ThemeNamesAreSortedUniqueAndPreferTheBundledCopy()
+    {
+        using var manager = Manager();
+        foreach (string name in new[] { "zeta", "alpha", "Gray" })
+        {
+            string folder = Path.Combine(manager.FolderPath, name + ".nnwtheme");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "Info.json"), "{}");
+        }
+        manager.Rescan();
+        var themes = manager.Themes;
+        Assert.Equal("Default", themes[0].Name);
+        Assert.Equal(themes.Skip(1).Select(theme => theme.Name).Order(StringComparer.CurrentCultureIgnoreCase),
+            themes.Skip(1).Select(theme => theme.Name));
+        Assert.True(Assert.Single(themes, theme => theme.Name == "Gray").IsAppTheme);
+        manager.SelectByName("Gray");
+        Assert.True(manager.CurrentTheme.IsAppTheme);
+    }
+
+    [Fact]
+    public void MetadataOnlyChangesRefreshTheCurrentTheme()
+    {
+        using var manager = Manager();
+        string folder = Path.Combine(manager.FolderPath, "Edited.nnwtheme");
+        Directory.CreateDirectory(folder);
+        string metadata = Path.Combine(folder, "Info.json");
+        File.WriteAllText(metadata, """{"grayscaleIcon":false}""");
+        manager.Rescan();
+        manager.SelectByName("Edited");
+        int notifications = 0;
+        manager.CurrentThemeChanged += (_, _) => Interlocked.Increment(ref notifications);
+        FileUtilities.WriteAllTextAtomically(metadata, """{"grayscaleIcon":true}""");
+        manager.Rescan();
+        Assert.True(manager.CurrentTheme.UsesGrayscaleIcon);
+        Assert.True(Volatile.Read(ref notifications) > 0);
+    }
+
+    [Fact]
+    public void ThemeRemovalRestoresAndPersistsDefault()
+    {
+        using var manager = Manager();
+        string folder = Path.Combine(manager.FolderPath, "Removed.nnwtheme");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "Info.json"), "{}");
+        manager.Rescan();
+        manager.SelectByName("Removed");
+        Directory.Delete(folder, recursive: true);
+        manager.Rescan();
+        Assert.Equal("Default", manager.CurrentTheme.Name);
+        using var reopened = Manager();
+        Assert.Equal("Default", reopened.CurrentTheme.Name);
     }
 
     [Theory]

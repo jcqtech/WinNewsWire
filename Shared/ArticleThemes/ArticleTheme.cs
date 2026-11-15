@@ -17,6 +17,7 @@ public sealed class ArticleTheme
     public const string InfoFilenamePlist = "Info.plist";
     public const string InfoFilenameJson = "Info.json";
     public const string ThemeExtension = ".nnwtheme";
+    internal const string BuiltInDefaultPath = "(builtin)";
 
     public const string DefaultThemeName = "Default";
 
@@ -29,6 +30,7 @@ public sealed class ArticleTheme
     public string Version { get; init; } = "1";
     public string ThemeIdentifier { get; init; } = "com.winnewswire.default";
     public bool UsesGrayscaleIcon { get; init; }
+    internal bool IsBuiltInDefault => Path == BuiltInDefaultPath;
 
     public string TemplateHtml { get; init; } = "";
     public string StylesheetCss { get; init; } = "";
@@ -38,6 +40,14 @@ public sealed class ArticleTheme
         Path = path;
         IsAppTheme = isAppTheme;
     }
+
+    internal bool HasSameContent(ArticleTheme other)
+        => string.Equals(Path, other.Path, StringComparison.OrdinalIgnoreCase)
+            && IsAppTheme == other.IsAppTheme && Name == other.Name
+            && CreatorHomePage == other.CreatorHomePage && CreatorName == other.CreatorName
+            && Version == other.Version && ThemeIdentifier == other.ThemeIdentifier
+            && UsesGrayscaleIcon == other.UsesGrayscaleIcon
+            && TemplateHtml == other.TemplateHtml && StylesheetCss == other.StylesheetCss;
 
     /// <summary>Load a theme from a folder (already unpacked). Returns null if required files are missing.</summary>
     public static ArticleTheme? LoadFromFolder(string folder, bool isAppTheme)

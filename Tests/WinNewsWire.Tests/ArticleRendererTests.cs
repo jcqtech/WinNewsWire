@@ -392,8 +392,17 @@ public sealed class ArticleRendererTests
     }
 
     [Theory]
+    [InlineData("Default")]
+    [InlineData("Appanoose")]
+    [InlineData("Biblioteca")]
     [InlineData("Plum")]
     [InlineData("Gray")]
+    [InlineData("Hyperlegible")]
+    [InlineData("NewsFax")]
+    [InlineData("Promenade")]
+    [InlineData("Sepia")]
+    [InlineData("Tiqoe Dark")]
+    [InlineData("Verdana Revival")]
     public void BundledThemeCanBeSelectedRenderedAndRestored(string themeName)
     {
         var root = Path.Combine(Path.GetTempPath(), "WinNewsWire.BundledTheme." + Guid.NewGuid().ToString("N"));
@@ -405,10 +414,16 @@ public sealed class ArticleRendererTests
                 var theme = Assert.Single(manager.Themes, theme => theme.Name == themeName);
                 Assert.True(theme.IsAppTheme);
                 manager.SelectByName(theme.Name);
-                var rendering = ArticleRenderer.Render(Article(), feed: Feed(), theme: manager.CurrentTheme);
+                var video = Attachment.Create(null, "https://example.com/primary.mp4", "video/mp4", null, null, null)!;
+                var audio = Attachment.Create(null, "https://example.com/enclosure.mp3", "audio/mpeg", null, null, null)!;
+                var rendering = ArticleRenderer.Render(Article(attachments: [video, audio]), feed: Feed(), theme: manager.CurrentTheme);
                 Assert.DoesNotContain("[[", rendering.Html);
                 Assert.Contains("<p>Body</p>", rendering.Html);
-                Assert.Null(rendering.ThemeFolder);
+                Assert.True(rendering.Html.IndexOf("<video ", StringComparison.Ordinal)
+                    < rendering.Html.IndexOf("<p>Body</p>", StringComparison.Ordinal));
+                Assert.True(rendering.Html.IndexOf("<audio ", StringComparison.Ordinal)
+                    > rendering.Html.IndexOf("<p>Body</p>", StringComparison.Ordinal));
+                Assert.Equal(themeName == "Default" ? null : theme.Path, rendering.ThemeFolder);
                 Assert.Equal(themeName == "Gray", rendering.Style.Contains("#nnwImageIcon { filter: grayscale(1); }", StringComparison.Ordinal));
             }
             using var reopened = new ArticleThemesManager(Path.Combine(root, "Themes"), defaults);
@@ -418,6 +433,18 @@ public sealed class ArticleRendererTests
         {
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Theory]
+    [InlineData("font-family: -apple-system;", "font-family: \"Segoe UI Variable\", \"Segoe UI\", sans-serif;")]
+    [InlineData("font-family: 'Atkinson Hyperlegible', -apple-system-body;",
+        "font-family: 'Atkinson Hyperlegible', \"Segoe UI Variable\", \"Segoe UI\", sans-serif;")]
+    [InlineData("font-family: 'ModeSeven', -apple-system;",
+        "font-family: 'ModeSeven', \"Segoe UI Variable\", \"Segoe UI\", sans-serif;")]
+    public void ThemeFontFallbacksRetainEmbeddedFontsAndUseWindowsSystemFonts(string original, string expected)
+    {
+        var rendering = ArticleRenderer.Render(Article(), theme: Theme(style: "body { " + original + " }"));
+        Assert.Contains(expected, rendering.Style);
     }
 
     [Theory]

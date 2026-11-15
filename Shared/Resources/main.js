@@ -102,7 +102,7 @@ function convertImgSrc() {
 
 // Wrap tables in an overflow-x: auto; div
 function wrapTables() {
-	var tables = document.querySelectorAll("div.articleBody table");
+	var tables = document.querySelectorAll("div.articleBody table, div.article-body table");
 
 	for (table of tables) {
 		var wrapper = document.createElement("div");
@@ -165,7 +165,7 @@ var ElementUnwrapper = {
 };
 
 function flattenPreElements() {
-	ElementUnwrapper.unwrapAppropriateChildren("div.articleBody td > pre");
+	ElementUnwrapper.unwrapAppropriateChildren("div.articleBody td > pre, div.article-body td > pre");
 }
 
 function reloadArticleImage(imageSrc) {
@@ -213,7 +213,7 @@ function styleLocalFootnotes() {
 // The site stylesheet that implements them is stripped, so apply the sizes directly —
 // otherwise an SVG with no width and height renders at full column width.
 function sizeTailwindSVGs() {
-	document.querySelectorAll("div.articleBody svg").forEach(svg => {
+	document.querySelectorAll("div.articleBody svg, div.article-body svg").forEach(svg => {
 		const classAttribute = svg.getAttribute("class") || "";
 		const width = classAttribute.match(/(?:^|\s)w-\[([\d.]+(?:px|em|rem))\]/);
 		if (width) {

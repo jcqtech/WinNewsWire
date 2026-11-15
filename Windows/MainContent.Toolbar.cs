@@ -659,6 +659,7 @@ public sealed partial class MainContent
         var manager = ArticleThemesManager.Shared;
         foreach (var theme in manager.Themes)
         {
+            if (items.Count == 1) items.Add(new MenuFlyoutSeparator());
             var item = new ToggleMenuFlyoutItem { Text = theme.Name + (theme.IsAppTheme ? AppStrings.Get("ToolbarBuiltInTheme") : ""),
                 IsChecked = theme.Name == manager.CurrentTheme.Name };
             item.Click += (_, _) =>

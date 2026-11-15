@@ -12,6 +12,14 @@ public static class ArticleThemeDownloader
     public static async Task<ArticleTheme> InstallFromUrlAsync(Uri url, ArticleThemesManager manager,
         CancellationToken cancellationToken = default, Downloader? downloader = null)
     {
+        using var prepared = await PrepareFromUrlAsync(url, manager, cancellationToken, downloader).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return prepared.Install(overwriteExisting: true);
+    }
+
+    public static async Task<ArticleThemeImport> PrepareFromUrlAsync(Uri url, ArticleThemesManager manager,
+        CancellationToken cancellationToken = default, Downloader? downloader = null)
+    {
         if (!url.IsAbsoluteUri || url.Scheme is not ("http" or "https"))
             throw new ArgumentException("Article themes can be downloaded only from an HTTP or HTTPS URL.", nameof(url));
         cancellationToken.ThrowIfCancellationRequested();
@@ -26,7 +34,7 @@ public static class ArticleThemeDownloader
         {
             await File.WriteAllBytesAsync(temporaryPath, result.Data, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            return manager.InstallFromZip(temporaryPath);
+            return manager.PrepareImport(temporaryPath);
         }
         finally
         {
