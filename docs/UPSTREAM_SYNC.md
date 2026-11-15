@@ -434,13 +434,12 @@ timers and native message hooks are released during shutdown.
 Preferences and About share an accessible, native copyable version label.
 Its context-menu command copies the complete label without requiring selection.
 
-The inventory has **270 Ported, 99 Covered, 136 Skipped, and 0 Pending**
-source commits, backed by **294 source-attributed Windows commits**, including
+The inventory has **271 Ported, 99 Covered, 135 Skipped, and 0 Pending**
+source commits, backed by **295 source-attributed Windows commits**, including
 source-specific corrections from the post-sync review.
 The earlier partial primary-image/media rows are now complete. Skips have
 specific reasons: independent Apple releases/appcasts/versioning, Xcode/Swift
 toolchain adjustments, deletion of unused Apple asset-catalog resources, and
-slot-only updates to eight older theme bundles not shipped by Windows,
 Swift-only lock substitutions and database-wrapper simplification, and
 iOS 18 deployment-target/older-UIKit compatibility cleanup, Apple app-group
 preference migration, Swift defaults organization, Safari extension identities,
@@ -496,14 +495,14 @@ covers the related renderer cleanup in `7ad27dc8017c4e564814051b3314d1d48a1ba6df
 
 ## Verification at this checkpoint
 
-The final shared application suite passes **514 tests**, and the native Windows
+The current shared application suite passes **541 tests**, and the native Windows
 image suite passes **43 tests**. Both regular and Probe x64 builds pass. Focused
 native checks cover application/sidebar/timeline preferences, real text and image
 geometry, cross-account row heights, grayscale pixels and actual reader response
 bytes, unchanged reader state, deletion during sidebar changes, and the final
 network policy. New behavior has original-production negative controls; new APIs
 use explicitly identified signature/input-boundary adapters where necessary.
-The follow-up now runs the full backend solution with **2,462 passed, no failures
+The 2026-11-14 follow-up ran the full backend solution with **2,462 passed, no failures
 or skips**. The pre-existing contradictory default-profile fixture is fixed
 without weakening data protection. The audit fixed four introduced regressions and
 compared the current reader with an isolated pre-sync build. Native foreground
@@ -921,11 +920,34 @@ toolchain changes do not require translating Swift locks or UIKit APIs into C#.
 
 ## Reader theme compatibility
 
+The 2026-11-15 follow-up in `a7dd3a2` closes the missing-theme carry-forward gap.
+Default and all ten canonical bundles now ship: Appanoose, Biblioteca, Gray,
+Hyperlegible, NewsFax, Plum, Promenade, Sepia, Tiqoe Dark and Verdana Revival.
+Source `8060219b...` is now Ported, and `6ba1b38e...` includes the full versioned
+template collection. Source content is preserved with whitespace-only
+normalization, and embedded font bytes and required notices are retained.
+The unused duplicate Apple `Resources/Themes` deletion remains a platform skip.
+
 The loader prefers `template7.3.html` when present, otherwise `template.html`.
 Theme authors can keep a legacy template for older NetNewsWire releases and put
 the new media slots in the versioned template. Windows continues to accept
 `Info.json` as an alternative to `Info.plist`; optional Apple Finder metadata is
 not used by the Windows reader.
+
+Native theme menus and Preferences share sorted unique names and current
+selection. File and metadata changes update open readers/controls, and deletion
+of the selected theme restores Default. File-backed CSS is processed and served
+with theme-local resources through owned asynchronous requests; distinct theme
+origins isolate same-named assets and font CORS works. The Windows private
+resource endpoint never serves parent paths or reparse-point targets.
+
+Imports inspect a staged snapshot and require creator/metadata confirmation
+before installation, plus explicit approval before replacing existing files.
+Cancellation and window close discard staging without replacing the installed
+theme. Existing Windows auto-selection of an accepted import remains.
+All eleven themes and these workflows have native and reverted-production
+controls. A fresh x64 package contains the full set; installed release delivery
+remains separate from source and package-content verification.
 
 The document base is the extracted-content URL or article link, falling back to
 the feed's home page and then its feed URL. Relative URLs resolve against that

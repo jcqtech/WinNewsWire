@@ -3,7 +3,7 @@
 ## Current verification
 
 The 2026-11-14 follow-up review is in [PARITY_REVIEW.md](PARITY_REVIEW.md).
-The complete backend solution now executes **2,462 passing cases, none skipped**,
+The 2026-11-14 complete backend run executed **2,462 passing cases, none skipped**,
 including all 363 Account tests. The contradictory unsupported/default-profile
 fixture is corrected without weakening profile protection. Current regular and
 Probe x64 builds pass, as do focused native regressions for the recent ports and
@@ -13,6 +13,16 @@ available desktop. A UI/network-initializer block is fixed with a controlled
 reverted-production check. Recurring native WinUI/DXGI pauses remain unresolved;
 the performance gate now enforces a 100 ms queued-dispatch budget rather than
 treating structural success as responsiveness.
+
+The 2026-11-15 theme follow-up passes the full **541-case Shared suite**, including
+27 added cases, plus native checks for all eleven canonical themes, five text
+sizes, dark appearance, fonts/assets, live edits, multi-window synchronization,
+confirmed imports and cancellation during close. Exact prior implementations
+fail the CSS/control/import/Biblioteca regressions; removing the eight new
+bundles fails exactly their eight discovery/rendering cases. Live grayscale and
+all reader-resize variants also pass. The x64 MSIX contains all 42 theme/license
+files and production-only assemblies at `a7dd3a2`; it was not installed over
+the user's pre-sync application. See the theme section in `PARITY_REVIEW.md`.
 
 The suite mapping and dated results below describe the older baseline and
 subsequent historical runs, not a current claim of exact test parity or complete

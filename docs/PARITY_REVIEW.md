@@ -1,6 +1,6 @@
 # NetNewsWire parity and regression review
 
-Review date: 2026-11-14.
+Review date: 2026-11-14; theme-parity follow-up: 2026-11-15.
 
 Reference: NetNewsWire `7908c801bf7c97fa7cca9ef78cf51b33fb853e6a`.
 Windows comparison: pre-sync `106603d128a34c17907ba10625e754b88cb8ff0a`
@@ -16,7 +16,7 @@ coverage. This is considerably more than a UI remake or a collection of stubs.
 
 There are nevertheless material gaps: turnkey
 configuration/verification for some remote providers, author-avatar display,
-eight bundled themes, some keyboard navigation, and activation of the native
+some keyboard navigation, and activation of the native
 database-retention policy. Platform delivery and complete UX/accessibility
 equivalence also remain unverified.
 
@@ -30,9 +30,10 @@ The 505-entry upstream ledger is complete as a **commit-processing record**.
 It does not mean every pre-existing NetNewsWire feature exists in Windows.
 Neither a commit count nor an xUnit case count is a defensible parity percentage.
 The next update can start from the recorded source tip, but it is not yet a
-low-risk mechanical translation exercise. Source commit `8060219b...`, skipped
-because Windows lacked the affected theme bundles, is a concrete example of why
-the carry-forward parity gaps must remain visible beside that checkpoint.
+low-risk mechanical translation exercise. Source commit `8060219b...` was
+previously skipped because Windows lacked the affected themes; the theme
+follow-up now ports those bundles and closes that obligation. Other carry-forward
+parity gaps must remain visible beside the source checkpoint.
 
 ## Scope and evidence
 
@@ -62,7 +63,7 @@ live reading profiles were used or modified.
 | OPML and subscriptions | Substantially implemented | Import/export, folder membership, names, mutations, undo and persistence have production paths. Current installed picker/cloud-provider behavior is a separate verification requirement. |
 | Articles and state | Substantially implemented | Storage, search, canonical status identity, read/star actions and window-local selection are covered. Retention activation is missing. |
 | Reader and media | Substantially implemented | Templates, primary media, enclosures, scripts-on/off handling, themes and scroll preservation have focused coverage. Extraction and Markdown use different engines. |
-| Timeline and sidebar | Broad coverage, with identified gaps | New appearance controls work. Author-avatar selection, bundled-theme breadth and some keyboard routing are incomplete. |
+| Timeline and sidebar | Broad coverage, with identified gaps | New appearance controls work. Author-avatar selection and some keyboard routing are incomplete. All canonical article themes are now available. |
 | Remote synchronization | Implementations, not full service certification | Feedbin, Feedly, NewsBlur and Reader API variants exist; mock HTTP tests are not live-provider proof. |
 | Desktop tools | Implemented | Find, activity/error logs, statistics, stale-feed management, speech routing and multiple windows exist. Some OS-level outcomes still need interactive verification. |
 | Sharing, extension and scripting | Windows adapters exist | Share-target declarations, an Edge/Chrome extension and an opt-in named-pipe scripting API are not merely placeholders. Installed handoff and release delivery are not certified here. |
@@ -77,7 +78,7 @@ live reading profiles were used or modified.
 | PR-02 | High / M-L | **Some offered accounts are not proven turnkey in a distributed app.** `FeedlyClientConfig.cs:24-46` reads external OAuth configuration; `AccountSetupSheets.cs:187-203` stops setup when it is absent. `ReaderAPIAccountDelegate.cs:30-31` reads Inoreader application identifiers from environment. | Establish a release configuration/client-registration contract and exercise sign-in, refresh, reconnect and state synchronization against authorized live accounts. Do not expose secrets in source or logs. |
 | PR-03 | High / M-L | **Production does not activate startup retention.** `ArticlesDatabaseStore.Retention.cs:12` has an explicit policy API, but its callers are tests only. Upstream `Account.swift:348` calls startup cleanup; `ArticlesDatabase.swift:423-434` explains the database-growth/performance requirement. | Design a safe migration/opt-in policy, then wire it into startup with large-profile checks. Do not silently delete existing Windows history to close the gap. |
 | PR-04 | Medium / M | **Author avatars are not actually selected/downloaded for display.** `Windows\ViewModels\MainViewModel.cs:1373` populates icons through `PreferredIconAsync(feed)`; it does not consult authors. Upstream `Shared/IconImageCache.swift::imageForArticle` prefers a single author's avatar, using `Modules/Images/.../AuthorAvatarDownloader.swift`. | Put author-versus-feed image selection in a shared policy/service, including fallback, refresh, grayscale and lifetime ownership. Automatic icon visibility currently recognizes avatar metadata without completing the avatar display path. |
-| PR-05 | Medium / S-M | **Eight canonical bundled themes are absent.** Windows ships Default, Gray and Plum. Upstream additionally bundles Appanoose, Biblioteca, Hyperlegible, NewsFax, Promenade, Sepia, Tiqoe Dark and Verdana Revival in its application resource phases. Windows content inclusion is `Shared\AppShared.csproj:30-32`. | Port the canonical bundles, their notices/assets and current media templates, then exercise them through the actual reader. The deletion of unused duplicate `Resources/Themes` copies must not be confused with removal of the canonical upstream themes. |
+| PR-05 | Completed 2026-11-15 | **All eleven canonical theme choices are implemented.** `a7dd3a2` adds the eight missing bundles, both template generations and font notices, and closes live-control, processed-CSS, local-font/resource and import-confirmation gaps. | Native tests cover all themes, five text sizes, dark appearance, media slots, actual embedded/local fonts and multi-window updates. A fresh unsigned x64 MSIX contains the complete collection. See the theme follow-up below; the installed pre-sync app was not replaced. |
 | PR-06 | Medium / M | **Copied keyboard definitions are not runtime parity.** `Windows\Assets\Keyboard\TimelineKeyboardShortcuts.plist` declares left/right navigation, but `KeyboardShortcutsLoader.LoadAll` has no runtime consumer and those actions have no Windows handlers. Upstream `Mac/MainWindow/MainWindowController.swift:555-565` implements the focus transfers. | Introduce one command/routing registry with scope-aware tests, preserving explicitly chosen Windows aliases. Verify actual focused controls, not only shortcut assets or the help catalog. |
 | PR-07 | Medium / M-L | **Dependency substitutions need compatibility coverage.** Windows uses SmartReader and Markdig (`Shared\ArticleExtractor\ArticleExtractor.cs`, `Shared\AppShared.csproj`, `Modules\Markdown\Markdown.csproj`); upstream uses its extraction service and Tidemark. | Maintain explicit adapter contracts and a shared corpus. Different engines are not automatically wrong, but they are not a 1:1 implementation or proof of identical results. |
 | PR-08 | Medium / L | **Language and platform-verification gaps remain.** Windows has only neutral `Strings.resx` plus hard-coded captions; upstream catalogs include Spanish entries. Full Narrator, high contrast, IME, RTL, mixed-DPI, installed sharing and browser-extension verification was not performed. | Build a reproducible platform/language matrix. Keep unverified outcomes distinct from missing implementations. |
@@ -107,7 +108,7 @@ not all be labelled "impossible on Windows."
 | PR-02: provider delivery | Feedly sign-in needs `FEEDLY_CLIENT_ID` and `FEEDLY_CLIENT_SECRET`, or `feedly-client.json`. Inoreader also expects application identifiers. An offered setup screen is not evidence that a fresh Store install can connect. | **Mitigable, with external prerequisites.** Register and maintain a Windows client/redirect contract with each affected provider, use its approved native-client authentication design, deliver configuration safely, and distinguish missing configuration from invalid configuration. Verify sign-in, token refresh/revocation, reconnect, subscription/folder mutations, and read/star reconciliation with authorized live accounts. Unit HTTP fixtures cannot certify this; upstream credentials must not be copied or invented. |
 | PR-03: retention | The cleanup API has no production startup caller, so old bodies/orphaned state can continue accumulating. This is a storage-growth risk, not proof that it caused the measured graphics stalls. | **Mitigable, but not by blindly enabling deletion.** Map each provider to PreserveHistory, FeedBased or SyncSystem; introduce an explicit migration/consent policy, preview deletion counts, and exercise cancellation, rollback, large profiles and restart. The existing sync policy preserves unread/starred bodies when aging content out, but the unsubscribed-feed branch can remove even starred content. That distinction must be disclosed and approved before activation. No existing history was deleted in this follow-up. |
 | PR-04: avatars | Automatic timeline icon visibility recognizes author-avatar metadata, but the display path still loads a feed icon. Single-author articles therefore do not show the avatar preferred upstream. | **Directly mitigable in code.** Add a shared author-versus-feed selection/downloading service; single-author avatar, valid feed icon and fallback must have one precedence policy. Reuse the bounded image cache, decoding, content-version invalidation and cancellation/lifetime mechanisms. Verify actual sidebar/timeline/reader results, changed avatar content, unavailable images and grayscale; merely parsing an avatar URL is not completion. |
-| PR-05: themes | Default, Gray and Plum are available; Appanoose, Biblioteca, Hyperlegible, NewsFax, Promenade, Sepia, Tiqoe Dark and Verdana Revival are absent. Users lose those reading styles. | **Directly mitigable in code/resources.** Bring across canonical bundles and required licensed assets/notices, apply their current upstream media changes, and exercise each in WebView2 with images, tables, enclosures, scripts disabled, text sizing and resize anchoring. Preserve installed custom themes. Source commit `8060219b...` is a carry-forward obligation when these bundles are added. This is not an Apple API limitation. |
+| PR-05: themes | **Resolved in source and verified package output.** Default plus all ten canonical file-based themes are available. | Imported the missing bundles and licensed embedded fonts, retained legacy/7.3 templates, completed live settings/resource behavior and confirmed installation workflows. Source `8060219b...` is now Ported; `6ba1b38e...` also records the complete template collection. A signed updated release is still needed to replace the user's older installed application. |
 | PR-06: keyboard routing | Copied shortcut plists are not consumed at runtime; some timeline left/right focus transfers are missing. Help text and actual handlers can diverge. | **Directly mitigable in code.** Use one scope-aware command registry for routing, menus and help. Preserve accepted Windows aliases and normal editing keys. Verify actual focus transfers among sidebar, timeline and reader, including text inputs and WebView2, using an owned foreground window. Modifier adaptation is legitimate; missing routing is not. |
 | PR-07: extraction/Markdown | SmartReader and Markdig replace upstream extraction/Tidemark implementations. Exact output and edge-case equivalence have not been established. | **Mitigable compatibility risk, not a proven failure for every article.** Define adapter contracts and a pinned corpus covering malformed HTML, entities, embedded media, code/lists/tables, Unicode and link resolution. Compare normalized output and rendered behavior; port or adapt mismatches that matter. Different libraries can match user outcomes, but universal byte-for-byte equivalence cannot be promised from their names or current tests. |
 | PR-08: language/accessibility | The Windows application lacks upstream language breadth, and a complete Narrator, keyboard-only, high-contrast, IME, RTL and mixed-DPI matrix is unverified. | **Mitigable on Windows.** Move remaining captions into the existing localization mechanism, translate/review resources, and exercise cultures and layouts. Complete UI Automation names/roles/states, focus/announcement behavior and the real platform matrix. VoiceOver/AppKit code is not portable, but equivalent accessibility outcomes are. Unverified cases are not automatically missing implementations. |
@@ -128,6 +129,71 @@ delivery and full platform testing need external credentials/permissions or an
 interactive environment. Literal Apple APIs are replaced, not copied; iCloud is
 the explicit accepted exclusion. Neither unavailable credentials nor different
 frameworks justify claiming the remaining portable behavior is complete.
+
+## Theme parity follow-up (2026-11-15)
+
+Commit `a7dd3a2` completes the canonical theme collection at the pinned upstream
+revision: **Default, Appanoose, Biblioteca, Gray, Hyperlegible, NewsFax, Plum,
+Promenade, Sepia, Tiqoe Dark and Verdana Revival**. The eight newly imported
+bundles preserve source content with whitespace-only normalization. Both
+`template.html` and `template7.3.html` are retained, and embedded font bytes are
+unchanged. Hyperlegible includes the Atkinson Hyperlegible OFL notice; NewsFax
+retains the ModeSeven distribution notice. Windows system-font fallbacks replace
+Apple-only font aliases without replacing the themes' embedded fonts.
+
+Theme names are unique and sorted, with Default separated in native menus and
+bundled names taking precedence. Open Preferences, menu checkmarks and readers
+stay synchronized across windows. CSS and metadata edits refresh the selected
+theme; deleting it restores and persists Default. Reader helpers handle
+Biblioteca's different body markup and header icon. Theme-specific size scales
+and intentional designs, including NewsFax's lack of a header image and the
+fixed palettes of Sepia/Tiqoe Dark, are preserved.
+
+File-backed themes now use their **processed** stylesheet, including text-size
+macros, Windows font fallbacks and grayscale metadata. Theme-specific HTTPS
+origins prevent two themes with identical CSS from sharing the wrong local
+assets. Local resources are bounded, read off UI, confined to the selected
+theme folder and served with the font CORS headers they need. Virtual-host folder
+mapping is not used for this path because it bypasses `WebResourceRequested`
+and would serve the unprocessed stylesheet.
+
+File/URL imports stage and inspect an immutable copy before showing creator,
+version and website information. Replacement requires a second confirmation.
+Cancellation, invalid replacements and closing the confirmation window preserve
+installed files; staging and active work drain before shutdown. Existing Windows
+behavior of selecting an accepted import is retained. Built-in bundles cannot be
+overwritten through the UI; a customized bundle using a built-in name must be
+renamed. HTML/CSS-only themes and XML/binary plist metadata remain supported,
+with JSON metadata retained as a Windows authoring option.
+
+The full Shared suite passes **541 cases**. Native checks exercise all eleven
+themes through real menus, every text size, dark appearance, media slots,
+embedded/local fonts, separate asset origins, live edits, multiple windows,
+import confirmation and close-time cancellation. Existing live-grayscale and
+all three reader-resize/anchor controls pass. A stale resize-observer test
+condition was corrected to wait for the current viewport; production anchoring
+and its offset tolerance were not changed.
+
+Genuine controls fail when the actual prior implementation is restored:
+unprocessed CSS loses the font-size macro, old control wiring leaves selection
+stale, the old importer installs before confirmation, and old body selectors
+miss Biblioteca tables. A fresh build without the new bundles fails exactly
+eight bundled-theme cases while Default/Gray/Plum pass.
+
+A fresh **unsigned x64 Release MSIX** was built and validated/unpacked with the
+Windows SDK. Its 42 theme/license files match source, all ten file-backed theme
+directory names are correct, Default's embedded resources exist, and both
+production assemblies identify `a7dd3a2` with no diagnostic probe. The existing
+UAP `plist-cil` compatibility warning remains; it did not prevent packaging.
+No installed application, real reading profile, signing certificate or package
+version was changed. The user's installed 1.2.0.0 application remains the
+pre-sync `106603d` build until a newly signed/Store release is installed.
+
+Evidence is retained in `theme-parity-complete-tests`,
+`theme-parity-complete-native`, `theme-verified-theme-import`,
+`theme-verified-reader-resize-*`, `theme-negative-*`, and
+`theme-parity-package`. This closes PR-05, not the unrelated graphics-pause or
+live-provider/release-certification gaps.
 
 ## Intentional UX versus accidental divergence
 
@@ -158,7 +224,8 @@ Not every difference has equivalent approval. In particular, the precise
 AppKit status-bar gradient/grip palette was excluded in source commit
 `c943a1e6...`; Windows retained Fluent styling. That is an identified visual
 adaptation, not a recovered explicit user decision. Likewise, omitting the
-eight canonical themes is a baseline parity gap, not a platform requirement.
+eight canonical themes was a baseline parity gap, not a platform requirement;
+the theme follow-up above has now closed it.
 
 ## The four introduced regressions: cause and prevention
 
@@ -352,7 +419,7 @@ Microsoft reference:
 ## Making subsequent ports safer
 
 1. Keep `UPSTREAM_SYNC.md` and the source-commit ledger as the source-history
-   checkpoint, but carry PR-02 through PR-08 forward independently and retain
+   checkpoint, but carry the still-open PR-02/03/04/06/07/08 gaps forward independently and retain
    PR-01 as an accepted exclusion. "Not currently
    implemented on Windows" is not a reason to treat shared behavior as irrelevant.
 2. Record each intentional UX exception with its user request and a native
@@ -372,8 +439,8 @@ Microsoft reference:
    remain major obstacles to a
    low-surprise, nearly mechanical future porting workflow.
 
-The lowest-risk functional follow-ups are the missing theme bundles and command
-routing, followed by shared avatar selection. Retention and provider delivery
+The lowest-risk functional follow-ups are command routing and shared avatar
+selection; the theme work is complete. Retention and provider delivery
 need more careful integration; CloudKit is intentionally excluded.
 The review intentionally did not enable destructive retention, invent service
 credentials, change an operating-system policy, or silently accept the remaining

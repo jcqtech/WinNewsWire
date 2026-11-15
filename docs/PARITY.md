@@ -12,9 +12,12 @@ completed 505-commit source inventory.
 The detailed checklist below is the **historical baseline**. Its older
 "blocked", "compile-only", test-count and reference-version statements must not
 be read as current results. In particular, source-ledger completion does not
-close the retention, avatar, theme, keyboard and deployment gaps identified in
+close the retention, avatar, keyboard and deployment gaps identified in
 the new review. **CloudKit is now an explicitly accepted Windows exclusion**;
 the older P30 requirement below is superseded by that user decision.
+The 2026-11-15 theme follow-up (`a7dd3a2`) closes the canonical-theme gap: all
+eleven themes, live controls, processed CSS/local fonts and confirmed imports are
+implemented and verified in native readers and a fresh unsigned package.
 
 ## Reference and scope
 
