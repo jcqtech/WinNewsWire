@@ -16,13 +16,12 @@ namespace WinNewsWire;
 public sealed partial class MainContent
 {
     internal const int ArticlePaneMinimumWidth = 300;
-    private const int ContentPaneMargin = 4;
     internal int MinimumReaderWidthInPixels(double scale)
     {
         if (!double.IsFinite(scale) || scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
         int RoundedEdge(double value) => (int)Math.Round(value * scale, MidpointRounding.AwayFromZero);
         // WinUI rounds each border edge separately, not their combined thickness.
-        return (int)Math.Ceiling(ArticlePaneMinimumWidth * scale) + 2 * RoundedEdge(ContentPaneMargin)
+        return (int)Math.Ceiling(ArticlePaneMinimumWidth * scale)
             + RoundedEdge(ContentContainer.BorderThickness.Left) + RoundedEdge(ContentContainer.BorderThickness.Right);
     }
     private const string TimelineColumnsKey = "TimelineColumns";
@@ -306,12 +305,6 @@ public sealed partial class MainContent
             UpdateTimelineHeaderInsets();
             TimelineTableContainer.HorizontalAlignment = column ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
             TimelineHorizontalScroll.HorizontalContentAlignment = column ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
-            TimelineFooter.Visibility = column ? Visibility.Collapsed : Visibility.Visible;
-            CombinedTimelineStatus.Visibility = column ? Visibility.Visible : Visibility.Collapsed;
-            CombinedTimelineStatusColumn.Width = column ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-            DetailFooterContent.ColumnSpacing = column ? 12 : 0;
-            ArticleDetailStatus.TextAlignment = column ? TextAlignment.Right : TextAlignment.Left;
-            WebPageStatus.TextAlignment = column ? TextAlignment.Right : TextAlignment.Left;
             TimelineHorizontalScroll.HorizontalScrollBarVisibility = column ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
             TimelineHorizontalScroll.HorizontalScrollMode = column ? ScrollMode.Enabled : ScrollMode.Disabled;
             UpdateTimelineTableWidth();

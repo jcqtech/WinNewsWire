@@ -186,8 +186,9 @@ directory names are correct, Default's embedded resources exist, and both
 production assemblies identify `a7dd3a2` with no diagnostic probe. The existing
 UAP `plist-cil` compatibility warning remains; it did not prevent packaging.
 No installed application, real reading profile, signing certificate or package
-version was changed. The user's installed 1.2.0.0 application remains the
-pre-sync `106603d` build until a newly signed/Store release is installed.
+version was changed. At the November 14 inspection, the installed 1.2.0.0
+application was the pre-sync `106603d` build; that observation is not a claim
+about the version currently running.
 
 Evidence is retained in `theme-parity-complete-tests`,
 `theme-parity-complete-native`, `theme-verified-theme-import`,
@@ -208,6 +209,23 @@ not inferred solely from current code. Confirmed choices include:
   folder/smart-feed glyphs and the original taskbar icon.
 - Responsive menu overflow and the specifically requested wheel-inertia
   interruption behavior.
+- One pane-aligned footer, retaining sidebar count/refresh cycling, original
+  timeline totals and article/webpage information, and the far-right theme picker.
+  The gear uses its original subscription commands but lives at the right end
+  of the main menu bar, independently of footer visibility.
+- The combined article-list/reader pane has no outer margins and only its
+  top-left corner rounded. Its sidebar gutter is ten DIP: a two-DIP scroll-rail
+  extension followed by the unchanged eight-DIP resize target.
+
+The November 16 footer requests explicitly require "There should only be one
+footer" and then "move the settings button from the bottom left hand corner
+to the top right in-line with the menu bar." The subsequent pane request retains
+only top-left rounding, removes the window-edge margins and slightly reduces the
+sidebar gap. These choices supersede the ported bottom-left gear and duplicate
+footer rows; future upstream ports must preserve them. Column layout still puts
+timeline totals and article information together at the bottom, while hidden
+panes do not retain empty footer sections. The top-right gear has a permanent
+XAML owner; the menu-overflow host excludes its reserved column.
 
 The column request was explicit: "Get rid of the banded rows - insetad, put a
 thin grey line between each row to separate them." The later instruction made

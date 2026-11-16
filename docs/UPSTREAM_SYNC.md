@@ -978,6 +978,29 @@ Media markup has no inline styling. Themes can override `nnw-primary-media`,
 positive; the lead-image caption is omitted when it repeats the article title.
 Generated media URLs remain restricted to HTTP(S) on Windows.
 
+## Explicit Windows footer and window-chrome exception
+
+The November 16 user-requested layout combines the old pane footers and the
+ported status bar into one 32-DIP strip. Sidebar count/last-refresh cycling and
+Current Activity remain; the article list retains its original totals, and the
+reader retains feed/author/date information, hovered links and webpage URLs.
+The theme picker stays at the far right. Column layout keeps its combined
+timeline/detail status; reading-only and responsive layouts omit hidden panes.
+Hiding the status bar hides the whole strip, without an old-footer fallback.
+
+The follow-up request moves the unchanged gear menu to the top-right of the
+main menu-bar row. A separate auto-sized column reserves its space without
+reparenting canonical menu controls or interfering with overflow. The combined
+article-list/reader container is flush to its outer edges, with only the
+top-left corner rounded. The sidebar gutter shrinks from twelve to ten DIP,
+preserving an eight-DIP resize target and the existing feed-row alignment.
+
+These are explicit Windows UX exceptions, not newly processed upstream commits.
+They do not change the `7908c801bf7c97fa7cca9ef78cf51b33fb853e6a` watermark or the
+source-ledger dispositions. Future footer/chrome ports must integrate into this
+single row rather than adding a second status bar or moving the gear back.
+Focused native coverage and its limits are recorded in `TEST_AUDIT.md`.
+
 ## Continuing the synchronization
 
 There are no `Pending` entries at this checkpoint. For a subsequent source update,

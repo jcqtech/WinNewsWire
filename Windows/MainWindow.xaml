@@ -70,7 +70,12 @@
              standard Windows Alt-key mnemonic flow (Alt opens the bar; Alt+F opens File;
              N triggers New Feed; etc.). Letters are chosen to be unique within each
              menu's scope. -->
-        <Grid Grid.Row="1" x:Name="MenuBarHost" SizeChanged="MenuLayout_SizeChanged">
+        <Grid Grid.Row="1" x:Name="MenuBarRow">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+        <Grid x:Name="MenuBarHost" SizeChanged="MenuLayout_SizeChanged">
         <MenuBar x:Name="AppMenuBar" HorizontalAlignment="Left"
                  Loaded="MenuBar_Loaded" SizeChanged="MenuLayout_SizeChanged">
             <MenuBarItem Title="File" AccessKey="F">
@@ -399,6 +404,13 @@
                 </MenuBarItem.Resources>
             </MenuBarItem>
         </MenuBar>
+        </Grid>
+            <Button x:Name="SettingsMenuButton" Grid.Column="1" Width="28" Height="28"
+                    MinWidth="0" MinHeight="0" Padding="0" Margin="4,0,8,0"
+                    VerticalAlignment="Center" Style="{StaticResource SubtleButtonStyle}">
+                <FontIcon Glyph="&#xE713;" FontSize="14" />
+                <Button.Flyout><MenuFlyout Opening="SettingsMenu_Opening" /></Button.Flyout>
+            </Button>
         </Grid>
 
         <!-- Main Content -->

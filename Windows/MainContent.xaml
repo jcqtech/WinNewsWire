@@ -190,11 +190,10 @@
 
             <!-- Extend the scroll rail into the gutter while preserving the header and feed-row widths. -->
             <Grid Grid.Column="0" x:Name="SidebarPanel"
-                  Background="Transparent" Margin="0,0,-4,0" Padding="0,0,4,0">
+                  Background="Transparent" Margin="0,0,-2,0" Padding="0,0,2,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Sidebar toolbar -->
@@ -220,7 +219,7 @@
                   KeyDown="SidebarListView_KeyDown"
                   SelectionMode="Extended"
                   IsMultiSelectCheckBoxEnabled="False"
-                  Margin="0,0,-4,0" Padding="0,0,8,8"
+                  Margin="0,0,-2,0" Padding="0,0,6,8"
                   AutomationProperties.Name="Feeds"
                   AutomationProperties.LandmarkType="Navigation"
                   CanDragItems="True"
@@ -365,21 +364,10 @@
                         BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
                         Background="Transparent"
                         Visibility="Collapsed" IsHitTestVisible="False" />
-                <!-- Sidebar status (accounts · feeds · unread) -->
-                <Border x:Name="SidebarFooter" Grid.Row="2" Padding="12,4"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="0,1,0,0">
-                    <TextBlock Text="{x:Bind ViewModel.SidebarStatus, Mode=OneWay}"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               TextWrapping="NoWrap"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               AutomationProperties.LiveSetting="Polite" />
-                </Border>
             </Grid>
 
             <!-- Keep room for the shifted rail without narrowing the resize hit target. -->
-            <ContentControl x:Name="SidebarSplitter" Grid.Column="1" Width="8" Margin="4,0,0,0"
+            <ContentControl x:Name="SidebarSplitter" Grid.Column="1" Width="8" Margin="2,0,0,0"
                             IsTabStop="True"
                             HorizontalContentAlignment="Stretch"
                             VerticalContentAlignment="Stretch"
@@ -396,14 +384,13 @@
                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
             </ContentControl>
 
-            <!-- Rounded container for Article List + Content (Edge-style) -->
+            <!-- Article List + Content -->
             <Border Grid.Column="2"
                     x:Name="ContentContainer"
-                    CornerRadius="8"
+                    CornerRadius="8,0,0,0"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
-                    Margin="0,4,4,0"
                     Translation="0,0,16">
                 <Border.Shadow>
                     <ThemeShadow />
@@ -425,7 +412,6 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <ScrollViewer x:Name="TimelineHorizontalScroll" Grid.Row="0" Grid.RowSpan="2"
@@ -629,17 +615,6 @@
                                             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                         </Grid>
 
-                        <!-- Timeline status (N articles · unread · starred) -->
-                        <Border x:Name="TimelineFooter" Grid.Row="2" Padding="12,4"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="0,1,0,0">
-                            <TextBlock Text="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       TextWrapping="NoWrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextTrimming="CharacterEllipsis"
-                                       AutomationProperties.LiveSetting="Polite" />
-                        </Border>
                     </Grid>
 
                     <!-- Single-line divider between article list and content.
@@ -674,7 +649,6 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <ContentControl x:Name="ArticleToolbarHost" Grid.Row="0"
@@ -751,38 +725,12 @@
                             </StackPanel>
                         </Grid>
 
-                        <!-- Detail status (feed · author · date · reader view) -->
-                        <Border x:Name="DetailFooter" Grid.Row="3" Padding="12,4"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="0,1,0,0">
-                            <Grid x:Name="DetailFooterContent">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition x:Name="CombinedTimelineStatusColumn" Width="0" />
-                                    <ColumnDefinition Width="2*" />
-                                </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="CombinedTimelineStatus" Visibility="Collapsed"
-                                       Text="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       TextWrapping="NoWrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
-                                       AutomationProperties.LiveSetting="Polite" />
-                            <TextBlock x:Name="ArticleDetailStatus" Grid.Column="1" Text="{x:Bind ViewModel.DetailStatus, Mode=OneWay}"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       TextWrapping="NoWrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextTrimming="CharacterEllipsis"
-                                       AutomationProperties.LiveSetting="Polite" />
-                            <TextBlock x:Name="WebPageStatus" Grid.Column="1" Visibility="Collapsed"
-                                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="NoWrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
-                                       AutomationProperties.LiveSetting="Polite" />
-                            </Grid>
-                        </Border>
                     </Grid>
                 </Grid>
             </Border>
         </Grid>
 
+        <!-- One footer: sidebar activity/counts, Windows pane status, and the shared theme picker. -->
         <Border x:Name="StatusBarSurface" Grid.Row="3" Height="32" Visibility="Collapsed"
                 BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 Background="{ThemeResource LayerFillColorDefaultBrush}">
@@ -792,51 +740,100 @@
                     <ColumnDefinition x:Name="StatusBarSidebarColumn" Width="260" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Grid Margin="8,0,12,0" ColumnSpacing="6">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                    <Button x:Name="StatusBarGearButton" Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="0"
-                            Style="{StaticResource SubtleButtonStyle}">
-                        <FontIcon Glyph="&#xE713;" FontSize="14" />
-                        <Button.Flyout><MenuFlyout Opening="StatusBarGearMenu_Opening" /></Button.Flyout>
-                    </Button>
-                    <Button x:Name="StatusBarActivityButton" Grid.Column="1" Width="48" Height="28" MinWidth="0" MinHeight="0"
-                            Padding="4,0" Visibility="Collapsed" Click="StatusBarActivity_Click"
-                            Style="{StaticResource SubtleButtonStyle}">
-                        <ProgressBar x:Name="StatusBarProgress" Width="40" Height="4"
-                                     IsIndeterminate="False" VerticalAlignment="Center" Visibility="Collapsed"
-                                     IsHitTestVisible="False" />
-                    </Button>
-                    <Button x:Name="StatusBarCountButton" Grid.Column="2" MinWidth="0" MinHeight="0" Height="28" Padding="0"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Click="StatusBarCount_Click" Style="{StaticResource SubtleButtonStyle}">
-                        <TextBlock x:Name="StatusBarCountText" FontSize="12" TextTrimming="CharacterEllipsis"
-                                   Typography.NumeralAlignment="Tabular" />
-                    </Button>
-                </Grid>
-                <ContentControl x:Name="StatusBarSplitter" Grid.Column="1" Width="12" IsTabStop="True"
+                <Border x:Name="SidebarFooter" SizeChanged="StatusBarLayout_SizeChanged">
+                    <Grid Margin="12,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Button x:Name="StatusBarActivityButton" Width="48" Height="28" MinWidth="0" MinHeight="0"
+                                Padding="4,0" Margin="0,0,6,0" Visibility="Collapsed" Click="StatusBarActivity_Click"
+                                Style="{StaticResource SubtleButtonStyle}">
+                            <ProgressBar x:Name="StatusBarProgress" Width="40" Height="4"
+                                         IsIndeterminate="False" VerticalAlignment="Center" Visibility="Collapsed"
+                                         IsHitTestVisible="False" />
+                        </Button>
+                        <Button x:Name="StatusBarCountButton" Grid.Column="1" MinWidth="0" MinHeight="0" Height="28" Padding="0"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Click="StatusBarCount_Click" Style="{StaticResource SubtleButtonStyle}">
+                            <TextBlock x:Name="StatusBarCountText" FontSize="12" TextTrimming="CharacterEllipsis"
+                                       Typography.NumeralAlignment="Tabular" />
+                        </Button>
+                    </Grid>
+                </Border>
+                <ContentControl x:Name="StatusBarSplitter" Grid.Column="1" Width="10" IsTabStop="True"
                                 HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                                 PointerPressed="SidebarSplitter_PointerPressed" PointerMoved="SidebarSplitter_PointerMoved"
                                 PointerReleased="Splitter_PointerReleased" PointerEntered="Splitter_PointerEntered"
                                 PointerExited="Splitter_PointerExited" KeyDown="SidebarSplitter_KeyDown"
                                 AutomationProperties.Name="Resize sidebar">
                     <Grid Background="Transparent">
-                        <Border x:Name="StatusBarDivider" Width="1" HorizontalAlignment="Left" Margin="12,0,-1,0"
+                        <Border x:Name="StatusBarDivider" Width="1" HorizontalAlignment="Left" Margin="10,0,-1,0"
                                 Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                        <FontIcon Glyph="&#xE784;" FontSize="10" VerticalAlignment="Center" Margin="-12,0,0,0"
+                        <FontIcon Glyph="&#xE784;" FontSize="10" VerticalAlignment="Center" Margin="-10,0,0,0"
                                   AutomationProperties.AccessibilityView="Raw" />
                     </Grid>
                 </ContentControl>
-                <TextBlock x:Name="StatusBarLink" Grid.Column="2" Margin="12,0,8,0" VerticalAlignment="Center"
-                           FontSize="12" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                    <TextBlock.ContextFlyout><MenuFlyout Opening="StatusBarLinkMenu_Opening" /></TextBlock.ContextFlyout>
-                </TextBlock>
-                <DropDownButton x:Name="StatusBarThemeButton" Grid.Column="3" Height="28" MinHeight="0"
-                                Margin="0,0,12,0" Padding="4,0" FontSize="12" VerticalAlignment="Center"
-                                Style="{StaticResource SubtleButtonStyle}">
-                    <DropDownButton.Flyout><MenuFlyout Opening="ToolbarThemes_Opening" /></DropDownButton.Flyout>
-                </DropDownButton>
+                <Grid x:Name="StatusBarReadingArea" Grid.Column="2" Margin="1,0"
+                      SizeChanged="StatusBarLayout_SizeChanged">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="StatusBarTimelineColumn" Width="380" />
+                        <ColumnDefinition x:Name="StatusBarArticleDividerColumn" Width="8" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border x:Name="TimelineFooter" Padding="12,0">
+                        <TextBlock x:Name="TimelineFooterStatus" Text="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   ToolTipService.ToolTip="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </Border>
+                    <ContentControl x:Name="StatusBarArticleSplitter" Grid.Column="1" Width="8" IsTabStop="True"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                    PointerPressed="ArticleSplitter_PointerPressed" PointerMoved="ArticleSplitter_PointerMoved"
+                                    PointerReleased="Splitter_PointerReleased" PointerEntered="Splitter_PointerEntered"
+                                    PointerExited="Splitter_PointerExited" KeyDown="ArticleSplitter_KeyDown"
+                                    AutomationProperties.Name="Resize article list"
+                                    AutomationProperties.HelpText="Press left or right arrow to resize">
+                        <Grid Background="Transparent">
+                            <Border Width="1" HorizontalAlignment="Center"
+                                    Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        </Grid>
+                    </ContentControl>
+                    <Border x:Name="DetailFooter" Grid.Column="2" Padding="12,0">
+                        <Grid x:Name="DetailFooterContent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="CombinedTimelineStatusColumn" Width="0" />
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="CombinedTimelineStatus" Visibility="Collapsed" Margin="0,0,12,0"
+                                       Text="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}" VerticalAlignment="Center"
+                                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="NoWrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                       ToolTipService.ToolTip="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}"
+                                       AutomationProperties.LiveSetting="Polite" />
+                            <TextBlock x:Name="ArticleDetailStatus" Grid.Column="1" Text="{x:Bind ViewModel.DetailStatus, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       ToolTipService.ToolTip="{x:Bind ViewModel.DetailStatus, Mode=OneWay}"
+                                       AutomationProperties.LiveSetting="Polite">
+                                <TextBlock.ContextFlyout><MenuFlyout Opening="StatusBarLinkMenu_Opening" /></TextBlock.ContextFlyout>
+                            </TextBlock>
+                            <TextBlock x:Name="WebPageStatus" Grid.Column="1" Visibility="Collapsed" VerticalAlignment="Center"
+                                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="NoWrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                       AutomationProperties.LiveSetting="Polite">
+                                <TextBlock.ContextFlyout><MenuFlyout Opening="StatusBarLinkMenu_Opening" /></TextBlock.ContextFlyout>
+                            </TextBlock>
+                            <DropDownButton x:Name="StatusBarThemeButton" Grid.Column="2" Height="28" MinHeight="0"
+                                            Margin="8,0,0,0" Padding="4,0" FontSize="12" VerticalAlignment="Center"
+                                            Style="{StaticResource SubtleButtonStyle}">
+                                <DropDownButton.Flyout><MenuFlyout Opening="ToolbarThemes_Opening" /></DropDownButton.Flyout>
+                            </DropDownButton>
+                        </Grid>
+                    </Border>
+                </Grid>
             </Grid>
         </Border>
 

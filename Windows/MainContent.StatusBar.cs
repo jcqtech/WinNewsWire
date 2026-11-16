@@ -17,7 +17,6 @@ namespace WinNewsWire;
 public sealed partial class MainContent
 {
     private int _statusBarUpdateQueued;
-    private string _statusBarLink = "";
     private int _statusBarClockInvalidated;
     private bool? _statusBarCanRefresh;
     private DispatcherQueueTimer? _statusBarMidnightTimer;
@@ -25,7 +24,6 @@ public sealed partial class MainContent
     private void InitializeStatusBar()
     {
         AutomationProperties.SetName(StatusBarSurface, AppStrings.Get("StatusBar"));
-        AutomationProperties.SetName(StatusBarGearButton, AppStrings.Get("StatusBarGear"));
         AutomationProperties.SetName(StatusBarActivityButton, AppStrings.Get("CurrentActivity"));
         ToolTipService.SetToolTip(StatusBarActivityButton, AppStrings.Get("CurrentActivity"));
         AutomationProperties.SetHelpText(StatusBarCountButton, AppStrings.Get("StatusBarCountHelp"));
@@ -33,7 +31,9 @@ public sealed partial class MainContent
         CombinedRefreshProgress.Shared.ProgressChanged += StatusBarProgressChanged;
         AppDefaults.Shared.Changed += StatusBarDefaultsChanged;
         ArticleThemesManager.Shared.CurrentThemeChanged += StatusBarThemeChanged;
-        SidebarPanel.SizeChanged += StatusBarSidebar_SizeChanged;
+        SidebarPanel.SizeChanged += StatusBarLayout_SizeChanged;
+        TimelinePanel.SizeChanged += StatusBarLayout_SizeChanged;
+        ArticleDetailPanel.SizeChanged += StatusBarLayout_SizeChanged;
         _statusBarMidnightTimer = DispatcherQueue.CreateTimer();
         _statusBarMidnightTimer.IsRepeating = false;
         _statusBarMidnightTimer.Tick += StatusBarMidnight;
@@ -46,7 +46,9 @@ public sealed partial class MainContent
         CombinedRefreshProgress.Shared.ProgressChanged -= StatusBarProgressChanged;
         AppDefaults.Shared.Changed -= StatusBarDefaultsChanged;
         ArticleThemesManager.Shared.CurrentThemeChanged -= StatusBarThemeChanged;
-        SidebarPanel.SizeChanged -= StatusBarSidebar_SizeChanged;
+        SidebarPanel.SizeChanged -= StatusBarLayout_SizeChanged;
+        TimelinePanel.SizeChanged -= StatusBarLayout_SizeChanged;
+        ArticleDetailPanel.SizeChanged -= StatusBarLayout_SizeChanged;
         if (_statusBarMidnightTimer is { } timer)
         {
             timer.Stop();
@@ -74,7 +76,7 @@ public sealed partial class MainContent
 
     private void StatusBarProgressChanged(object? sender, ProgressInfo progress) => QueueStatusBarUpdate();
     private void StatusBarThemeChanged(object? sender, EventArgs args) => QueueStatusBarUpdate();
-    private void StatusBarSidebar_SizeChanged(object sender, SizeChangedEventArgs args) => QueueStatusBarUpdate();
+    private void StatusBarLayout_SizeChanged(object sender, SizeChangedEventArgs args) => QueueStatusBarUpdate();
 
     private void StatusBarDefaultsChanged(object? sender, string key)
     {
@@ -112,16 +114,13 @@ public sealed partial class MainContent
         var defaults = AppDefaults.Shared;
         bool show = defaults.ShowStatusBar;
         StatusBarSurface.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        SidebarFooter.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
         if (!show) return;
 
-        bool sidebar = SidebarPanel.Visibility == Visibility.Visible && !ViewModel.IsUnifiedLayout;
-        StatusBarSidebarColumn.Width = sidebar ? SidebarColumn.Width : GridLength.Auto;
-        StatusBarCountButton.Visibility = StatusBarSplitter.Visibility = sidebar ? Visibility.Visible : Visibility.Collapsed;
         bool showCounts = ViewModel.UnreadDisplayMode == UnreadCountDisplay.Count;
         var progress = CombinedRefreshProgress.Shared.Snapshot;
         bool refreshing = progress.NumberRemaining > 0;
         StatusBarActivityButton.Visibility = StatusBarProgress.Visibility = refreshing ? Visibility.Visible : Visibility.Collapsed;
+        UpdateStatusBarLayout(refreshing);
         StatusBarProgress.Maximum = Math.Max(1, progress.NumberOfTasks);
         StatusBarProgress.Value = progress.NumberCompleted;
         if (refreshing)
@@ -138,11 +137,45 @@ public sealed partial class MainContent
                 accounts.Sum(account => account.FlattenedFeeds().Count()),
                 AppRuntime.AppService.Shared.Accounts.LastRefreshCompletedDate);
         }
-        _statusBarLink = ViewModel.HoveredLink ?? ViewModel.SelectedArticle?.Link ?? "";
-        StatusBarLink.Text = StatusBarPresentation.LinkText(_statusBarLink);
-        ToolTipService.SetToolTip(StatusBarLink, _statusBarLink.Length > 0 ? _statusBarLink : null);
         StatusBarThemeButton.Content = ArticleThemesManager.Shared.CurrentTheme.Name;
         StatusBarThemeButton.Visibility = defaults.ShowStatusBarThemeMenu ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateStatusBarLayout(bool refreshing)
+    {
+        bool sidebar = SidebarPanel.Visibility == Visibility.Visible && !ViewModel.IsUnifiedLayout;
+        var sidebarWidth = sidebar ? SidebarColumn.Width : GridLength.Auto;
+        if (StatusBarSidebarColumn.Width != sidebarWidth) StatusBarSidebarColumn.Width = sidebarWidth;
+        SidebarFooter.Visibility = sidebar || refreshing ? Visibility.Visible : Visibility.Collapsed;
+        StatusBarCountButton.Visibility = StatusBarSplitter.Visibility = sidebar ? Visibility.Visible : Visibility.Collapsed;
+
+        bool timeline = TimelinePanel.Visibility == Visibility.Visible && !ViewModel.IsUnifiedLayout;
+        bool column = timeline && ViewModel.UseColumnLayout;
+        bool separateTimeline = timeline && !column;
+        TimelineFooter.Visibility = StatusBarArticleSplitter.Visibility = separateTimeline ? Visibility.Visible : Visibility.Collapsed;
+        CombinedTimelineStatus.Visibility = column ? Visibility.Visible : Visibility.Collapsed;
+        var combinedWidth = column ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        if (CombinedTimelineStatusColumn.Width != combinedWidth) CombinedTimelineStatusColumn.Width = combinedWidth;
+        ArticleDetailStatus.TextAlignment = WebPageStatus.TextAlignment = column ? TextAlignment.Right : TextAlignment.Left;
+        SetFooterWidth(StatusBarArticleDividerColumn, separateTimeline ? ArticleDividerColumn.ActualWidth : 0);
+        if (!separateTimeline)
+        {
+            SetFooterWidth(StatusBarTimelineColumn, 0);
+        }
+        else if (StatusBarReadingArea.IsLoaded && StatusBarReadingArea.ActualWidth > 0 && TimelinePanel.ActualWidth > 0)
+        {
+            // A hidden sidebar can retain compact progress, so align the
+            // timeline's far edge rather than assuming both sections start together.
+            double right = TimelinePanel.TransformToVisual(this).TransformPoint(new(TimelinePanel.ActualWidth, 0)).X;
+            double left = StatusBarReadingArea.TransformToVisual(this).TransformPoint(default).X;
+            SetFooterWidth(StatusBarTimelineColumn, Math.Max(0, right - left));
+        }
+    }
+
+    private static void SetFooterWidth(ColumnDefinition column, double width)
+    {
+        if (!column.Width.IsAbsolute || Math.Abs(column.Width.Value - width) > 0.1)
+            column.Width = new GridLength(width);
     }
 
     internal void SetStatusBarVisible(bool show)
@@ -192,14 +225,14 @@ public sealed partial class MainContent
     {
         var menu = (MenuFlyout)sender;
         menu.Items.Clear();
-        string link = _statusBarLink;
+        string link = ViewModel.HoveredLink
+            ?? (_showingWebPage ? DisplayedWebPageUri?.AbsoluteUri : ViewModel.SelectedArticle?.Link) ?? "";
         menu.Items.Add(MakeMenuItem(AppStrings.Get("StatusBarCopyLink"), "\uE8C8", (_, _) => CopyToClipboard(link),
             isEnabled: link.Length > 0));
     }
 
-    private void StatusBarGearMenu_Opening(object sender, object args)
+    internal void PopulateSubscriptionMenu(MenuFlyout menu)
     {
-        var menu = (MenuFlyout)sender;
         menu.Items.Clear();
         if (AppRuntime.AppService.Shared.Accounts.CanRefresh)
             menu.Items.Add(MakeMenuItem(AppStrings.Get("Refresh"), "\uE72C", ReloadButton_Click,

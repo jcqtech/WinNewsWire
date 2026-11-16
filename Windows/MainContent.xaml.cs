@@ -1098,7 +1098,8 @@ public sealed partial class MainContent : UserControl
                     ArticleListView.ScrollIntoView(selected);
             });
         if (e.PropertyName is nameof(ViewModel.SidebarStatus) or nameof(ViewModel.SelectedArticle)
-            or nameof(ViewModel.HoveredLink) or nameof(ViewModel.IsSidebarVisible) or nameof(ViewModel.IsUnifiedLayout))
+            or nameof(ViewModel.HoveredLink) or nameof(ViewModel.IsSidebarVisible) or nameof(ViewModel.IsUnifiedLayout)
+            or nameof(ViewModel.UseColumnLayout))
             QueueStatusBarUpdate();
         if (e.PropertyName is nameof(ViewModel.SelectedArticles) or nameof(ViewModel.SelectedArticle)
             or nameof(ViewModel.CanToggleSelectedRead) or nameof(ViewModel.IsReaderMode) or nameof(ViewModel.IsLoading)
@@ -1189,7 +1190,10 @@ public sealed partial class MainContent : UserControl
     private bool _selfChangingSidebar;
 
     private void MainContentGrid_SizeChanged(object sender, SizeChangedEventArgs e)
-        => ApplyResponsiveLayout(e.NewSize.Width);
+    {
+        ApplyResponsiveLayout(e.NewSize.Width);
+        QueueStatusBarUpdate();
+    }
 
     private void ApplyResponsiveLayout(double width)
     {
@@ -1340,7 +1344,6 @@ public sealed partial class MainContent : UserControl
         SidebarPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         SidebarSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         QueueStatusBarUpdate();
-        ContentContainer.Margin = new Thickness(show ? 0 : ContentPaneMargin, ContentPaneMargin, ContentPaneMargin, 0);
     }
 
     private void AnimateSidebar(bool show)

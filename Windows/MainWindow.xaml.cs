@@ -44,6 +44,8 @@ public sealed partial class MainWindow : Window
         MainContentControl.NavigationHistoryChanged += (_, _) => NavigateBackButton.IsEnabled = MainContentControl.CanGoBack;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(NavigateBackButton, AppStrings.Get("NavigateBack"));
         ToolTipService.SetToolTip(NavigateBackButton, AppStrings.Get("NavigateBack"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SettingsMenuButton, AppStrings.Get("StatusBarGear"));
+        ToolTipService.SetToolTip(SettingsMenuButton, AppStrings.Get("StatusBarGear"));
         MenuOpenWebView.Text = ToolbarConfiguration.Label("openInWebView");
         SyncToolbarMenu();
 
@@ -293,6 +295,8 @@ public sealed partial class MainWindow : Window
     // --- MenuBar handlers (File / Edit / View / Article / Feed / Window / Help) ---
 
     private async void Menu_NewFeed(object sender, RoutedEventArgs e) => await MainContentControl.NewFeedAsync();
+    private void SettingsMenu_Opening(object sender, object args)
+        => MainContentControl.PopulateSubscriptionMenu((MenuFlyout)sender);
     private async void Menu_NewFolder(object sender, RoutedEventArgs e) => await MainContentControl.NewFolderAsync();
     private void Dinosaurs_Click(object sender, RoutedEventArgs e) => AppWindows.DinosaursWindow.Show();
     private void Menu_NewWindow(object sender, RoutedEventArgs e)

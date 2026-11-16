@@ -24,6 +24,48 @@ all reader-resize variants also pass. The x64 MSIX contains all 42 theme/license
 files and production-only assemblies at `a7dd3a2`; it was not installed over
 the user's pre-sync application. See the theme section in `PARITY_REVIEW.md`.
 
+The 2026-11-16 footer/chrome follow-up passes the focused installed-runtime
+checks for the single footer, original pane status, all eleven themes, full-URL
+Copy, count cycling, refresh/activity actions, shared visibility and top-right
+gear commands. Seventeen footer cases cover standard/column/reading-only/narrow
+layouts, multiple pane widths, light/dark styling, hidden-sidebar progress and
+long text. The chrome check verifies square top-right/bottom corners, flush
+edges, the reduced gutter, menu overflow beside the gear, and a 300-DIP minimum
+article pane. Footer hover changes still cause zero extra command-header layouts.
+The pane-header check and all three reader-resize anchor variants pass.
+
+Exact reversals of all six production files match `HEAD`: the old layout fails
+the single-footer assertion, and the old gear fails the top-right menu-bar
+assertion. The production files were restored byte-for-byte before the passing
+runs. Both Probe and normal production builds finish with zero warnings/errors.
+The normal Debug output was locked by the running app/IDE; the successful
+production build uses the private `footer-chrome-production` output instead,
+without closing that app or changing its profile.
+
+Use `--status-bar`, `--window-chrome` and `--pane-headers` for the focused UI
+checks, with a fresh private output directory as the executable's first argument
+and `--installed-runtime`. `--window-restoration` also runs independently; its
+fixture now waits for the actual resized reader viewport before recording a
+scroll position, and two consecutive final runs pass. No position tolerance or
+production anchoring behavior was relaxed. Text-slot assertions use allocated
+grid slots because a stretched WinUI TextBlock can report tight glyph bounds.
+
+This is not a new whole-harness pass. An earlier broad run passed 47/52 groups;
+the exact original production build passed 48/52, with the column-state,
+minimum-width, menu-Find and toolbar groups failing in both. The additional
+restoration failure was timing-dependent; focused restoration passes after
+the fixture's viewport synchronization. Physical gutter input remains an
+explicit `--window-chrome --sidebar-gutter-input` option: its attempt could not
+acquire owned pointer input on the shared desktop. The existing ownership guards
+remain intact. Geometry and retained WinUI hit-test evidence are not claimed as
+a completed physical-input or screen-presentation gate.
+
+Retained evidence: `footer-chrome-settled-status-bar`,
+`footer-chrome-first-pane-headers`, `footer-chrome-final-*`,
+`footer-chrome-confirmed-*`, `footer-chrome-negative-*`, and the two exact
+reversal patches in the session artifacts. The earlier unresolved native
+graphics pauses remain outside this footer/chrome change.
+
 The suite mapping and dated results below describe the older baseline and
 subsequent historical runs, not a current claim of exact test parity or complete
 runtime verification. Counts of source test functions and expanded xUnit cases
@@ -302,7 +344,7 @@ focus must not delete subscriptions; Delete still edits text in search, inline
 rename and the embedded browser. Smart feeds and mixed ineligible selections
 are protected, and repeated Delete cannot stack confirmations.
 
-Sidebar scrollbar coverage measures its four-DIP gutter offset without changing
+Sidebar scrollbar coverage measures its two-DIP gutter offset without changing
 label alignment, clicks the native scroll arrow in that added space, and drags
 the far edge of the separate eight-DIP resize handle.
 

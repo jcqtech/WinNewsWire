@@ -69,6 +69,7 @@ internal static partial class ParityProbe
         bool originalColumn = AppDefaults.Shared.UseColumnLayout;
         var bar = Descendants(window.Content).OfType<MenuBar>().Single(item => item.Name == "AppMenuBar");
         var host = Descendants(window.Content).OfType<Grid>().Single(item => item.Name == "MenuBarHost");
+        var menuRow = Descendants(window.Content).OfType<Grid>().Single(item => item.Name == "MenuBarRow");
         var overflow = bar.Items.Single(item => item.Name == "MenuOverflowItem");
         var headers = bar.Items.Where(item => item != overflow).ToArray();
         var titles = headers.ToDictionary(item => item, item => item.Title);
@@ -92,7 +93,7 @@ internal static partial class ParityProbe
                 { Width = Math.Max(minimum, (int)Math.Ceiling(width * content.XamlRoot.RasterizationScale)) });
             window.AppWindow.MoveAndResize(bounds);
             await WaitFor(() => Task.FromResult(window.AppWindow.Size.Width == bounds.Width
-                && Math.Abs(host.ActualWidth * content.XamlRoot.RasterizationScale - window.AppWindow.ClientSize.Width) < 2),
+                && Math.Abs(menuRow.ActualWidth * content.XamlRoot.RasterizationScale - window.AppWindow.ClientSize.Width) < 2),
                 "Settled menu viewport at " + width);
         }
         bool Fits() => bar.Items.Where(item => item.Visibility == Visibility.Visible)

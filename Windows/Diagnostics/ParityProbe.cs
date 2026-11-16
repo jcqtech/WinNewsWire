@@ -489,6 +489,29 @@ internal static partial class ParityProbe
                     () => CheckStatusBarAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--pane-headers"))
+            {
+                await CheckAsync("Article renderer, native scripts and five text sizes", () => CheckArticleAsync(window));
+                await CheckAsync("Pane headers, title-bar input and column presentation", () => CheckPaneHeadersAsync(window));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--window-chrome"))
+            {
+                await CheckAsync("Top-right settings, flush pane edges and reduced sidebar gutter", () => CheckWindowChromeAsync(window));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--window-restoration"))
+            {
+                bool scripts = AppDefaults.Shared.ArticleContentJavascriptEnabled;
+                try
+                {
+                    AppDefaults.Shared.ArticleContentJavascriptEnabled = false;
+                    await CheckAsync("Window restoration, independent sorting, saved selection and reading position",
+                        () => CheckWindowRestorationAsync(window, server.Url));
+                }
+                finally { AppDefaults.Shared.ArticleContentJavascriptEnabled = scripts; }
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--timeline-visibility"))
             {
                 await CheckAsync("Timeline navigation respects pinned headers in both layouts",
@@ -2580,11 +2603,31 @@ internal static partial class ParityProbe
             Require(model.SelectedArticle?.Id == "restoration-unread", "A timeline refresh discarded the selected article.");
             ((ColumnDefinition)content.FindName("SidebarColumn")).Width = new GridLength(320);
             ((ColumnDefinition)content.FindName("ArticleListColumn")).Width = new GridLength(420);
+            ((Grid)content.FindName("MainContentGrid")).UpdateLayout();
+            await WaitFor(async () =>
+            {
+                if (!content.ProbeReaderInteractionReady) return false;
+                var anchor = await content.ProbeResizeAnchorStateAsync();
+                return !anchor.GetProperty("changingSize").GetBoolean()
+                    && Math.Abs(anchor.GetProperty("viewportWidth").GetDouble() - content.ProbeWebView.ActualWidth) < 1
+                    && await ScriptBool(content, "Math.abs(innerHeight - "
+                        + content.ProbeWebView.ActualHeight.ToString(System.Globalization.CultureInfo.InvariantCulture) + ") < 1");
+            }, "Restored pane geometry settles before scrolling");
             Require(!content.ProbeWebView.CoreWebView2.Settings.IsScriptEnabled, "This regression requires article JavaScript to be disabled.");
             await content.ProbeWebView.ExecuteScriptAsync("window.scrollTo(0, 700);");
             AppDefaults.Shared.ArticleTextSizeRaw = 3;
-            await WaitFor(async () => await ScriptBool(content, "!!document.getElementById('restoration-body') && getComputedStyle(document.getElementById('bodyContainer')).fontSize === '20px' && Math.abs(window.scrollY - 700) <= 2"),
-                "Reading position after text-size change");
+            try
+            {
+                await WaitFor(async () => await ScriptBool(content, "!!document.getElementById('restoration-body') && getComputedStyle(document.getElementById('bodyContainer')).fontSize === '20px' && Math.abs(window.scrollY - 700) <= 2"),
+                    "Reading position after text-size change");
+            }
+            catch (TimeoutException error)
+            {
+                var document = await content.ProbeWebView.ExecuteScriptAsync(
+                    "({scroll:scrollY,width:innerWidth,height:innerHeight,font:getComputedStyle(document.getElementById('bodyContainer')).fontSize,fixture:!!document.getElementById('restoration-body')})");
+                throw new InvalidOperationException("Text-size restoration: " + document + "; state: "
+                    + JsonSerializer.Serialize(window.CaptureState()) + "; resize anchor: " + await content.ProbeResizeAnchorStateAsync(), error);
+            }
             AppDefaults.Shared.ArticleTextSizeRaw = 4;
             await WaitFor(async () => await ScriptBool(content, "!!document.getElementById('restoration-body') && getComputedStyle(document.getElementById('bodyContainer')).fontSize === '22px' && Math.abs(window.scrollY - 700) <= 2"),
                 "Reading position after text-size restoration");
@@ -2700,7 +2743,9 @@ internal static partial class ParityProbe
             {
                 var document = await reader.ProbeContent.ProbeWebView.ExecuteScriptAsync(
                     "({scroll:window.scrollY,width:innerWidth,height:document.documentElement.scrollHeight,viewport:window.innerHeight,reader:document.body.innerText.includes('Reader fixture paragraph')})");
-                throw new InvalidOperationException("Restored reader document: " + document + "; state: " + JsonSerializer.Serialize(reader.CaptureState()), error);
+                var anchor = await reader.ProbeContent.ProbeResizeAnchorStateAsync();
+                throw new InvalidOperationException("Restored reader document: " + document + "; state: "
+                    + JsonSerializer.Serialize(reader.CaptureState()) + "; resize anchor: " + anchor, error);
             }
             Require(reader.ProbeContent.ViewModel.SelectedArticle?.Id == "probe-article" && reader.ProbeContent.ViewModel.SelectedArticle.IsRead,
                 "The saved read article was not retained as an exception to the unread scope.");
@@ -2741,8 +2786,8 @@ internal static partial class ParityProbe
         MainWindow? restored = null;
         try
         {
-            foreach (var sample in new[] { (Scale: 1d, Width: 310), (Scale: 1.25, Width: 387),
-                (Scale: 1.5, Width: 466), (Scale: 2d, Width: 620) })
+            foreach (var sample in new[] { (Scale: 1d, Width: 302), (Scale: 1.25, Width: 377),
+                (Scale: 1.5, Width: 454), (Scale: 2d, Width: 604) })
                 Require(content.MinimumReaderWidthInPixels(sample.Scale) == sample.Width, "Reader edges were not rounded individually for display scaling.");
             foreach (var layout in new[] { (Name: "standard", Column: false, ReadingOnly: false),
                 (Name: "column", Column: true, ReadingOnly: false), (Name: "reading", Column: false, ReadingOnly: true) })
@@ -3153,6 +3198,9 @@ internal static partial class ParityProbe
             var detailStatus = Element<TextBlock>("ArticleDetailStatus");
             var webStatus = Element<TextBlock>("WebPageStatus");
             var counts = Element<TextBlock>("CombinedTimelineStatus");
+            double FooterTextRight() => Element<DropDownButton>("StatusBarThemeButton").Visibility == Visibility.Visible
+                ? Bounds(Element<DropDownButton>("StatusBarThemeButton")).Left - 8
+                : Bounds(Element<Border>("DetailFooter")).Right - 12;
             Require(detailStatus.TextAlignment == TextAlignment.Right && webStatus.TextAlignment == TextAlignment.Right
                 && counts.TextAlignment == TextAlignment.Left,
                 "Column detail text must be right-aligned without moving the timeline counts.");
@@ -3164,10 +3212,10 @@ internal static partial class ParityProbe
                 Start = detailStatus.ContentStart.GetCharacterRect(LogicalDirection.Forward),
                 End = detailStatus.ContentEnd.GetCharacterRect(LogicalDirection.Backward),
                 RenderedRight = TextRight(detailStatus),
-                ExpectedRight = Bounds(Element<Border>("DetailFooter")).Right - 12
+                ExpectedRight = FooterTextRight()
             }, new JsonSerializerOptions { WriteIndented = true }));
             await WaitFor(() => Task.FromResult(!string.IsNullOrEmpty(detailStatus.Text) && !detailStatus.IsTextTrimmed
-                && Math.Abs(TextRight(detailStatus) - (Bounds(Element<Border>("DetailFooter")).Right - 12)) < 1),
+                && Math.Abs(TextRight(detailStatus) - FooterTextRight()) < 1),
                 "Rendered article footer right edge");
             Require(Bounds(counts).Right + 11 <= Bounds(detailStatus).Left, "Column footer text lost its separation.");
             var titleButton = columns.Children.OfType<Button>().Single(button => button.Tag as string == "Title");
@@ -3184,7 +3232,7 @@ internal static partial class ParityProbe
             await content.OpenSelectedInWebViewAsync();
             await WaitFor(() => Task.FromResult(content.ProbeWebPageReady && webStatus.Visibility == Visibility.Visible
                 && !string.IsNullOrEmpty(webStatus.Text) && !webStatus.IsTextTrimmed
-                && Math.Abs(TextRight(webStatus) - (Bounds(Element<Border>("DetailFooter")).Right - 12)) < 1),
+                && Math.Abs(TextRight(webStatus) - FooterTextRight()) < 1),
                 "Rendered webpage footer right edge");
             await SaveWindowScreenshotAsync(window, "headers-column-webpage-footer");
             await content.GoBackAsync();
