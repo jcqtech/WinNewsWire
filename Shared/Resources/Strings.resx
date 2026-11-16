@@ -162,10 +162,10 @@
   <data name="RenderingCompatibilityActive" xml:space="preserve"><value>Compatibility rendering is selected for this session.</value></data>
   <data name="RenderingHardwareActive" xml:space="preserve"><value>Default rendering is selected for this session.</value></data>
   <data name="RenderingSaveFailed" xml:space="preserve"><value>Could not save the rendering setting: {0}</value></data>
-  <data name="DirectBrowserScrolling" xml:space="preserve"><value>Direct browser scrolling (experimental)</value></data>
-  <data name="DirectBrowserScrollingDescription" xml:space="preserve"><value>Disables animated browser scrolling, including interruptible wheel inertia. Leave this off to keep coasting that yields to new wheel input. Keyboard scrolling may also feel less animated. Windows touchpad settings are unchanged. This workaround depends on a WebView2 browser flag.</value></data>
-  <data name="DirectScrollingSelected" xml:space="preserve"><value>Direct browser scrolling is selected for this session.</value></data>
-  <data name="AnimatedScrollingSelected" xml:space="preserve"><value>Default browser scroll animation is selected for this session.</value></data>
+  <data name="WheelInertia" xml:space="preserve"><value>Wheel and touchpad inertia</value></data>
+  <data name="WheelInertiaDescription" xml:space="preserve"><value>Off by default for immediate wheel and touchpad scrolling. Touchscreen and pen momentum remain enabled. Browser changes require a restart; direct browser scrolling can also make keyboard scrolling less animated. Windows input settings are unchanged.</value></data>
+  <data name="DirectScrollingSelected" xml:space="preserve"><value>Direct wheel and touchpad scrolling is selected for this session.</value></data>
+  <data name="WheelInertiaSelected" xml:space="preserve"><value>Wheel and touchpad inertia is selected for this session.</value></data>
   <data name="ScrollingSaveFailed" xml:space="preserve"><value>Could not save the scrolling setting: {0}</value></data>
   <data name="NoSpeechText" xml:space="preserve"><value>The article has no text to speak.</value></data>
   <data name="SpeechFailed" xml:space="preserve"><value>Could not speak the article:</value></data>

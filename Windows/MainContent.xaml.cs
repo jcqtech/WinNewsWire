@@ -70,10 +70,7 @@ public sealed partial class MainContent : UserControl
     private bool _isSidebarDragging;
     private bool _isArticleDragging;
     private ScrollViewer? _articleScrollViewer;
-    private UIElement? _articleWheelSurface;
-    private readonly List<UIElement> _articleWheelTargets = [];
-    private PointerEventHandler? _articleWheelHandler;
-    private int _articleWheelDirection;
+    private readonly List<WinNewsWire.Input.WheelScrollingBehavior> _wheelScrolling = [];
     private double _dragStartX;
     private double _dragStartWidth;
     private double _lastSidebarWidth = 260;
@@ -164,33 +161,6 @@ public sealed partial class MainContent : UserControl
             element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
         }
         return false;
-    }
-
-    private void ArticleListView_PointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_shuttingDown && _articleScrollViewer is { } scroll
-            && e.Pointer.PointerDeviceType is PointerDeviceType.Touch or PointerDeviceType.Pen)
-        {
-            _articleWheelDirection = 0;
-            scroll.IsScrollInertiaEnabled = true;
-        }
-    }
-
-    private void ArticleListView_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
-    {
-        if (_shuttingDown || _articleScrollViewer is not { } scroll) return;
-        var properties = e.GetCurrentPoint(ArticleListView).Properties;
-        if (properties.IsHorizontalMouseWheel || properties.MouseWheelDelta == 0
-            || e.KeyModifiers.HasFlag(Windows.System.VirtualKeyModifiers.Control)) return;
-        int direction = Math.Sign(properties.MouseWheelDelta);
-        if (direction != _articleWheelDirection)
-        {
-            // Cancel the previous destination before native handling starts the new wheel animation.
-            double offset = scroll.VerticalOffset;
-            _articleWheelSurface?.CancelDirectManipulations();
-            scroll.ChangeView(null, offset, null, disableAnimation: true);
-        }
-        _articleWheelDirection = direction;
     }
 
     private void ArticleListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -314,22 +284,13 @@ public sealed partial class MainContent : UserControl
             // ListView's template does not forward the attached inertia setting to this ScrollViewer.
             _articleScrollViewer = FindDescendantByName(ArticleListView, "ScrollViewer") as ScrollViewer
                 ?? throw new InvalidOperationException("The article list scroll viewer was not created.");
-            _articleScrollViewer.IsScrollInertiaEnabled = true;
+            SidebarListView.ApplyTemplate();
+            var sidebarScroll = FindDescendantByName(SidebarListView, "ScrollViewer") as ScrollViewer
+                ?? throw new InvalidOperationException("The sidebar scroll viewer was not created.");
+            _wheelScrolling.Add(new(ArticleListView, _articleScrollViewer));
+            _wheelScrolling.Add(new(SidebarListView, sidebarScroll));
+            _wheelScrolling.Add(new(TimelineHorizontalScroll, TimelineHorizontalScroll));
             InitializeTimelineThumbnails();
-            _articleWheelHandler = ArticleListView_PointerWheelChanged;
-            _articleWheelSurface = FindDescendantByName(_articleScrollViewer, "ScrollContentPresenter") as UIElement
-                ?? _articleScrollViewer.Content as UIElement
-                ?? throw new InvalidOperationException("The article list scroll surface was not created.");
-            foreach (var target in new[]
-            {
-                _articleWheelSurface,
-                FindDescendantByName(_articleScrollViewer, "VerticalScrollBar") as UIElement,
-                FindDescendantByName(_articleScrollViewer, "HorizontalScrollBar") as UIElement
-            }.OfType<UIElement>())
-            {
-                _articleWheelTargets.Add(target);
-                target.AddHandler(UIElement.PointerWheelChangedEvent, _articleWheelHandler, handledEventsToo: true);
-            }
             WinNewsWire.Input.MiddleClickAutoScroll.Attach(ArticleListView);
             WinNewsWire.Input.MiddleClickAutoScroll.Attach(SidebarListView);
             // RightTapped reliably tells us the visual that was right-clicked
@@ -465,15 +426,8 @@ public sealed partial class MainContent : UserControl
             await StopTimelineThumbnailsAsync();
             DisposeStatusBar();
             CancelTimelineReveal();
-            ArticleListView.PointerEntered -= ArticleListView_PointerEntered;
-            if (_articleWheelHandler is { } wheel)
-            {
-                foreach (var target in _articleWheelTargets)
-                    target.RemoveHandler(UIElement.PointerWheelChangedEvent, wheel);
-            }
-            _articleWheelTargets.Clear();
-            _articleWheelSurface = null;
-            _articleWheelHandler = null;
+            foreach (var scrolling in _wheelScrolling) scrolling.Dispose();
+            _wheelScrolling.Clear();
             _articleScrollViewer = null;
             StopSidebarReveals();
             ++_browsingVersion;

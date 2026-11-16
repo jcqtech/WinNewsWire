@@ -1001,6 +1001,21 @@ source-ledger dispositions. Future footer/chrome ports must integrate into this
 single row rather than adding a second status bar or moving the gear back.
 Focused native coverage and its limits are recorded in `TEST_AUDIT.md`.
 
+## Explicit Windows input-motion exception
+
+The later November 16 request supersedes the earlier wheel-inertia behavior:
+mouse-wheel and touchpad inertia is off by default, while touchscreen momentum
+remains. `useWheelInertia=false` is the shared new default, including for
+profiles with the old browser-only experimental preference. Native pane scroll
+viewers retain touch/pen inertia and disable wheel inertia; both browser panes
+use direct scrolling without the additional easing listener. Preferences
+retains an explicit opt-in and reports when a browser restart is required.
+
+This is a user-approved Windows UX exception, not an upstream source change.
+Do not re-enable wheel coasting merely to mirror a later Mac implementation.
+Physical-input/graphics-latency limitations and the independent event/frame
+measurements remain documented in `PARITY_REVIEW.md` and `TEST_AUDIT.md`.
+
 ## Continuing the synchronization
 
 There are no `Pending` entries at this checkpoint. For a subsequent source update,

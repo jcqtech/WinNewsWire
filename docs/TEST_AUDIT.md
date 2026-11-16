@@ -66,6 +66,45 @@ Retained evidence: `footer-chrome-settled-status-bar`,
 reversal patches in the session artifacts. The earlier unresolved native
 graphics pauses remain outside this footer/chrome change.
 
+The later November 16 input-policy follow-up passes **334 Core cases**, including
+fresh defaults, both legacy browser-setting values, persistence and failed-write
+rollback. The actual native scroll viewers default to no wheel inertia. The
+final six-group installed-runtime input run verifies reader and embedded-page
+wheel motion, browser touchscreen momentum, preference/restart behavior,
+independent windows, state capture and shutdown. Theme parity and the reader
+resize-anchor check also pass. Probe and isolated production builds have zero
+warnings/errors.
+
+The final reader and webpage event-to-frame results are **15.2/32.9 ms**, with
+zero added animation duration; touchscreen motion continues **242.7 pixels**
+after release. Exact original-source controls fail the native default and
+browser-animation checks, including a 233 ms embedded-page animation in the
+latest retained original-source run. An earlier original-source control also
+measured a 229 ms reader animation. The reversal includes the dependent
+preference fixture so the old Core API compiles; the new input/motion assertions
+remain in place, and the production files/helper are restored byte-for-byte.
+
+Use `--input-policy` for functional motion checks, or `--reader-input-latency`
+to additionally enforce the unchanged **100 ms** browser presentation budget.
+Both require `--frame-driver-host` with the absolute Node executable, a fresh
+private output directory first, and `--installed-runtime`.
+`CaptureScrollFrames.mjs` generates trusted browser wheel input and records
+actual event creation/delivery times and compositor frame offsets independently
+of the app's managed process. It keeps automation request delay separate from
+event-to-frame delay and uses an isolated-world listener when article JavaScript
+is disabled. Functional success is not a responsiveness result: every report
+retains `ResponsivenessPassed`, request delay and `PhysicalInputMeasured=false`.
+
+The native pointer/physical-touchpad path remains unverified because its
+foreground-ownership guard could not be satisfied. Existing strict host
+responsiveness checks still reject the remaining load/resize pauses; their
+limits were not relaxed. No real profile, OS input setting or GPU preference
+was modified. Evidence includes `reader-lag-baseline-host-20261116`,
+`reader-lag-promenade-*`, `reader-input-traced`, `reader-policy-negative`,
+`reader-event-negative`, `reader-event-verified`,
+`reader-input-release-validation`, `reader-policy-themes` and
+`reader-policy-anchor`.
+
 The suite mapping and dated results below describe the older baseline and
 subsequent historical runs, not a current claim of exact test parity or complete
 runtime verification. Counts of source test functions and expanded xUnit cases

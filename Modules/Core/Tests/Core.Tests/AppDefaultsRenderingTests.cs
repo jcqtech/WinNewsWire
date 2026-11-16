@@ -40,37 +40,51 @@ public sealed class AppDefaultsRenderingTests : IDisposable
     }
 
     [Fact]
-    public void DirectScrollingIsOptInPersistentAndIndependentOfRasterization()
+    public void WheelInertiaIsOptInPersistentAndIndependentOfRasterization()
     {
         var defaults = new AppDefaults(FilePath);
-        Assert.False(defaults.UseDirectBrowserScrolling);
+        Assert.False(defaults.UseWheelInertia);
         defaults.UseSoftwareRasterization = true;
         string? changed = null;
         defaults.Changed += (_, key) => changed = key;
-        defaults.UseDirectBrowserScrolling = true;
-        Assert.Equal(AppDefaults.Key.UseDirectBrowserScrolling, changed);
+        defaults.UseWheelInertia = true;
+        Assert.Equal(AppDefaults.Key.UseWheelInertia, changed);
         var reopened = new AppDefaults(FilePath);
-        Assert.True(reopened.UseDirectBrowserScrolling);
+        Assert.True(reopened.UseWheelInertia);
         Assert.True(reopened.UseSoftwareRasterization);
-        reopened.UseDirectBrowserScrolling = false;
-        Assert.False(new AppDefaults(FilePath).UseDirectBrowserScrolling);
+        reopened.UseWheelInertia = false;
+        Assert.False(new AppDefaults(FilePath).UseWheelInertia);
         Assert.True(new AppDefaults(FilePath).UseSoftwareRasterization);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExistingBrowserWorkaroundDoesNotEnableWheelInertia(bool legacyDirectScrolling)
+    {
+        var defaults = new AppDefaults(FilePath);
+        defaults.SetValue("useDirectBrowserScrolling", legacyDirectScrolling);
+        defaults.UseSoftwareRasterization = true;
+        var reopened = new AppDefaults(FilePath);
+        Assert.False(reopened.UseWheelInertia);
+        Assert.True(reopened.UseSoftwareRasterization);
+        Assert.Equal(legacyDirectScrolling, reopened.GetValue("useDirectBrowserScrolling", false));
     }
 
     [Fact]
     public void FailedScrollingPreferenceWritePreservesTheChoiceAndDoesNotNotify()
     {
         var defaults = new AppDefaults(FilePath);
-        defaults.UseDirectBrowserScrolling = false;
+        defaults.UseWheelInertia = false;
         int events = 0;
         defaults.Changed += (_, _) => events++;
         using (var locked = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None))
         {
-            var error = Record.Exception(() => defaults.UseDirectBrowserScrolling = true);
+            var error = Record.Exception(() => defaults.UseWheelInertia = true);
             Assert.True(error is IOException or UnauthorizedAccessException);
         }
-        Assert.False(defaults.UseDirectBrowserScrolling);
-        Assert.False(new AppDefaults(FilePath).UseDirectBrowserScrolling);
+        Assert.False(defaults.UseWheelInertia);
+        Assert.False(new AppDefaults(FilePath).UseWheelInertia);
         Assert.Equal(0, events);
     }
 

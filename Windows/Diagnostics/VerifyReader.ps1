@@ -102,7 +102,7 @@ if ($ProfileDirectory) {
         if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination $profileTarget -Recurse }
     }
 }
-if ($CompatibilityRendering -or $DirectBrowserScrolling -or $InertialScrolling) {
+if ($CompatibilityRendering -or $DirectBrowserScrolling -or $InertialScrolling -or $RapidScrolling) {
     $profileTarget = Join-Path $ResultsDirectory 'ui\profile'
     New-Item -ItemType Directory -Path $profileTarget -Force | Out-Null
     $preferencesPath = Join-Path $profileTarget 'AppDefaults.json'
@@ -110,8 +110,9 @@ if ($CompatibilityRendering -or $DirectBrowserScrolling -or $InertialScrolling) 
         Get-Content -LiteralPath $preferencesPath -Raw | ConvertFrom-Json -AsHashtable
     } else { @{ refreshInterval = 5; refreshIntervalVersion = 1 } }
     if ($CompatibilityRendering) { $preferences['useSoftwareRasterization'] = $true }
-    if ($DirectBrowserScrolling) { $preferences['useDirectBrowserScrolling'] = $true }
-    if ($InertialScrolling) { $preferences['useDirectBrowserScrolling'] = $false }
+    if ($DirectBrowserScrolling -or $InertialScrolling -or $RapidScrolling) {
+        $preferences['useWheelInertia'] = [bool]$InertialScrolling
+    }
     $preferences | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $preferencesPath
 }
 $repository = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -200,7 +201,7 @@ try {
         if ($CompatibilityRendering -and (-not $runtime.SoftwareRasterizationEnabled -or -not $preferences.useSoftwareRasterization)) {
             throw 'The persisted compatibility-rendering setting was not applied or retained.'
         }
-        if ($DirectBrowserScrolling -and (-not $runtime.DirectScrollingEnabled -or -not $preferences.useDirectBrowserScrolling)) {
+        if ($DirectBrowserScrolling -and (-not $runtime.DirectScrollingEnabled -or $preferences.useWheelInertia)) {
             throw 'The persisted direct-scrolling setting was not applied or retained.'
         }
     }
@@ -384,7 +385,7 @@ try {
             }
         }
         if (-not $InertiaFocus -and -not $RefreshFocus -and ($null -eq $rapid.TouchTransition -or -not $rapid.TouchTransition.InertiaObserved `
-            -or -not $rapid.TouchTransition.EnabledAfterTouch -or -not $rapid.TouchTransition.EnabledAfterWheel `
+            -or -not $rapid.TouchTransition.EnabledAfterTouch -or $rapid.TouchTransition.EnabledAfterWheel -ne [bool]$InertialScrolling `
             -or $rapid.TouchTransition.ScrollRange -lt 200 -or $rapid.TouchTransition.NativeInput.Contacts -ne 2)) {
             throw 'Native touch or wheel momentum regressed.'
         }
@@ -425,7 +426,7 @@ try {
                 -or @($sample.DriverGcCollections | Where-Object { $_ -ne 0 }).Count) {
                 throw "Wheel injection was not independent of managed pauses: $($sample.Pane)/$($sample.Workload.Name)."
             }
-            $coastingAllowed = $sample.Pane -eq 'article-list' -or $InertialScrolling
+            $coastingAllowed = $InertialScrolling
             $minimumEvents = $sample.Workload.DurationMs / ($sample.Workload.IntervalMs * 1.5)
             if ($sample.Workload.BurstMs -gt 0) { $minimumEvents *= $sample.Workload.BurstMs / $sample.Workload.ReverseMs }
             $compositedBrowser = $InertialScrolling -and $sample.Pane -ne 'article-list'

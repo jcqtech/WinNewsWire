@@ -14,17 +14,17 @@ internal static partial class ParityProbe
 {
     private static async Task<object?> CheckRenderingPreferenceAsync(MainWindow window, bool scrolling = false)
     {
-        bool Read(AppDefaults defaults) => scrolling ? defaults.UseDirectBrowserScrolling : defaults.UseSoftwareRasterization;
+        bool Read(AppDefaults defaults) => scrolling ? defaults.UseWheelInertia : defaults.UseSoftwareRasterization;
         void Write(bool value)
         {
-            if (scrolling) AppDefaults.Shared.UseDirectBrowserScrolling = value;
+            if (scrolling) AppDefaults.Shared.UseWheelInertia = value;
             else AppDefaults.Shared.UseSoftwareRasterization = value;
         }
-        bool Running() => scrolling ? WebViewEnvironment.UsesDirectScrolling : WebViewEnvironment.UsesSoftwareRasterization;
+        bool Running() => scrolling ? !WebViewEnvironment.UsesDirectScrolling : WebViewEnvironment.UsesSoftwareRasterization;
         bool original = Read(AppDefaults.Shared);
         bool running = Running();
-        string toggleName = scrolling ? "DirectBrowserScrollingToggle" : "CompatibilityRenderingToggle";
-        string statusName = scrolling ? "DirectBrowserScrollingStatus" : "CompatibilityRenderingStatus";
+        string toggleName = scrolling ? "WheelInertiaToggle" : "CompatibilityRenderingToggle";
+        string statusName = scrolling ? "WheelInertiaStatus" : "CompatibilityRenderingStatus";
         string errorKey = scrolling ? "ScrollingSaveFailed" : "RenderingSaveFailed";
         var core = window.ProbeContent.ProbeWebView.CoreWebView2;
         string path = Path.Combine(AppConfig.DataDirectory, "AppDefaults.json");

@@ -18,7 +18,7 @@ internal static class WebViewEnvironment
     static WebViewEnvironment()
     {
         UsesSoftwareRasterization = AppDefaults.Shared.UseSoftwareRasterization;
-        UsesDirectScrolling = AppDefaults.Shared.UseDirectBrowserScrolling;
+        UsesDirectScrolling = !AppDefaults.Shared.UseWheelInertia;
     }
 
     internal static Task<CoreWebView2Environment> GetAsync()
@@ -43,10 +43,10 @@ internal static class WebViewEnvironment
         if (UsesDirectScrolling)
         {
             arguments.Add("--disable-smooth-scrolling");
-            App.LogException("WebView2 input", null, "Experimental direct browser scrolling requested.");
+            App.LogException("WebView2 input", null, "Direct wheel scrolling selected; touchscreen gestures remain native.");
         }
 #if PARITY_PROBE
-        if (Array.Exists(Environment.GetCommandLineArgs(), argument => argument == "--inertial-scrolling"))
+        if (Array.Exists(Environment.GetCommandLineArgs(), argument => argument is "--inertial-scrolling" or "--reader-input-latency" or "--input-policy"))
         {
             arguments.Add("--remote-debugging-port=0");
             arguments.Add("--remote-debugging-address=127.0.0.1");

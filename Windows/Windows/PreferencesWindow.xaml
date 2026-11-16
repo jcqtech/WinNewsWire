@@ -319,11 +319,11 @@
                                            AutomationProperties.LiveSetting="Polite" />
                             </StackPanel>
                             <StackPanel Padding="16,12" Spacing="6">
-                                <ToggleSwitch x:Name="DirectBrowserScrollingToggle"
-                                              Toggled="DirectBrowserScrollingToggle_Toggled" />
-                                <TextBlock x:Name="DirectBrowserScrollingDescription"
+                                <ToggleSwitch x:Name="WheelInertiaToggle"
+                                              Toggled="WheelInertiaToggle_Toggled" />
+                                <TextBlock x:Name="WheelInertiaDescription"
                                            TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBlock x:Name="DirectBrowserScrollingStatus" TextWrapping="Wrap"
+                                <TextBlock x:Name="WheelInertiaStatus" TextWrapping="Wrap"
                                            AutomationProperties.LiveSetting="Polite" />
                             </StackPanel>
                             <StackPanel Padding="16,12" Spacing="6">

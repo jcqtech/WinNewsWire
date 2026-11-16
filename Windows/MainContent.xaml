@@ -490,7 +490,6 @@
                                   SelectionMode="Extended"
                                   SelectionChanged="ArticleListView_SelectionChanged"
                                   DoubleTapped="ArticleListView_DoubleTapped"
-                                  PointerEntered="ArticleListView_PointerEntered"
                                   Padding="0,0,0,4">
                             <ListView.ContextFlyout>
                                 <MenuFlyout x:Name="ArticleContextMenu" Opening="ArticleContextMenu_Opening" />

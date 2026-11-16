@@ -207,8 +207,9 @@ not inferred solely from current code. Confirmed choices include:
   flat column-header behavior, and a left-aligned narrow table.
 - Static account headings aligned with Smart Feeds, inset folder disclosure,
   folder/smart-feed glyphs and the original taskbar icon.
-- Responsive menu overflow and the specifically requested wheel-inertia
-  interruption behavior.
+- Responsive menu overflow. The latest November 16 input request turns off
+  app-provided wheel/touchpad inertia by default while retaining touchscreen
+  momentum; it supersedes the earlier interruptible-inertia default.
 - One pane-aligned footer, retaining sidebar count/refresh cycling, original
   timeline totals and article/webpage information, and the far-right theme picker.
   The gear uses its original subscription commands but lives at the right end
@@ -433,6 +434,48 @@ Additional retained artifacts include `pause-followup-backend-final`,
 and `ev_42ecdb35ced581b99edb675a3ed028ca50f905a7aaa2852d3466f2044c98c7f7`.
 Microsoft reference:
 [D3DKMTReclaimAllocations2](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmthk/nf-d3dkmthk-d3dkmtreclaimallocations2).
+
+### Reader input follow-up, November 16
+
+The user reported another content-panel pause exceeding half a second and then
+explicitly requested: "turn off scrolling inertia when using scroll wheel or
+touchpad (touchscreen should still have inertia)".
+
+The new `useWheelInertia` preference defaults to false for both fresh and
+existing profiles. It replaces the old browser-only workaround control rather
+than treating an old saved `useDirectBrowserScrolling=false` as permission to
+retain the superseded inertia default. Other preferences are preserved. Native
+sidebar, timeline and horizontal-column scroll viewers apply wheel policy to
+their actual template controls and restore inertia for touch/pen input.
+Browser panes share the direct-scroll environment and omit the extra easing
+wheel listener when inertia is off. The browser path still uses the tested
+WebView2 `--disable-smooth-scrolling` flag rather than an OS-wide setting;
+browser changes require restart.
+
+Controlled comparisons found application-added browser coasting of roughly
+230-250 ms in original-source controls. The final restored run had zero added
+animation interval, with actual browser wheel-event-to-frame times of 15.2 ms
+in the reader and 32.9 ms in the embedded page. Browser touchscreen motion
+continued 242.7 pixels after release. These are isolated-profile/browser-input
+measurements, not a physical touchpad or touchscreen certification.
+
+An important diagnostic correction separates automation request queuing from
+input latency. DevTools can delay creating a synthetic input event for hundreds
+of milliseconds; timing from the command request misattributes that wait to
+scrolling. The independent driver now records trusted wheel-event timestamps,
+dispatch delay and composited frame timestamps in the browser clock domain.
+It installs its event listener in an isolated world, so disabling publisher
+JavaScript does not disable the instrumentation. Request-to-input delay remains
+visible separately in the report.
+
+**The reported physical-input pause is not certified fixed.** Native injection
+could not acquire foreground ownership on this desktop. The current isolated
+host check also still exceeds its 100 ms budget during load/resize, although
+its scrolling samples were below 60 ms. The earlier WinUI/DXGI stalls remain a
+separate unresolved boundary; an intentionally blocked renderer can also delay
+scrolling independently of inertia. No global input settings, graphics-driver
+settings or real reading profile were changed. Removing app-added coasting
+must not be presented as proof that every long input/presentation stall is gone.
 
 ## Making subsequent ports safer
 

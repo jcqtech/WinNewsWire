@@ -104,8 +104,8 @@ public sealed partial class PreferencesWindow : Window
         SyncAutomationPreference();
         CompatibilityRenderingToggle.Header = AppStrings.Get("CompatibilityRendering");
         CompatibilityRenderingDescription.Text = AppStrings.Get("CompatibilityRenderingDescription");
-        DirectBrowserScrollingToggle.Header = AppStrings.Get("DirectBrowserScrolling");
-        DirectBrowserScrollingDescription.Text = AppStrings.Get("DirectBrowserScrollingDescription");
+        WheelInertiaToggle.Header = AppStrings.Get("WheelInertia");
+        WheelInertiaDescription.Text = AppStrings.Get("WheelInertiaDescription");
         SyncRenderingPreference();
 
         ReloadAccounts();
@@ -126,7 +126,7 @@ public sealed partial class PreferencesWindow : Window
             else DispatcherQueue.TryEnqueue(() => { if (!_closed) SyncTimelineThumbnails(); });
             return;
         }
-        if (!_closed && key is AppDefaults.Key.UseSoftwareRasterization or AppDefaults.Key.UseDirectBrowserScrolling)
+        if (!_closed && key is AppDefaults.Key.UseSoftwareRasterization or AppDefaults.Key.UseWheelInertia)
         {
             if (DispatcherQueue.HasThreadAccess) SyncRenderingPreference();
             else DispatcherQueue.TryEnqueue(() => { if (!_closed) SyncRenderingPreference(); });
@@ -214,10 +214,10 @@ public sealed partial class PreferencesWindow : Window
             CompatibilityRenderingToggle.IsOn = enabled;
             CompatibilityRenderingStatus.Text = AppStrings.Get(enabled != WebViewEnvironment.UsesSoftwareRasterization
                 ? "RenderingRestartRequired" : enabled ? "RenderingCompatibilityActive" : "RenderingHardwareActive");
-            bool direct = AppDefaults.Shared.UseDirectBrowserScrolling;
-            DirectBrowserScrollingToggle.IsOn = direct;
-            DirectBrowserScrollingStatus.Text = AppStrings.Get(direct != WebViewEnvironment.UsesDirectScrolling
-                ? "RenderingRestartRequired" : direct ? "DirectScrollingSelected" : "AnimatedScrollingSelected");
+            bool inertia = AppDefaults.Shared.UseWheelInertia;
+            WheelInertiaToggle.IsOn = inertia;
+            WheelInertiaStatus.Text = AppStrings.Get(inertia == WebViewEnvironment.UsesDirectScrolling
+                ? "RenderingRestartRequired" : inertia ? "WheelInertiaSelected" : "DirectScrollingSelected");
         }
         finally { _updatingRendering = false; }
     }
@@ -235,16 +235,16 @@ public sealed partial class PreferencesWindow : Window
         }
     }
 
-    private void DirectBrowserScrollingToggle_Toggled(object sender, RoutedEventArgs args)
+    private void WheelInertiaToggle_Toggled(object sender, RoutedEventArgs args)
     {
         if (!_loaded || _updatingRendering) return;
-        try { AppDefaults.Shared.UseDirectBrowserScrolling = DirectBrowserScrollingToggle.IsOn; }
+        try { AppDefaults.Shared.UseWheelInertia = WheelInertiaToggle.IsOn; }
         catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
         {
             SyncRenderingPreference();
-            DirectBrowserScrollingStatus.Text = string.Format(System.Globalization.CultureInfo.CurrentCulture,
+            WheelInertiaStatus.Text = string.Format(System.Globalization.CultureInfo.CurrentCulture,
                 AppStrings.Get("ScrollingSaveFailed"), error.Message);
-            App.LogException("Save direct scrolling setting", error);
+            App.LogException("Save wheel inertia setting", error);
         }
     }
 

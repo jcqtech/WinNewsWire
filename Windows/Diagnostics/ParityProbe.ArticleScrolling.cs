@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Web.WebView2.Core;
 using WinNewsWire.AppShared;
 using WinNewsWire.Articles;
 using WinNewsWire.Core;
@@ -327,8 +328,34 @@ internal static partial class ParityProbe
                 now.AddMinutes(-index), null, null, null, new ArticleStatus(id, true, false, now));
         }));
         var samples = new List<object>();
+        var navigationEvents = new List<object>();
+        var core = content.ProbeWebView.CoreWebView2;
+        void Navigating(CoreWebView2 sender, CoreWebView2NavigationStartingEventArgs args)
+            => navigationEvents.Add(new { At = DateTimeOffset.UtcNow, args.NavigationId, args.IsUserInitiated,
+                Generated = args.Uri.StartsWith("data:", StringComparison.Ordinal) });
+        int driverArgument = Array.IndexOf(arguments, "--wheel-driver-host");
+        if (driverArgument >= 0 && (driverArgument + 1 >= arguments.Length
+            || !Path.IsPathFullyQualified(arguments[driverArgument + 1]) || !File.Exists(arguments[driverArgument + 1])))
+            throw new ArgumentException("The independent wheel driver must identify an existing absolute executable path.");
+        bool browserInputOnly = arguments.Contains("--browser-input-only");
+        using var driver = driverArgument >= 0
+            ? new Process { StartInfo = new()
+                { FileName = arguments[driverArgument + 1], UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true } }
+            : null;
+        bool driverStarted = false;
+        Task<string>? driverErrors = null;
+        core.NavigationStarting += Navigating;
         try
         {
+            if (driver is not null)
+            {
+                driverStarted = driver.Start();
+                Require(driverStarted, "The independent article wheel driver did not start.");
+                driverErrors = driver.StandardError.ReadToEndAsync();
+                Require(await driver.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)) == "ready",
+                    "The independent article wheel driver did not initialize.");
+            }
             AppDefaults.Shared.ArticleContentJavascriptEnabled = true;
             AppDefaults.Shared.ArticleTextSizeRaw = fixture?.TextSize ?? 1;
             model.IsReaderMode = false;
@@ -348,14 +375,19 @@ internal static partial class ParityProbe
                 await WaitFor(() => Task.FromResult(model.HasExtractedArticle), "Matching Reader View extraction");
             }
             await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Long article document");
-            var core = content.ProbeWebView.CoreWebView2;
             await WaitFor(async () => await ScriptBool(content, "Array.from(document.images).every(image => image.complete)"), "Article images decoded");
             await core.CallDevToolsProtocolMethodAsync("Performance.enable", "{}");
-            using var tree = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.getFrameTree", "{}"));
-            var frameId = tree.RootElement.GetProperty("frameTree").GetProperty("frame").GetProperty("id").GetString();
-            using var world = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.createIsolatedWorld",
-                JsonSerializer.Serialize(new { frameId, worldName = "WinNewsWire.ScrollPerformance" })));
-            int context = world.RootElement.GetProperty("executionContextId").GetInt32();
+            int context = 0;
+            async Task SetContext()
+            {
+                await model.ProbeDrainViewUpdatesAsync();
+                await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Current article document before scroll measurement");
+                using var tree = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.getFrameTree", "{}"));
+                var frameId = tree.RootElement.GetProperty("frameTree").GetProperty("frame").GetProperty("id").GetString();
+                using var world = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.createIsolatedWorld",
+                    JsonSerializer.Serialize(new { frameId, worldName = "WinNewsWire.ScrollPerformance" })));
+                context = world.RootElement.GetProperty("executionContextId").GetInt32();
+            }
             async Task<JsonElement> Evaluate(string expression)
             {
                 using var result = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
@@ -384,13 +416,18 @@ internal static partial class ParityProbe
                 ("regular-native-wheel", false, false, true, false, true, true)
             })
             {
+                if (browserInputOnly && variant.NativeInput) continue;
                 AppDefaults.Shared.UseColumnLayout = variant.Column;
                 container.Shadow = variant.Shadow ? originalShadow : null;
                 content.ProbeWebView.DefaultBackgroundColor = variant.Opaque ? Microsoft.UI.Colors.White : originalBackground;
                 content.ProbeEnableReaderMessages(variant.Messages);
-                await Evaluate("document.body.style.maxWidth=" + JsonSerializer.Serialize(variant.OldWidth ? "44em" : "48em")
-                    + ";document.body.style.paddingLeft=document.body.style.paddingRight="
-                    + JsonSerializer.Serialize(variant.OldWidth ? "48px" : "40px") + ";window.scrollTo(0,0);true;");
+                await SetContext();
+                await Evaluate("globalThis.__scrollOriginalStyle ??= {maxWidth:document.body.style.maxWidth,"
+                    + "paddingLeft:document.body.style.paddingLeft,paddingRight:document.body.style.paddingRight};"
+                    + (variant.OldWidth
+                        ? "document.body.style.maxWidth='44em';document.body.style.paddingLeft=document.body.style.paddingRight='48px';"
+                        : "Object.assign(document.body.style,globalThis.__scrollOriginalStyle);")
+                    + "window.scrollTo(0,0);true;");
                 await Task.Delay(250);
                 var point = await Evaluate("({x:Math.max(20,Math.min(innerWidth-20,document.getElementById('bodyContainer').getBoundingClientRect().left+80)),y:innerHeight/2,distance:Math.min(3600,document.documentElement.scrollHeight-innerHeight-10)})");
                 double x = point.GetProperty("x").GetDouble(), y = point.GetProperty("y").GetDouble();
@@ -420,18 +457,33 @@ internal static partial class ParityProbe
                 pulse.Tick += Tick;
                 pulse.Start();
                 var elapsed = Stopwatch.StartNew();
+                int navigationCount = navigationEvents.Count;
+                RapidWheelDelivery? delivered = null;
                 try
                 {
-                    if (variant.NativeInput)
+                    await CaptureBrowserTraceAsync(core, variant.Name, async () =>
                     {
-                        content.ProbeWebView.Focus(FocusState.Programmatic);
-                        await SendOwnedArticleWheelAsync(window, content.ProbeWebView, x, y);
-                    }
-                    else await core.CallDevToolsProtocolMethodAsync("Input.synthesizeScrollGesture",
+                        if (variant.NativeInput)
+                        {
+                            window.Activate();
+                            SetForegroundWindow(WindowNative.GetWindowHandle(window));
+                            await WaitFor(() => Task.FromResult(GetForegroundWindow() == WindowNative.GetWindowHandle(window)),
+                                "Private reader foreground before native scrolling");
+                            content.ProbeWebView.Focus(FocusState.Programmatic);
+                            if (driver is not null)
+                                delivered = await DriveRapidWheelAsync(driver, window, content.ProbeWebView,
+                                    new WheelWorkload(variant.Name, 100, 120, 100000, 3000), Stopwatch.GetTimestamp(),
+                                    new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+                            else
+                                await SendOwnedArticleWheelAsync(window, content.ProbeWebView, x, y);
+                        }
+                        else await core.CallDevToolsProtocolMethodAsync("Input.synthesizeScrollGesture",
                             JsonSerializer.Serialize(new { x, y, yDistance = -distance, speed = 1200, gestureSourceType = "mouse", preventFling = true }));
-                    await Task.Delay(300);
+                        await Task.Delay(300);
+                    });
                 }
                 finally { pulse.Stop(); pulse.Tick -= Tick; }
+                Require(navigationEvents.Count == navigationCount, "The article navigated while scrolling.");
                 var browser = await Evaluate(ScrollPerformanceStop);
                 var after = await Metrics();
                 process.Refresh();
@@ -449,6 +501,7 @@ internal static partial class ParityProbe
                 samples.Add(new
                 {
                     variant.Name, ReaderView = model.HasExtractedArticle, RequestedDistance = distance, WallMs = elapsed.Elapsed.TotalMilliseconds,
+                    ForegroundOwned = GetForegroundWindow() == WindowNative.GetWindowHandle(window),
                     HostCpuMs = process.TotalProcessorTime.TotalMilliseconds - cpu, MaximumUiGapMs = maximumUiGap,
                     ScrollMessages = content.ProbeReaderScrollMessages - scrollMessages,
                     HoverMessages = content.ProbeReaderHoverMessages - hoverMessages,
@@ -459,6 +512,7 @@ internal static partial class ParityProbe
                     BrowserScriptMs = (after["ScriptDuration"] - before["ScriptDuration"]) * 1000,
                     BrowserLayoutMs = (after["LayoutDuration"] - before["LayoutDuration"]) * 1000,
                     BrowserStyleMs = (after["RecalcStyleDuration"] - before["RecalcStyleDuration"]) * 1000,
+                    IndependentInput = delivered,
                     Browser = browser
                 });
                 File.WriteAllText(Path.Combine(OutputDirectory, "article-scrolling.json"),
@@ -474,11 +528,22 @@ internal static partial class ParityProbe
             await WaitFor(async () => content.ProbeArticleReady && await ScriptBool(content, "Math.abs(window.scrollY-700)<2"),
                 "Back after immediately leaving a scrolled article");
             await core.CallDevToolsProtocolMethodAsync("Performance.disable", "{}");
-            return new { Scenarios = samples.Count, TrustedWheelInput = true, CoalescedTelemetry = true,
+            return new { Scenarios = samples.Count, TrustedWheelInput = !browserInputOnly,
+                PhysicalInputMeasured = !browserInputOnly, CoalescedTelemetry = true,
                 NoHoverRetallies = true, FinalPositionPreserved = true, NoStaleScrollUpdate = true, ImmediateBackRestoresPosition = true };
         }
         finally
         {
+            core.NavigationStarting -= Navigating;
+            File.WriteAllText(Path.Combine(OutputDirectory, "article-scroll-navigations.json"),
+                JsonSerializer.Serialize(navigationEvents, new JsonSerializerOptions { WriteIndented = true }));
+            if (driverStarted && driver is not null)
+            {
+                driver.StandardInput.Close();
+                try { await driver.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
+                catch (TimeoutException) { driver.Kill(entireProcessTree: true); await driver.WaitForExitAsync(); }
+                if (driverErrors is not null) await driverErrors;
+            }
             content.ProbeEnableReaderMessages(true);
             content.ProbeWebView.DefaultBackgroundColor = originalBackground;
             container.Shadow = originalShadow;

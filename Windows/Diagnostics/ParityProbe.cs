@@ -220,6 +220,23 @@ internal static partial class ParityProbe
                 await CheckAsync("Reader workload measurements and bounded header work", () => CheckPerformanceAsync(window, server.Url));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--article-scrolling-only"))
+            {
+                await CheckAsync("Direct article-body scrolling performance", () => CheckArticleScrollingAsync(window, server.Url));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--reader-input-latency")
+                || Environment.GetCommandLineArgs().Contains("--input-policy"))
+            {
+                await CheckAsync("Native pane wheel inertia is disabled by default", () => CheckNativeWheelPolicyAsync(window));
+                await CheckAsync("Direct wheel policy and retained touchscreen momentum",
+                    () => CheckReaderInputLatencyAsync(window, server.Url));
+                await CheckAsync("Embedded webpages use the same direct wheel policy",
+                    () => CheckPublishedWheelPolicyAsync(window, server.Url));
+                await CheckAsync("Wheel inertia preference, restart boundary and rollback",
+                    () => CheckRenderingPreferenceAsync(window, scrolling: true));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--statusbar-invalidation"))
             {
                 await CheckAsync("Status-bar text updates do not invalidate unrelated toolbar layout",

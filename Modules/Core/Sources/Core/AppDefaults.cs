@@ -48,7 +48,7 @@ public sealed class AppDefaults
         public const string AppearanceMode = "appearanceMode";
         public const string AutomationEnabled = "automationEnabled";
         public const string UseSoftwareRasterization = "useSoftwareRasterization";
-        public const string UseDirectBrowserScrolling = "useDirectBrowserScrolling";
+        public const string UseWheelInertia = "useWheelInertia";
     }
 
     /// <summary>App-wide UI theme — applied to the WinUI element root and also
@@ -339,10 +339,10 @@ public sealed class AppDefaults
         set => Set(Key.UseSoftwareRasterization, value);
     }
 
-    public bool UseDirectBrowserScrolling
+    public bool UseWheelInertia
     {
-        get => Get(Key.UseDirectBrowserScrolling, false);
-        set => Set(Key.UseDirectBrowserScrolling, value);
+        get => Get(Key.UseWheelInertia, false);
+        set => Set(Key.UseWheelInertia, value);
     }
 
     public string? DefaultBrowserID
