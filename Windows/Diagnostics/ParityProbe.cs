@@ -522,6 +522,12 @@ internal static partial class ParityProbe
                 await CheckAsync("Top-right settings, flush pane edges and reduced sidebar gutter", () => CheckWindowChromeAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--pane-footer-seam"))
+            {
+                await CheckAsync("Square pane fills meet the footer without shadows or duplicate borders",
+                    () => CheckPaneFooterSeamAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--window-restoration"))
             {
                 bool scripts = AppDefaults.Shared.ArticleContentJavascriptEnabled;

@@ -124,6 +124,23 @@ the updated build. The selection-reveal code was not changed; this result is
 not counted as passing navigation coverage. Its original-source comparison is
 retained in `native-article-scroll-baseline-visibility`.
 
+The November 17 pane/footer seam fix passes `--pane-footer-seam` in six
+light/dark and standard/column/reading-only combinations. Native properties
+confirm no shadow or elevation, no bottom pane border, a single footer-owned
+separator, and preserved top-left rounding. RenderTargetBitmap pixel checks
+confirm the bottom fill has the same flat edge profile as the interior. An
+opaque contrast backing makes corner gaps visible; row comparisons avoid
+assuming a zero horizontal capture origin when WinUI includes overdraw.
+The normal window-chrome check also passes, including minimum width and footer
+visibility. Both isolated Probe and production builds have zero warnings/errors.
+
+The original native inspection found square child corners but a remaining
+`ThemeShadow`, Z elevation of 16 and two adjacent borders. Restoring the exact
+original `MainContent.xaml` fails the new shadow/seam assertion; restoring the
+fix byte-for-byte passes again. Evidence and cropped edge images are retained
+in `pane-footer-seam-baseline`, `pane-footer-seam-rendered`,
+`pane-footer-seam-negative` and `pane-footer-restored-*`.
+
 The suite mapping and dated results below describe the older baseline and
 subsequent historical runs, not a current claim of exact test parity or complete
 runtime verification. Counts of source test functions and expanded xUnit cases

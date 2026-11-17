@@ -217,6 +217,9 @@ not inferred solely from current code. Confirmed choices include:
 - The combined article-list/reader pane has no outer margins and only its
   top-left corner rounded. Its sidebar gutter is ten DIP: a two-DIP scroll-rail
   extension followed by the unchanged eight-DIP resize target.
+- The pane/footer boundary is flat: no container shadow or elevation, no pane
+  bottom border, and one separator supplied by the footer. The bottom fill
+  stays square in standard, column and reading-only layouts.
 
 The November 16 footer requests explicitly require "There should only be one
 footer" and then "move the settings button from the bottom left hand corner

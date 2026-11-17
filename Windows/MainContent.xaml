@@ -384,17 +384,13 @@
                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
             </ContentControl>
 
-            <!-- Article List + Content -->
+            <!-- Article List + Content; the footer draws the shared bottom separator. -->
             <Border Grid.Column="2"
                     x:Name="ContentContainer"
                     CornerRadius="8,0,0,0"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                    Translation="0,0,16">
-                <Border.Shadow>
-                    <ThemeShadow />
-                </Border.Shadow>
+                    BorderThickness="1,1,1,0"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}">
                 <Grid x:Name="ArticleContentGrid" SizeChanged="ArticleContentGrid_SizeChanged">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition x:Name="ArticleListColumn" Width="380" MinWidth="280" MaxWidth="600" />

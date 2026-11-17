@@ -93,6 +93,8 @@ internal static partial class ParityProbe
         Require(pane.Margin == default && pane.CornerRadius.TopLeft > 0 && pane.CornerRadius.TopRight == 0
             && pane.CornerRadius.BottomRight == 0 && pane.CornerRadius.BottomLeft == 0,
             "The combined pane must keep only its top-left rounding and no outer margins.");
+        Require(pane.Shadow is null && pane.Translation.Z == 0 && pane.BorderThickness.Bottom == 0,
+            "The reading panes must not cast a shadow or duplicate the footer's separator.");
     }
 
     private static async Task<object?> CheckWindowChromeAsync(MainWindow window)
@@ -149,6 +151,108 @@ internal static partial class ParityProbe
             AppDefaults.Shared.UseColumnLayout = column;
             await content.RestoreStateAsync(original);
             window.AppWindow.MoveAndResize(new(original.Bounds.X, original.Bounds.Y, original.Bounds.Width, original.Bounds.Height));
+        }
+    }
+
+    private static async Task<object?> CheckPaneFooterSeamAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var original = window.CaptureState();
+        var root = (Grid)content.Content;
+        var background = root.Background;
+        var theme = root.RequestedTheme;
+        bool show = AppDefaults.Shared.ShowStatusBar, column = AppDefaults.Shared.UseColumnLayout;
+        var pane = (Border)content.FindName("ContentContainer");
+        var footer = (Border)content.FindName("StatusBarSurface");
+        var list = (ListView)content.FindName("ArticleListView");
+        var horizontal = (ScrollViewer)content.FindName("TimelineHorizontalScroll");
+        var inner = (Grid)content.FindName("ArticleContentGrid");
+        var samples = new List<object>();
+        global::Windows.Foundation.Rect Bounds(FrameworkElement element)
+            => element.TransformToVisual(root).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
+        try
+        {
+            await content.Initialization.WaitAsync(TimeSpan.FromSeconds(30));
+            root.Background = new SolidColorBrush(Microsoft.UI.Colors.Magenta);
+            AppDefaults.Shared.ShowStatusBar = true;
+            foreach (var appearance in new[] { ElementTheme.Light, ElementTheme.Dark })
+            {
+                root.RequestedTheme = appearance;
+                foreach (string layout in new[] { "standard", "column", "reading" })
+                {
+                    AppDefaults.Shared.UseColumnLayout = layout == "column";
+                    content.ViewModel.IsUnifiedLayout = layout == "reading";
+                    await SettleAppearanceAsync(window, list);
+                    await WaitFor(() => Task.FromResult(footer.Visibility == Visibility.Visible
+                        && Math.Abs(Bounds(pane).Bottom - Bounds(footer).Top) < 1),
+                        "Pane and footer share one edge");
+                    var listScroll = Descendants(list).OfType<ScrollViewer>().Single(scroll => scroll.Name == "ScrollViewer");
+                    samples.Add(new
+                    {
+                        Appearance = appearance.ToString(), Layout = layout,
+                        Pane = Bounds(pane), Inner = Bounds(inner), Footer = Bounds(footer),
+                        Shadow = pane.Shadow?.GetType().Name,
+                        Translation = new { pane.Translation.X, pane.Translation.Y, pane.Translation.Z },
+                        pane.BorderThickness, pane.CornerRadius,
+                        ListCorners = list.CornerRadius, HorizontalCorners = horizontal.CornerRadius,
+                        ListScrollCorners = listScroll.CornerRadius
+                    });
+                    File.WriteAllText(Path.Combine(OutputDirectory, "pane-footer-seams.json"),
+                        JsonSerializer.Serialize(samples, new JsonSerializerOptions { WriteIndented = true }));
+                    Require(pane.Shadow is null && pane.Translation.Z == 0,
+                        "The reading panes still cast an elevated shadow against the footer.");
+                    Require(pane.BorderThickness.Bottom == 0 && footer.BorderThickness.Top == 1
+                        && Math.Abs(Bounds(inner).Bottom - Bounds(footer).Top) < 1,
+                        "The pane and footer still draw a doubled bottom outline or leave a gap.");
+                    Require(pane.CornerRadius.TopLeft > 0 && pane.CornerRadius.BottomLeft == 0
+                        && pane.CornerRadius.BottomRight == 0 && list.CornerRadius.BottomLeft == 0
+                        && list.CornerRadius.BottomRight == 0 && horizontal.CornerRadius.BottomLeft == 0
+                        && horizontal.CornerRadius.BottomRight == 0 && listScroll.CornerRadius.BottomLeft == 0
+                        && listScroll.CornerRadius.BottomRight == 0,
+                        "A nested article-list background still rounds off the bottom fill.");
+
+                    var image = new RenderTargetBitmap();
+                    await image.RenderAsync(root);
+                    byte[] pixels = (await image.GetPixelsAsync()).ToArray();
+                    double scaleY = image.PixelHeight / root.ActualHeight;
+                    var bounds = Bounds(pane);
+                    int y = Math.Clamp((int)Math.Floor((bounds.Bottom - 1) * scaleY), 0, image.PixelHeight - 1);
+                    int referenceY = Math.Clamp((int)Math.Floor((bounds.Bottom - 12) * scaleY), 0, image.PixelHeight - 1);
+                    // RenderTargetBitmap includes horizontal overdraw; compare rendered rows without assuming a zero x origin.
+                    bool SamePixel(int x)
+                    {
+                        int a = (y * image.PixelWidth + x) * 4, b = (referenceY * image.PixelWidth + x) * 4;
+                        return Enumerable.Range(0, 4).All(channel => Math.Abs(pixels[a + channel] - pixels[b + channel]) <= 2);
+                    }
+                    var changed = Enumerable.Range(0, image.PixelWidth).Where(x => !SamePixel(x)).ToArray();
+                    int top = Math.Max(0, (int)Math.Floor((Bounds(footer).Top - 18) * scaleY));
+                    int height = image.PixelHeight - top;
+                    var strip = new byte[image.PixelWidth * height * 4];
+                    Buffer.BlockCopy(pixels, top * image.PixelWidth * 4, strip, 0, strip.Length);
+                    using var file = File.Create(Path.Combine(OutputDirectory, $"pane-footer-{appearance}-{layout}.png"));
+                    using var stream = file.AsRandomAccessStream();
+                    var encoder = await global::Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(
+                        global::Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream);
+                    encoder.SetPixelData(global::Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
+                        global::Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
+                        (uint)image.PixelWidth, (uint)height, 96, 96, strip);
+                    await encoder.FlushAsync();
+                    Require(changed.Length == 0,
+                        $"A rounded or shaded fill remains in {appearance}/{layout}: "
+                        + $"different pixels={string.Join(",", changed.Take(12))}, "
+                        + $"rows={y}/{referenceY}, image={image.PixelWidth}x{image.PixelHeight}.");
+                }
+            }
+            return new { SingleSeparator = true, SquareBottomFill = true, NoShadow = true,
+                LightAndDark = true, StandardColumnAndReading = true, RenderedPixels = true };
+        }
+        finally
+        {
+            root.Background = background;
+            root.RequestedTheme = theme;
+            AppDefaults.Shared.ShowStatusBar = show;
+            AppDefaults.Shared.UseColumnLayout = column;
+            await content.RestoreStateAsync(original);
         }
     }
 
