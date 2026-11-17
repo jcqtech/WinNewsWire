@@ -225,10 +225,15 @@ internal static partial class ParityProbe
                 await CheckAsync("Direct article-body scrolling performance", () => CheckArticleScrollingAsync(window, server.Url));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--native-article-scrolling"))
+            {
+                await CheckAsync("Article lists retain native scrolling in both layouts", () => CheckNativeArticleScrollingAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--reader-input-latency")
                 || Environment.GetCommandLineArgs().Contains("--input-policy"))
             {
-                await CheckAsync("Native pane wheel inertia is disabled by default", () => CheckNativeWheelPolicyAsync(window));
+                await CheckAsync("Sidebar wheel policy leaves article scrolling native", () => CheckNativeWheelPolicyAsync(window));
                 await CheckAsync("Direct wheel policy and retained touchscreen momentum",
                     () => CheckReaderInputLatencyAsync(window, server.Url));
                 await CheckAsync("Embedded webpages use the same direct wheel policy",

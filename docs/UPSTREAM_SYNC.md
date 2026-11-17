@@ -1006,10 +1006,17 @@ Focused native coverage and its limits are recorded in `TEST_AUDIT.md`.
 The later November 16 request supersedes the earlier wheel-inertia behavior:
 mouse-wheel and touchpad inertia is off by default, while touchscreen momentum
 remains. `useWheelInertia=false` is the shared new default, including for
-profiles with the old browser-only experimental preference. Native pane scroll
-viewers retain touch/pen inertia and disable wheel inertia; both browser panes
+profiles with the old browser-only experimental preference. The sidebar scroll
+viewer retains touch/pen inertia and disables wheel inertia; both browser panes
 use direct scrolling without the additional easing listener. Preferences
 retains an explicit opt-in and reports when a browser restart is required.
+
+The subsequent article-list request supersedes applying that preference to the
+timeline. Its vertical list and horizontal column wrapper now use unmodified
+WinUI scrolling for all input devices, with no custom wheel/inertia handlers,
+manipulation cancellation or middle-button autoscroll. Selection/navigation
+reveal and thumbnail viewport observers remain; they are not gesture handlers.
+Do not reattach the sidebar/browser input policy to the article list.
 
 This is a user-approved Windows UX exception, not an upstream source change.
 Do not re-enable wheel coasting merely to mirror a later Mac implementation.

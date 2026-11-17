@@ -66,9 +66,10 @@ Retained evidence: `footer-chrome-settled-status-bar`,
 reversal patches in the session artifacts. The earlier unresolved native
 graphics pauses remain outside this footer/chrome change.
 
-The later November 16 input-policy follow-up passes **334 Core cases**, including
+The earlier November 16 input-policy follow-up passes **334 Core cases**, including
 fresh defaults, both legacy browser-setting values, persistence and failed-write
-rollback. The actual native scroll viewers default to no wheel inertia. The
+rollback. At that checkpoint, the native scroll viewers defaulted to no wheel
+inertia; the article-list exception below supersedes that behavior. The
 final six-group installed-runtime input run verifies reader and embedded-page
 wheel motion, browser touchscreen momentum, preference/restart behavior,
 independent windows, state capture and shutdown. Theme parity and the reader
@@ -104,6 +105,24 @@ was modified. Evidence includes `reader-lag-baseline-host-20261116`,
 `reader-event-negative`, `reader-event-verified`,
 `reader-input-release-validation`, `reader-policy-themes` and
 `reader-policy-anchor`.
+
+The subsequent native article-list follow-up verifies untouched WinUI scrolling
+defaults in both standard and column layouts, including the absence of a local
+inertia override. Changing the sidebar/browser inertia preference does not
+affect the list. Native Scroll automation moves visible article rows and returns
+them to the top after each layout's template has settled.
+
+`--native-article-scrolling` runs this focused check in an isolated profile.
+Restoring the exact previous `MainContent.xaml.cs` makes its native-default
+assertion fail; restoring the new source byte-for-byte passes again. This is
+native-control/automation verification, not a physical touchpad timing claim.
+Evidence is retained in `native-article-scroll-negative`,
+`native-article-scroll-settled` and `native-article-scroll-restored-*`.
+The separate `--timeline-visibility` check still fails its earlier centering
+assertion for `visibility-30` on both the exact original production build and
+the updated build. The selection-reveal code was not changed; this result is
+not counted as passing navigation coverage. Its original-source comparison is
+retained in `native-article-scroll-baseline-visibility`.
 
 The suite mapping and dated results below describe the older baseline and
 subsequent historical runs, not a current claim of exact test parity or complete

@@ -163,7 +163,7 @@
   <data name="RenderingHardwareActive" xml:space="preserve"><value>Default rendering is selected for this session.</value></data>
   <data name="RenderingSaveFailed" xml:space="preserve"><value>Could not save the rendering setting: {0}</value></data>
   <data name="WheelInertia" xml:space="preserve"><value>Wheel and touchpad inertia</value></data>
-  <data name="WheelInertiaDescription" xml:space="preserve"><value>Off by default for immediate wheel and touchpad scrolling. Touchscreen and pen momentum remain enabled. Browser changes require a restart; direct browser scrolling can also make keyboard scrolling less animated. Windows input settings are unchanged.</value></data>
+  <data name="WheelInertiaDescription" xml:space="preserve"><value>Applies to the sidebar and browser panes. The article list always uses standard Windows scrolling. Off by default for immediate wheel and touchpad scrolling; touchscreen and pen momentum remain enabled. Browser changes require a restart and can also affect keyboard scroll animation. Windows input settings are unchanged.</value></data>
   <data name="DirectScrollingSelected" xml:space="preserve"><value>Direct wheel and touchpad scrolling is selected for this session.</value></data>
   <data name="WheelInertiaSelected" xml:space="preserve"><value>Wheel and touchpad inertia is selected for this session.</value></data>
   <data name="ScrollingSaveFailed" xml:space="preserve"><value>Could not save the scrolling setting: {0}</value></data>

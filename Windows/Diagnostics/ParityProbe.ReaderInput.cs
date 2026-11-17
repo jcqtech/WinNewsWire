@@ -7,9 +7,12 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using WinNewsWire.Account;
+using WinNewsWire.AppShared;
 using WinNewsWire.Articles;
 using WinNewsWire.Core;
 using WinRT.Interop;
@@ -30,9 +33,95 @@ internal static partial class ParityProbe
         var timeline = Descendants((ListView)content.FindName("ArticleListView")).OfType<ScrollViewer>()
             .Single(scroll => scroll.Name == "ScrollViewer");
         var columns = (ScrollViewer)content.FindName("TimelineHorizontalScroll");
-        Require(!sidebar.IsScrollInertiaEnabled && !timeline.IsScrollInertiaEnabled && !columns.IsScrollInertiaEnabled,
-            "The actual native scroll viewers still enable wheel inertia by default.");
-        return new { Sidebar = true, Timeline = true, HorizontalColumns = true, PhysicalInputMeasured = false };
+        Require(!sidebar.IsScrollInertiaEnabled && timeline.IsScrollInertiaEnabled && columns.IsScrollInertiaEnabled,
+            "The sidebar wheel policy must not override native article-list scrolling.");
+        return new { SidebarPolicy = true, NativeTimeline = true, NativeHorizontalColumns = true, PhysicalInputMeasured = false };
+    }
+
+    private static async Task<object?> CheckNativeArticleScrollingAsync(MainWindow window)
+    {
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        await content.Initialization.WaitAsync(TimeSpan.FromSeconds(30));
+        var original = window.CaptureState();
+        var items = model.ArticleItems;
+        var selection = model.SelectedArticle;
+        bool column = AppDefaults.Shared.UseColumnLayout, inertia = AppDefaults.Shared.UseWheelInertia;
+        var thumbnails = AppDefaults.Shared.GetTimelineThumbnailsDisplay();
+        var list = (ListView)content.FindName("ArticleListView");
+        ScrollViewer Timeline() => Descendants(list).OfType<ScrollViewer>().Single(scroll => scroll.Name == "ScrollViewer");
+        void CheckDefaults()
+        {
+            foreach (var scroll in new[] { Timeline(), (ScrollViewer)content.FindName("TimelineHorizontalScroll") })
+                Require(scroll.IsScrollInertiaEnabled
+                    && Equals(scroll.ReadLocalValue(ScrollViewer.IsScrollInertiaEnabledProperty), DependencyProperty.UnsetValue),
+                    "Article-list scrolling still overrides native WinUI inertia.");
+        }
+        try
+        {
+            model.IsUnifiedLayout = false;
+            AppDefaults.Shared.SetTimelineThumbnailsDisplay(TimelineThumbnailsDisplay.None);
+            model.SelectedArticle = null;
+            model.ArticleItems = new System.Collections.ObjectModel.ObservableCollection<Models.FeedItem>(
+                Enumerable.Range(0, 100).Select(index =>
+                {
+                    string id = "native-scroll-" + index;
+                    var article = new Article("native-scroll", id, "native-feed", id, $"Native article {index:D3}",
+                        "<p>A regular article list uses the platform scroll viewer.</p>", null, null,
+                        "https://native-scroll.test/" + index, null, null, null, DateTime.UnixEpoch, null, null, null,
+                        new ArticleStatus(id, true, false, DateTime.UnixEpoch));
+                    return new Models.FeedItem { Id = id, AccountID = article.AccountID, SourceArticle = article, IsRead = true };
+                }));
+            foreach (bool columns in new[] { false, true })
+            {
+                AppDefaults.Shared.UseColumnLayout = columns;
+                await WaitFor(() => Task.FromResult(list.ItemsPanelRoot is ItemsStackPanel && Timeline().ScrollableHeight > 0),
+                    "Native article-list scroll surface");
+                foreach (bool setting in new[] { false, true, false })
+                {
+                    AppDefaults.Shared.UseWheelInertia = setting;
+                    await SettleAppearanceAsync(window, list);
+                    CheckDefaults();
+                }
+                var scroll = Timeline();
+                var peer = FrameworkElementAutomationPeer.FromElement(scroll)
+                    ?? FrameworkElementAutomationPeer.CreatePeerForElement(scroll);
+                var provider = peer?.GetPattern(PatternInterface.Scroll) as IScrollProvider
+                    ?? throw new InvalidOperationException("The native article scroll viewer has no Scroll automation pattern.");
+                provider.SetScrollPercent(-1, 0);
+                await WaitFor(() => Task.FromResult(((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex == 0),
+                    "Native article list at the top");
+                provider.SetScrollPercent(-1, 50);
+                try
+                {
+                    await WaitFor(() => Task.FromResult(((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex > 0),
+                        "Native scrolling moves visible article rows");
+                }
+                catch (TimeoutException error)
+                {
+                    throw new InvalidOperationException($"Native scroll: columns={columns}, items={list.Items.Count}, "
+                        + $"first={((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex}, "
+                        + $"offset={scroll.VerticalOffset}, range={scroll.ScrollableHeight}, viewport={scroll.ViewportHeight}, "
+                        + $"percent={provider.VerticalScrollPercent}, scrollable={provider.VerticallyScrollable}, "
+                        + $"enabled={scroll.IsEnabled}, height={list.ActualHeight}.", error);
+                }
+                provider.SetScrollPercent(-1, 0);
+                await WaitFor(() => Task.FromResult(((ItemsStackPanel)list.ItemsPanelRoot).FirstVisibleIndex == 0),
+                    "Native scrolling returns visible article rows");
+                CheckDefaults();
+            }
+            return new { NativeDefaults = true, StandardAndColumn = true, PreferenceIndependent = true,
+                NativeAutomationScrolling = true, VisibleRowsVerified = true, PhysicalInputMeasured = false };
+        }
+        finally
+        {
+            AppDefaults.Shared.UseWheelInertia = inertia;
+            AppDefaults.Shared.UseColumnLayout = column;
+            AppDefaults.Shared.SetTimelineThumbnailsDisplay(thumbnails);
+            model.ArticleItems = items;
+            model.SelectedArticle = selection;
+            await content.RestoreStateAsync(original);
+        }
     }
 
     private static async Task<object?> CheckReaderInputLatencyAsync(MainWindow window, string serverUrl)

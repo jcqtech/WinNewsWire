@@ -207,9 +207,9 @@ not inferred solely from current code. Confirmed choices include:
   flat column-header behavior, and a left-aligned narrow table.
 - Static account headings aligned with Smart Feeds, inset folder disclosure,
   folder/smart-feed glyphs and the original taskbar icon.
-- Responsive menu overflow. The latest November 16 input request turns off
-  app-provided wheel/touchpad inertia by default while retaining touchscreen
-  momentum; it supersedes the earlier interruptible-inertia default.
+- Responsive menu overflow. Sidebar/browser wheel inertia defaults off, while
+  the later November 16 article-list request explicitly restores unmodified
+  native WinUI scrolling for wheel, touchpad and touchscreen input.
 - One pane-aligned footer, retaining sidebar count/refresh cycling, original
   timeline totals and article/webpage information, and the far-right theme picker.
   The gear uses its original subscription commands but lives at the right end
@@ -444,9 +444,10 @@ touchpad (touchscreen should still have inertia)".
 The new `useWheelInertia` preference defaults to false for both fresh and
 existing profiles. It replaces the old browser-only workaround control rather
 than treating an old saved `useDirectBrowserScrolling=false` as permission to
-retain the superseded inertia default. Other preferences are preserved. Native
-sidebar, timeline and horizontal-column scroll viewers apply wheel policy to
-their actual template controls and restore inertia for touch/pen input.
+retain the superseded inertia default. Other preferences are preserved. At this
+checkpoint, native sidebar, timeline and horizontal-column scroll viewers
+applied wheel policy to their actual template controls and restored inertia
+for touch/pen input. The article-list exception below supersedes that part.
 Browser panes share the direct-scroll environment and omit the extra easing
 wheel listener when inertia is off. The browser path still uses the tested
 WebView2 `--disable-smooth-scrolling` flag rather than an OS-wide setting;
@@ -476,6 +477,20 @@ separate unresolved boundary; an intentionally blocked renderer can also delay
 scrolling independently of inertia. No global input settings, graphics-driver
 settings or real reading profile were changed. Removing app-added coasting
 must not be presented as proof that every long input/presentation stall is gone.
+
+### Native article-list scrolling follow-up
+
+The later request is explicit: "Remove whatever fancy custom algorithm you're
+using to customize its scrolling behavior, and just make a regular scrolling
+box." The article list and its horizontal column wrapper now retain WinUI's
+native scrolling defaults. They no longer attach wheel interception,
+per-device inertia switching, manipulation cancellation or custom middle-button
+autoscrolling. The remaining input customization is explicitly sidebar-only.
+
+Normal selection reveal, keyboard navigation, virtualization and thumbnail
+viewport tracking remain. The sidebar/browser inertia preference does not
+change article-list scrolling, and its description now states that scope.
+Future ports must not reattach the custom input behavior to the article list.
 
 ## Making subsequent ports safer
 

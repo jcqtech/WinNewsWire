@@ -70,7 +70,7 @@ public sealed partial class MainContent : UserControl
     private bool _isSidebarDragging;
     private bool _isArticleDragging;
     private ScrollViewer? _articleScrollViewer;
-    private readonly List<WinNewsWire.Input.WheelScrollingBehavior> _wheelScrolling = [];
+    private WinNewsWire.Input.WheelScrollingBehavior? _sidebarWheelScrolling;
     private double _dragStartX;
     private double _dragStartWidth;
     private double _lastSidebarWidth = 260;
@@ -281,17 +281,14 @@ public sealed partial class MainContent : UserControl
         {
             UpdateToolbarLayout();
             ArticleListView.ApplyTemplate();
-            // ListView's template does not forward the attached inertia setting to this ScrollViewer.
+            // Leave article-list input handling and inertia at WinUI's native defaults.
             _articleScrollViewer = FindDescendantByName(ArticleListView, "ScrollViewer") as ScrollViewer
                 ?? throw new InvalidOperationException("The article list scroll viewer was not created.");
             SidebarListView.ApplyTemplate();
             var sidebarScroll = FindDescendantByName(SidebarListView, "ScrollViewer") as ScrollViewer
                 ?? throw new InvalidOperationException("The sidebar scroll viewer was not created.");
-            _wheelScrolling.Add(new(ArticleListView, _articleScrollViewer));
-            _wheelScrolling.Add(new(SidebarListView, sidebarScroll));
-            _wheelScrolling.Add(new(TimelineHorizontalScroll, TimelineHorizontalScroll));
+            _sidebarWheelScrolling = new(SidebarListView, sidebarScroll);
             InitializeTimelineThumbnails();
-            WinNewsWire.Input.MiddleClickAutoScroll.Attach(ArticleListView);
             WinNewsWire.Input.MiddleClickAutoScroll.Attach(SidebarListView);
             // RightTapped reliably tells us the visual that was right-clicked
             // (OriginalSource is stable across bubbling, unlike ContextRequested).
@@ -426,8 +423,8 @@ public sealed partial class MainContent : UserControl
             await StopTimelineThumbnailsAsync();
             DisposeStatusBar();
             CancelTimelineReveal();
-            foreach (var scrolling in _wheelScrolling) scrolling.Dispose();
-            _wheelScrolling.Clear();
+            _sidebarWheelScrolling?.Dispose();
+            _sidebarWheelScrolling = null;
             _articleScrollViewer = null;
             StopSidebarReveals();
             ++_browsingVersion;
