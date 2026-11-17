@@ -1142,6 +1142,8 @@ public sealed partial class MainContent : UserControl
 
     private void MainContentGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        ContentRowClip.Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height);
+        ContentShadowClip.Rect = new Windows.Foundation.Rect(0, 0, ContentShadowCaster.Margin.Left, e.NewSize.Height);
         ApplyResponsiveLayout(e.NewSize.Width);
         QueueStatusBarUpdate();
     }

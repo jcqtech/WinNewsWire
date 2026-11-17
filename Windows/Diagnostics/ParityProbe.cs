@@ -524,7 +524,7 @@ internal static partial class ParityProbe
             }
             if (Environment.GetCommandLineArgs().Contains("--pane-footer-seam"))
             {
-                await CheckAsync("Square pane fills meet the footer without shadows or duplicate borders",
+                await CheckAsync("Left pane shadow stays above the square single-separator footer seam",
                     () => CheckPaneFooterSeamAsync(window));
                 return;
             }
@@ -829,7 +829,7 @@ internal static partial class ParityProbe
         }
     }
 
-    private static async Task SaveWindowScreenshotAsync(MainWindow window, string name, Rect? region = null)
+    private static async Task WaitForRenderedFramesAsync()
     {
         var rendered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int frames = 0;
@@ -837,6 +837,11 @@ internal static partial class ParityProbe
         CompositionTarget.Rendering += Rendering;
         try { await rendered.Task.WaitAsync(TimeSpan.FromSeconds(5)); }
         finally { CompositionTarget.Rendering -= Rendering; }
+    }
+
+    private static async Task SaveWindowScreenshotAsync(MainWindow window, string name, Rect? region = null)
+    {
+        await WaitForRenderedFramesAsync();
         var capture = CaptureWindow(window, region);
         using var file = File.Create(Path.Combine(OutputDirectory, name + ".png"));
         using var stream = System.IO.WindowsRuntimeStreamExtensions.AsRandomAccessStream(file);

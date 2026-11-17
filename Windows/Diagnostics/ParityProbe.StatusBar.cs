@@ -93,8 +93,38 @@ internal static partial class ParityProbe
         Require(pane.Margin == default && pane.CornerRadius.TopLeft > 0 && pane.CornerRadius.TopRight == 0
             && pane.CornerRadius.BottomRight == 0 && pane.CornerRadius.BottomLeft == 0,
             "The combined pane must keep only its top-left rounding and no outer margins.");
-        Require(pane.Shadow is null && pane.Translation.Z == 0 && pane.BorderThickness.Bottom == 0,
-            "The reading panes must not cast a shadow or duplicate the footer's separator.");
+        VerifyPaneShadowClip(content);
+        Require(pane.BorderThickness.Bottom == 0,
+            "The reading panes must not duplicate the footer's separator.");
+    }
+
+    private static void VerifyPaneShadowClip(MainContent content)
+    {
+        var pane = (Border)content.FindName("ContentContainer");
+        var body = (Grid)content.FindName("MainContentGrid");
+        var caster = content.FindName("ContentShadowCaster") as Border
+            ?? throw new InvalidOperationException("The reading pane's original left-side shadow is missing.");
+        var host = (Grid)content.FindName("ContentLeftShadow");
+        Require(caster.Shadow is ThemeShadow && caster.Translation.Z == 16,
+            "The reading pane's original left-side shadow is missing.");
+        Require(pane.Shadow is null && pane.Translation.Z == 0,
+            "The translucent pane fill must stay flat instead of receiving its own shadow.");
+        Require(body.Clip is RectangleGeometry clip && clip.Rect.X == 0 && clip.Rect.Y == 0
+            && Math.Abs(clip.Rect.Width - body.ActualWidth) < 0.01
+            && Math.Abs(clip.Rect.Height - body.ActualHeight) < 0.01,
+            "The reading pane's shadow is not clipped to the content row above the footer.");
+        Require(!host.IsHitTestVisible && host.Clip is RectangleGeometry,
+            "The left shadow must be clipped and must not intercept sidebar input.");
+        var shadowBounds = host.TransformToVisual(content).TransformBounds(((RectangleGeometry)host.Clip).Rect);
+        var paneBounds = pane.TransformToVisual(content).TransformBounds(new(0, 0, pane.ActualWidth, pane.ActualHeight));
+        var casterBounds = caster.TransformToVisual(content).TransformBounds(new(0, 0, caster.ActualWidth, caster.ActualHeight));
+        Require(Math.Abs(shadowBounds.Right - paneBounds.Left) < 0.01
+            && Math.Abs(shadowBounds.Top - paneBounds.Top) < 0.01
+            && Math.Abs(shadowBounds.Bottom - paneBounds.Bottom) < 0.01
+            && Math.Abs(casterBounds.Left - paneBounds.Left) < 0.01
+            && Math.Abs(casterBounds.Width - paneBounds.Width) < 0.01
+            && Math.Abs(casterBounds.Height - paneBounds.Height) < 0.01,
+            "The shadow layer must match the pane but render only to its left above the footer.");
     }
 
     private static async Task<object?> CheckWindowChromeAsync(MainWindow window)
@@ -183,6 +213,7 @@ internal static partial class ParityProbe
                     AppDefaults.Shared.UseColumnLayout = layout == "column";
                     content.ViewModel.IsUnifiedLayout = layout == "reading";
                     await SettleAppearanceAsync(window, list);
+                    await WaitForRenderedFramesAsync();
                     await WaitFor(() => Task.FromResult(footer.Visibility == Visibility.Visible
                         && Math.Abs(Bounds(pane).Bottom - Bounds(footer).Top) < 1),
                         "Pane and footer share one edge");
@@ -194,13 +225,15 @@ internal static partial class ParityProbe
                         Shadow = pane.Shadow?.GetType().Name,
                         Translation = new { pane.Translation.X, pane.Translation.Y, pane.Translation.Z },
                         pane.BorderThickness, pane.CornerRadius,
+                        Clip = ((Grid)content.FindName("MainContentGrid")).Clip is RectangleGeometry clip ? clip.Rect : (global::Windows.Foundation.Rect?)null,
+                        LeftShadowClip = (content.FindName("ContentLeftShadow") as Grid)?.Clip is RectangleGeometry leftClip
+                            ? leftClip.Rect : (global::Windows.Foundation.Rect?)null,
                         ListCorners = list.CornerRadius, HorizontalCorners = horizontal.CornerRadius,
                         ListScrollCorners = listScroll.CornerRadius
                     });
                     File.WriteAllText(Path.Combine(OutputDirectory, "pane-footer-seams.json"),
                         JsonSerializer.Serialize(samples, new JsonSerializerOptions { WriteIndented = true }));
-                    Require(pane.Shadow is null && pane.Translation.Z == 0,
-                        "The reading panes still cast an elevated shadow against the footer.");
+                    VerifyPaneShadowClip(content);
                     Require(pane.BorderThickness.Bottom == 0 && footer.BorderThickness.Top == 1
                         && Math.Abs(Bounds(inner).Bottom - Bounds(footer).Top) < 1,
                         "The pane and footer still draw a doubled bottom outline or leave a gap.");
@@ -218,13 +251,40 @@ internal static partial class ParityProbe
                     var bounds = Bounds(pane);
                     int y = Math.Clamp((int)Math.Floor((bounds.Bottom - 1) * scaleY), 0, image.PixelHeight - 1);
                     int referenceY = Math.Clamp((int)Math.Floor((bounds.Bottom - 12) * scaleY), 0, image.PixelHeight - 1);
-                    // RenderTargetBitmap includes horizontal overdraw; compare rendered rows without assuming a zero x origin.
-                    bool SamePixel(int x)
+                    bool SamePixel(int x, int row, int reference)
                     {
-                        int a = (y * image.PixelWidth + x) * 4, b = (referenceY * image.PixelWidth + x) * 4;
+                        int a = (row * image.PixelWidth + x) * 4, b = (reference * image.PixelWidth + x) * 4;
                         return Enumerable.Range(0, 4).All(channel => Math.Abs(pixels[a + channel] - pixels[b + channel]) <= 2);
                     }
-                    var changed = Enumerable.Range(0, image.PixelWidth).Where(x => !SamePixel(x)).ToArray();
+                    double scale = content.XamlRoot.RasterizationScale;
+                    int fillStart = Math.Clamp((int)Math.Ceiling((bounds.Left + 2) * scale), 0, image.PixelWidth - 1);
+                    var changed = Enumerable.Range(fillStart, image.PixelWidth - fillStart)
+                        .Where(x => !SamePixel(x, y, referenceY)).ToArray();
+                    int shadowPixels = 0;
+                    if (bounds.Left >= 10)
+                    {
+                        int left = (int)Math.Floor((bounds.Left - 8) * scale);
+                        int right = (int)Math.Floor((bounds.Left - 2) * scale);
+                        for (int row = (int)Math.Ceiling((bounds.Top + 20) * scaleY);
+                            row < (bounds.Bottom - 20) * scaleY; row++)
+                        {
+                            for (int x = left; x < right; x++)
+                            {
+                                int pixel = (row * image.PixelWidth + x) * 4;
+                                if (pixels[pixel] < 253 && pixels[pixel + 1] == 0
+                                    && pixels[pixel + 2] < 253 && pixels[pixel + 3] == 255) shadowPixels++;
+                            }
+                        }
+                    }
+                    // Compare blank footer rows without changing the native shadow caster.
+                    int footerTop = (int)Math.Floor((Bounds(footer).Top + 3) * scaleY);
+                    int footerBottom = (int)Math.Floor((Bounds(footer).Bottom - 3) * scaleY);
+                    int footerPixels = Enumerable.Range(0, image.PixelWidth)
+                        .Count(x => !SamePixel(x, footerTop, footerBottom));
+                    File.WriteAllText(Path.Combine(OutputDirectory, $"pane-shadow-{appearance}-{layout}.json"),
+                        JsonSerializer.Serialize(new { LeftShadowPixels = shadowPixels, FooterProfileDifferences = footerPixels,
+                            BottomFillDifferences = changed.Length, FillRows = new[] { y, referenceY },
+                            FooterRows = new[] { footerTop, footerBottom }, image.PixelWidth, image.PixelHeight }));
                     int top = Math.Max(0, (int)Math.Floor((Bounds(footer).Top - 18) * scaleY));
                     int height = image.PixelHeight - top;
                     var strip = new byte[image.PixelWidth * height * 4];
@@ -241,9 +301,12 @@ internal static partial class ParityProbe
                         $"A rounded or shaded fill remains in {appearance}/{layout}: "
                         + $"different pixels={string.Join(",", changed.Take(12))}, "
                         + $"rows={y}/{referenceY}, image={image.PixelWidth}x{image.PixelHeight}.");
+                    Require(bounds.Left < 10 || shadowPixels > 20,
+                        $"The left-side shadow was not rendered in {appearance}/{layout}.");
+                    Require(footerPixels == 0, $"The left-side shadow bleeds into {footerPixels} footer pixels in {appearance}/{layout}.");
                 }
             }
-            return new { SingleSeparator = true, SquareBottomFill = true, NoShadow = true,
+            return new { SingleSeparator = true, SquareBottomFill = true, LeftShadow = true, NoFooterShadow = true,
                 LightAndDark = true, StandardColumnAndReading = true, RenderedPixels = true };
         }
         finally

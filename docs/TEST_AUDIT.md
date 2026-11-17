@@ -124,21 +124,31 @@ the updated build. The selection-reveal code was not changed; this result is
 not counted as passing navigation coverage. Its original-source comparison is
 retained in `native-article-scroll-baseline-visibility`.
 
-The November 17 pane/footer seam fix passes `--pane-footer-seam` in six
-light/dark and standard/column/reading-only combinations. Native properties
-confirm no shadow or elevation, no bottom pane border, a single footer-owned
-separator, and preserved top-left rounding. RenderTargetBitmap pixel checks
-confirm the bottom fill has the same flat edge profile as the interior. An
-opaque contrast backing makes corner gaps visible; row comparisons avoid
-assuming a zero horizontal capture origin when WinUI includes overdraw.
-The normal window-chrome check also passes, including minimum width and footer
-visibility. Both isolated Probe and production builds have zero warnings/errors.
+The November 17 pane/footer follow-up preserves the original left `ThemeShadow`
+at Z=16 in a separate non-interactive layer. Its caster matches the pane's
+bounds, but clipping admits only the left shadow above the footer. The actual
+translucent container stays unraised with no bottom border. Applying the shadow
+directly to that container, even inside a content-row clip, shades its bottom
+fill and fails the rendered edge-profile check.
 
-The original native inspection found square child corners but a remaining
-`ThemeShadow`, Z elevation of 16 and two adjacent borders. Restoring the exact
-original `MainContent.xaml` fails the new shadow/seam assertion; restoring the
-fix byte-for-byte passes again. Evidence and cropped edge images are retained
-in `pane-footer-seam-baseline`, `pane-footer-seam-rendered`,
+`--pane-footer-seam` covers light/dark and standard/column/reading-only layouts.
+Native geometry checks verify the clipped shadow layer, square lower corners,
+flush inner content and the single footer separator. RenderTargetBitmap checks
+measure the shadow darkening the contrast-backed sidebar gutter, equal bottom
+and interior fill profiles, and equal blank footer rows above/below its text.
+Reading-only mode clips the shadow outside the window's left edge. Captures
+wait for native frames and leave the shadow caster unchanged; toggling its
+shadow or elevation between captures retained prior shadow pixels in this
+runtime and was not a reliable absent-shadow reference.
+
+The exact pre-change `ed7e620` XAML and code-behind compile but fail the restored
+left-shadow assertion. The implementation is reapplied byte-for-byte afterward.
+The restored seam and window-chrome checks pass, including responsive widths,
+the minimum reader width and footer visibility changes. Rendered evidence is
+retained in `pane-left-shadow-bounded` and `pane-left-shadow-restored-*`, with
+the original-source failure in `pane-left-shadow-original-negative`. The earlier
+all-shadow-removal fix and its original-source controls remain historical
+evidence in `pane-footer-seam-baseline`, `pane-footer-seam-rendered`,
 `pane-footer-seam-negative` and `pane-footer-restored-*`.
 
 The suite mapping and dated results below describe the older baseline and

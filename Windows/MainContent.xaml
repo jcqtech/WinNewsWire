@@ -182,6 +182,9 @@
 
         <!-- Three-Panel Layout -->
         <Grid Grid.Row="2" x:Name="MainContentGrid" SizeChanged="MainContentGrid_SizeChanged">
+            <Grid.Clip>
+                <RectangleGeometry x:Name="ContentRowClip" />
+            </Grid.Clip>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="SidebarColumn" Width="260" MinWidth="200" MaxWidth="400" />
                 <ColumnDefinition Width="Auto" />
@@ -384,7 +387,21 @@
                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
             </ContentControl>
 
-            <!-- Article List + Content; the footer draws the shared bottom separator. -->
+            <!-- Keep the original shadow only to the left, outside the translucent pane fill. -->
+            <Grid x:Name="ContentLeftShadow" Grid.Column="2" Margin="-32,0,0,0" IsHitTestVisible="False">
+                <Grid.Clip>
+                    <RectangleGeometry x:Name="ContentShadowClip" />
+                </Grid.Clip>
+                <Border x:Name="ContentShadowCaster" Margin="32,0,0,0"
+                        CornerRadius="8,0,0,0" Translation="0,0,16"
+                        Background="{ThemeResource LayerFillColorDefaultBrush}">
+                    <Border.Shadow>
+                        <ThemeShadow />
+                    </Border.Shadow>
+                </Border>
+            </Grid>
+
+            <!-- The footer draws the shared bottom separator. -->
             <Border Grid.Column="2"
                     x:Name="ContentContainer"
                     CornerRadius="8,0,0,0"

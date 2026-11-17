@@ -995,10 +995,14 @@ article-list/reader container is flush to its outer edges, with only the
 top-left corner rounded. The sidebar gutter shrinks from twelve to ten DIP,
 preserving an eight-DIP resize target and the existing feed-row alignment.
 
-The November 17 seam correction removes the remaining container `ThemeShadow`
-and Z elevation. Its border is left/top/right only; the footer owns the sole
-horizontal separator. Native child corners were already square, so the fix
-does not restyle the article list or change its native scrolling.
+The November 17 seam correction keeps the container unraised with a
+left/top/right border; the footer owns the sole horizontal separator. The
+follow-up clarification preserves the original subtle left shadow, using a
+separate `ThemeShadow` caster at the original Z elevation of 16. Its
+non-interactive layer is clipped to the pane's left edge and the content row,
+keeping shadow out of both the translucent bottom fill and the footer.
+Native child corners were already square; this does not restyle the article
+list or change its native scrolling.
 
 These are explicit Windows UX exceptions, not newly processed upstream commits.
 They do not change the `7908c801bf7c97fa7cca9ef78cf51b33fb853e6a` watermark or the
