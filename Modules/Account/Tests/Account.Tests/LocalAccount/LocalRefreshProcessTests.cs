@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using WinNewsWire.Articles;
+using WinNewsWire.Account.OneDrive;
 using Xunit;
 using ActivityLogger = WinNewsWire.ActivityLog.ActivityLog;
 
@@ -82,6 +83,33 @@ public sealed class LocalRefreshProcessTests : IAsyncLifetime
         Assert.Equal(pid, _account.RefreshProcessId);
         Assert.Equal(hash, feed.ContentHash);
         Assert.Single(await _account.Database.FetchArticlesAsync(feed.FeedID));
+    }
+
+    [Fact]
+    public async Task OneDriveWorkerPropagatesThirtyDayPublisherDeletionsButKeepsStarredHistory()
+    {
+        var cloud = Path.Combine(_account.AccountDirectory, "OneDriveTransport");
+        Directory.CreateDirectory(cloud);
+        await using var account = _manager.CreateAccount(accountDelegate: new OneDriveAccountDelegate(cloud));
+        account.Settings.OneDriveSyncUnreadContent = true;
+        using var server = OpenServer();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var feed = account.AddFeed(Url(server));
+        Article Old(string id, bool starred) => new(account.AccountID, id, feed.FeedID, id, id, "Old body", null,
+            null, null, null, null, null, DateTime.UtcNow.AddDays(-40), null, null, null,
+            new ArticleStatus(id, read: false, starred, DateTime.UtcNow.AddDays(-31)));
+        await account.Database.UpdateArticlesAsync([Old("expired-unread", false), Old("keep-starred", true)]);
+        var response = LocalOpmlRefreshTests.ServeFeedAsync(server, timeout.Token);
+        await account.RefreshAllAsync(ct: timeout.Token);
+        await response;
+        Assert.NotNull(account.RefreshProcessId);
+        Assert.DoesNotContain(await account.Database.FetchArticlesAsync(feed.FeedID), a => a.ArticleID == "expired-unread");
+        Assert.Contains(await account.Database.FetchArticlesAsync(feed.FeedID), a => a.ArticleID == "keep-starred");
+        var receiver = _manager.CreateAccount(accountDelegate: new OneDriveAccountDelegate(cloud));
+        await receiver.SyncArticleStatusAsync(timeout.Token);
+        Assert.DoesNotContain(await receiver.Database.FetchArticlesAsync(feed.FeedID), a => a.ArticleID == "expired-unread");
+        Assert.Contains(await receiver.Database.FetchArticlesAsync(feed.FeedID), a => a.ArticleID == "keep-starred");
+        Assert.DoesNotContain("expired-unread", await receiver.Database.FetchStatusArticleIDsAsync(ArticleStatus.Key.Read, false));
     }
 
     [Fact]

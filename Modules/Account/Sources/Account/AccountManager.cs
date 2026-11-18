@@ -106,6 +106,7 @@ public sealed class AccountManager : IDisposable, IAsyncDisposable
                 else if (id.StartsWith("BazQux", StringComparison.Ordinal)) type = AccountType.BazQux;
                 else if (id.StartsWith("TheOldReader", StringComparison.Ordinal)) type = AccountType.TheOldReader;
                 else if (id.StartsWith("Feedly", StringComparison.Ordinal)) type = AccountType.Feedly;
+                else if (id.StartsWith("OneDrive-", StringComparison.Ordinal)) type = AccountType.OneDrive;
             }
             catch (Exception ex) when (id != DefaultAccountID && ex is (IOException or UnauthorizedAccessException or JsonException))
             {
@@ -348,7 +349,7 @@ public sealed class AccountManager : IDisposable, IAsyncDisposable
                 return false;
             }
         }));
-        return work.Any(changed => changed);
+        return work.Any(changed => changed) || ActiveAccounts.Any(account => account.Delegate.RequiresContinuousStatusPolling);
     }
 
     public async Task VacuumAccountDatabasesAsync(CancellationToken ct = default)

@@ -148,6 +148,7 @@ public sealed partial class AccountStatsWindow : Window
         foreach (var account in accounts.Except(_observed))
         {
             account.AccountStructureChanged += AccountChanged;
+            account.ArticlesDeleted += AccountChanged;
             account.StatusesChanged += AccountChanged;
             account.NewArticlesDownloaded += AccountChanged;
             _observed.Add(account);
@@ -157,6 +158,7 @@ public sealed partial class AccountStatsWindow : Window
     private void Unobserve(Account.Account account)
     {
         account.AccountStructureChanged -= AccountChanged;
+        account.ArticlesDeleted -= AccountChanged;
         account.StatusesChanged -= AccountChanged;
         account.NewArticlesDownloaded -= AccountChanged;
     }

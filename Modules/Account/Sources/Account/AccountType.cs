@@ -4,6 +4,7 @@ public enum AccountType
 {
     OnMyMac = 1,
     CloudKit = 2,
+    OneDrive = 3,
     Feedly = 16,
     Feedbin = 17,
     NewsBlur = 19,
@@ -19,6 +20,7 @@ public static class AccountTypeExtensions
     {
         AccountType.OnMyMac => "On My PC",
         AccountType.CloudKit => "iCloud",
+        AccountType.OneDrive => "OneDrive",
         AccountType.Feedly => "Feedly",
         AccountType.Feedbin => "Feedbin",
         AccountType.NewsBlur => "NewsBlur",

@@ -16,6 +16,7 @@ namespace WinNewsWire.Account;
 internal sealed class LocalAccountRefresher : IDownloadSessionDelegate, ILocalAccountRefresher
 {
     internal event Action<Feed, ArticlesDatabase.ArticleChanges>? FeedUpdated;
+    internal bool DeleteOlderArticles { get; set; }
     private readonly Account _account;
     private Dictionary<string, Feed> _urlToFeed = new(StringComparer.Ordinal);
     private readonly DownloadSession _downloadSession;
@@ -200,7 +201,10 @@ internal sealed class LocalAccountRefresher : IDownloadSessionDelegate, ILocalAc
         if (!FeedParser.CanParse(parserData)) throw new InvalidDataException("The downloaded content is not a supported feed.");
         var parsed = await FeedParser.ParseAsync(parserData, _cancellation) ?? throw new InvalidDataException("The downloaded feed could not be parsed.");
 
-        var changes = await _account.Database.UpdateAsync(parsed.Items, feed.FeedID, deleteOlder: false);
+        var changes = await _account.Database.UpdateAsync(parsed.Items, feed.FeedID,
+            deleteOlder: DeleteOlderArticles || _account.Delegate.UsesFeedBasedRetention);
+        if (changes.Deleted is { Count: > 0 } deleted)
+            await _account.Delegate.PublisherArticlesDeletedAsync(_account, deleted.Select(a => a.ArticleID).ToArray(), _cancellation);
         Account.UpdateFeedMetadata(feed, parsed);
         feed.ContentHash = dataHash;
         ApplyResponseHeaders(feed, response);

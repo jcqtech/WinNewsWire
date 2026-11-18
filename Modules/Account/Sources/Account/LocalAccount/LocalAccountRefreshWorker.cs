@@ -75,6 +75,7 @@ public static class LocalAccountRefreshWorker
                         account.Name = batch.Name;
                         refresher = account.LocalRefresher as LocalAccountRefresher
                             ?? throw new InvalidOperationException("The worker requires the in-process backend refresher.");
+                        refresher.DeleteOlderArticles = batch.DeleteOlderArticles;
                         var activityGate = new object();
                         var observed = new Dictionary<int, ActivityState>();
                         var preceding = ActivityLogger.Shared.Snapshot();
@@ -104,7 +105,8 @@ public static class LocalAccountRefreshWorker
                             Send(new("articles", command.ID, Feed: LocalFeedState.From(feed),
                                 ChangedIDs: (changes.New ?? Enumerable.Empty<Article>()).Concat(changes.Updated ?? Enumerable.Empty<Article>())
                                     .Select(article => article.ArticleID).ToArray(),
-                                NewIDs: changes.New?.Select(article => article.ArticleID).ToArray() ?? []));
+                                NewIDs: changes.New?.Select(article => article.ArticleID).ToArray() ?? [],
+                                DeletedIDs: changes.Deleted?.Select(article => article.ArticleID).ToArray() ?? []));
                         };
                         ActivityLogger.Shared.ActivityDidChange += activityChanged;
                         refresher.FeedUpdated += articlesChanged;

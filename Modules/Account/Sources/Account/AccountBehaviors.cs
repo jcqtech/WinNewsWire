@@ -41,7 +41,7 @@ public static class AccountBehaviors
     public static AccountBehavior For(AccountType type) => type switch
     {
         // Local account is the most permissive — supports everything.
-        AccountType.OnMyMac => AccountBehavior.None,
+        AccountType.OnMyMac or AccountType.OneDrive => AccountBehavior.None,
 
         AccountType.Feedbin => AccountBehavior.DisallowFeedCopyInRootFolder,
         AccountType.NewsBlur => AccountBehavior.None,
