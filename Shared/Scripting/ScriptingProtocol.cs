@@ -10,7 +10,8 @@ public sealed record ScriptingReference(ScriptingObjectKind Kind = ScriptingObje
     string? ArticleID = null, string? AuthorID = null);
 
 public sealed record ScriptingRequest(string Command, ScriptingReference? Target = null, string? Property = null,
-    JsonElement? Value = null, ScriptingObjectKind? NewKind = null, string? Name = null, string? Url = null, string? ID = null);
+    JsonElement? Value = null, ScriptingObjectKind? NewKind = null, string? Name = null, string? Url = null, string? ID = null,
+    ScriptingReference[]? Targets = null, int? Offset = null, int? Limit = null);
 
 public sealed record ScriptingError(string Code, string Message);
 public sealed record ScriptingResponse(string? ID, bool Success, bool HasValue, JsonElement? Value, ScriptingError? Error);

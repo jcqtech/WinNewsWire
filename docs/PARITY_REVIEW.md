@@ -66,7 +66,7 @@ live reading profiles were used or modified.
 | Timeline and sidebar | Broad coverage, with identified gaps | New appearance controls work. Author-avatar selection and some keyboard routing are incomplete. All canonical article themes are now available. |
 | Remote synchronization | Implementations, not full service certification | Feedbin, Feedly, NewsBlur and Reader API variants exist; mock HTTP tests are not live-provider proof. |
 | Desktop tools | Implemented | Find, activity/error logs, statistics, stale-feed management, speech routing and multiple windows exist. Some OS-level outcomes still need interactive verification. |
-| Sharing, extension and scripting | Windows adapters exist | Share-target declarations, an Edge/Chrome extension and an opt-in named-pipe scripting API are not merely placeholders. Installed handoff and release delivery are not certified here. |
+| Sharing, extension and scripting | Windows adapters exist | Share-target declarations, an Edge/Chrome extension and an opt-in scripting API with out-of-process COM Automation exist. Installed handoff and release delivery are not certified here. |
 | iCloud/CloudKit | Accepted Windows exclusion | No existing-account synchronization bridge is claimed. Unsupported profiles remain protected. |
 | Localization/accessibility/release | Partial or unverified | Neutral English resources and selected accessibility behavior exist, not a complete language/Narrator/IME/RTL or installed-upgrade matrix. |
 
@@ -85,8 +85,8 @@ live reading profiles were used or modified.
 
 The extension is source-installable rather than published
 (`Windows\BrowserExtension\README.md`). Windows automation is an explicit
-current-user pipe/JSON equivalent, not AppleEvents
-(`Windows\Automation\README.md`). These should be completed/verified as adapters,
+current-user COM object model backed by the pipe/JSON service, not AppleEvents
+(`Windows\Automation\COM.md`). These should be completed/verified as adapters,
 not listed as wholly missing features.
 
 Microsoft Store distribution was explicitly requested in the earlier work.
@@ -118,7 +118,7 @@ Platform-specific delivery has its own acceptance work:
 | Native facility | Windows outcome | Boundary |
 |---|---|---|
 | Safari extension / Apple app groups | The existing Edge/Chrome MV3 extension hands URLs to WinNewsWire. | Safari's extension binary cannot run on Windows. Publishing the Windows extension and testing installed browser/protocol handoff are feasible, but require publisher/release access and real browsers. |
-| AppleEvents / AppleScript | An opt-in current-user named-pipe API and PowerShell client implement scripting outcomes. | Existing AppleScript programs are not transparently executable against Windows. Document command/object mappings and complete installed-process/access-denial checks rather than calling automation wholly absent. |
+| AppleEvents / AppleScript | Opt-in out-of-process COM exposes the native objects, properties and commands to PowerShell, VBScript, JScript and VBA, backed by the existing named-pipe service. Indexed reads, bounded batches and collection pages support larger datasets. | Existing AppleScript programs need syntax translation. Real x86/x64 fixture clients, developer-registered package activation, two-window UI/provider scenarios and Access VBA with a 321-row Excel export passed. Normal signed-MSIX installation, Excel-hosted VBA, authenticated remote-provider sync and cross-user/remote-denial checks remain unverified. Paging still loads all metadata. See `Windows\Automation\COM.md`. |
 | macOS share/services APIs | Windows share-target, outgoing sharing, protocol and file registrations exist. | Use Windows contracts and confirm cold/warm/two-process delivery in an installed signed package. Declaration inspection alone is insufficient. |
 | Sparkle updates | Microsoft Store-managed updates fit the explicitly requested distribution model. | A separate Sparkle clone is unnecessary. Signed installation, upgrade/rollback behavior and preservation of profiles still need release verification. |
 | Mac crash submission | Local error reporting exists. | A consented Windows crash-collection/submission workflow is feasible, but needs a privacy policy, redaction/retention design and an authorized endpoint. It has not been supplied or silently enabled. |

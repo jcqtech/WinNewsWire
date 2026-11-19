@@ -1,0 +1,30 @@
+<Project>
+  <PropertyGroup>
+    <_ComServerProperties Condition="'$(RuntimeIdentifier)' != ''">RuntimeIdentifier=$(RuntimeIdentifier);</_ComServerProperties>
+    <_ComServerProperties Condition="'$(SelfContained)' != ''">$(_ComServerProperties)SelfContained=$(SelfContained);</_ComServerProperties>
+    <_ComServerProperties Condition="'$(ParityProbe)' == 'true'">$(_ComServerProperties)ParityProbe=true;</_ComServerProperties>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)WinNewsWire.ComServer.csproj" ReferenceOutputAssembly="false"
+                      BuildReference="false" Private="false" AdditionalProperties="$(_ComServerProperties)" />
+  </ItemGroup>
+  <Target Name="IncludeComServerFiles" AfterTargets="Build" BeforeTargets="GetCopyToPublishDirectoryItems"
+          DependsOnTargets="ResolveProjectReferences" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_ComServerStage>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'ComServer', '$(SelfContained)'))</_ComServerStage>
+    </PropertyGroup>
+    <RemoveDir Directories="$(_ComServerStage)" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)WinNewsWire.ComServer.csproj" Targets="Build" BuildInParallel="false"
+             RemoveProperties="TargetFramework;PublishProfile;PublishDir;PublishUrl;OutputPath;BaseOutputPath;WindowsPackageType"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);$(_ComServerProperties)OutDir=$(_ComServerStage);BuildProjectReferences=true;PublishReadyToRun=false" />
+    <ItemGroup>
+      <_ComServerFiles Include="$(_ComServerStage)**\*" />
+      <ContentWithTargetPath Include="@(_ComServerFiles)"
+                             TargetPath="Automation\%(RecursiveDir)%(Filename)%(Extension)"
+                             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ComServerFiles)"
+          DestinationFiles="@(_ComServerFiles->'$(TargetDir)Automation\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

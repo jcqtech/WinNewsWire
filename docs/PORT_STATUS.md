@@ -639,6 +639,27 @@ is still required before enabling native deletion.
 
 ### Windows scripting equivalent
 
+The out-of-process COM adapter adds `WinNewsWire.Application`, seven fixed-IID
+dual IDispatch interfaces, a generated version-1.0 type library, native-style object
+collections and per-user/MSIX activation. It reuses the service below rather than
+opening account stores in the COM process. PowerShell 5.1/7, VBScript and JScript
+fixture clients exercise real child-process activation and x86/x64 callers.
+See `Windows\Automation\COM.md` for the complete dictionary mapping, examples,
+deployment instructions and the distinction between fixture and installed-app
+verification. The earlier compile-only evidence below is historical.
+
+Large-dataset follow-up adds feed-scoped indexed article resolution, metadata-only
+article membership/counts, 128-reference live property batches and bounded
+`GetPage` exports. At 5,000 articles, full title projection fell from 175.37 s to
+0.38 s and unread filtering from 252.27 s to 0.30 s in the real COM fixture.
+Paging still materializes all metadata and is not a transactional SQL cursor.
+An isolated developer-registered package passed cold activation, two-window UI
+selection, real RSS refresh/failure, restart persistence and actual Access VBA
+early-bound scripting plus a 321-row Excel export/reopen. Normal signed-MSIX
+installation remains blocked by certificate trust/elevation in this session;
+Excel-hosted VBA and authenticated remote-account sync remain unverified.
+See the COM guide for exact scenarios, measurements and remaining limits.
+
 Local automation is disabled by default and requires an explicit Preferences
 opt-in. The service follows the pinned scripting dictionary's accounts, folders,
 feeds, articles and authors, including active-main-window selection. Commands

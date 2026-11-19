@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>WinNewsWire.Automation</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <WarningsAsErrors>$(WarningsAsErrors);DSCOM001</WarningsAsErrors>
+    <DsComTlbExportAutoAddReferences>false</DsComTlbExportAutoAddReferences>
+    <DsComTlbExportCreateMissingDependentTlbs>false</DsComTlbExportCreateMissingDependentTlbs>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="dSPACE.Runtime.InteropServices.BuildTasks" Version="2.5.8" PrivateAssets="all" />
+    <None Include="$(TargetDir)WinNewsWire.Automation.tlb" Link="WinNewsWire.Automation.tlb"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
