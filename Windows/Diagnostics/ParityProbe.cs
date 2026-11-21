@@ -180,6 +180,12 @@ internal static partial class ParityProbe
                     () => CheckAppearancePaletteAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--preferences-layout"))
+            {
+                await CheckAsync("Preferences cards fit their contents and use consistent control rows",
+                    () => CheckPreferencesLayoutAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--grayscale-setting"))
             {
                 await CheckAsync("The grayscale icon preference persists and synchronizes",
@@ -511,6 +517,12 @@ internal static partial class ParityProbe
                     () => CheckStatusBarAsync(window));
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--webpage-reload"))
+            {
+                await CheckAsync("Failed webpages can be reloaded without revisiting stale content or changing reader history",
+                    () => CheckWebPageReloadAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--pane-headers"))
             {
                 await CheckAsync("Article renderer, native scripts and five text sizes", () => CheckArticleAsync(window));
@@ -526,6 +538,24 @@ internal static partial class ParityProbe
             {
                 await CheckAsync("Left pane shadow stays above the square single-separator footer seam",
                     () => CheckPaneFooterSeamAsync(window));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--pane-scrollbar-layout"))
+            {
+                await CheckAsync("Native scrollbars clear headers and meet gapless pane dividers",
+                    () => CheckPaneScrollbarLayoutAsync(window));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--floating-toolbar-reveal")
+                || Environment.GetCommandLineArgs().Contains("--floating-toolbar-away"))
+            {
+                await CheckAsync("Floating toolbar fades and slides with nearby mouse input while retaining keyboard access",
+                    () => CheckFloatingToolbarRevealAsync(window));
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--toolbar-layout"))
+            {
+                await CheckAsync("Shared header customization and hidden-toolbar layout", () => CheckToolbarAsync(window));
                 return;
             }
             if (Environment.GetCommandLineArgs().Contains("--window-restoration"))
@@ -3145,8 +3175,8 @@ internal static partial class ParityProbe
         T Element<T>(string name) where T : DependencyObject => (T)content.FindName(name);
         Rect Bounds(FrameworkElement element) => element.TransformToVisual((UIElement)window.Content)
             .TransformBounds(new Rect(0, 0, element.ActualWidth, element.ActualHeight));
-        double TextRight(TextBlock text) => text.TransformToVisual((UIElement)window.Content)
-            .TransformPoint(new(text.ContentEnd.GetCharacterRect(LogicalDirection.Backward).Right, 0)).X;
+        double TextLeft(TextBlock text) => text.TransformToVisual((UIElement)window.Content)
+            .TransformPoint(new(text.ContentStart.GetCharacterRect(LogicalDirection.Forward).Left, 0)).X;
         void Resize(double width)
         {
             double scale = content.XamlRoot.RasterizationScale;
@@ -3231,12 +3261,9 @@ internal static partial class ParityProbe
             var detailStatus = Element<TextBlock>("ArticleDetailStatus");
             var webStatus = Element<TextBlock>("WebPageStatus");
             var counts = Element<TextBlock>("CombinedTimelineStatus");
-            double FooterTextRight() => Element<DropDownButton>("StatusBarThemeButton").Visibility == Visibility.Visible
-                ? Bounds(Element<DropDownButton>("StatusBarThemeButton")).Left - 8
-                : Bounds(Element<Border>("DetailFooter")).Right - 12;
-            Require(detailStatus.TextAlignment == TextAlignment.Right && webStatus.TextAlignment == TextAlignment.Right
-                && counts.TextAlignment == TextAlignment.Left,
-                "Column detail text must be right-aligned without moving the timeline counts.");
+            double FooterTextLeft() => Bounds(Element<Border>("CombinedStatusDivider")).Right
+                + Element<Border>("CombinedStatusDivider").Margin.Right;
+            VerifyCombinedFooterLayout(content, column: true);
             await SaveWindowScreenshotAsync(window, "headers-column-footer");
             File.WriteAllText(Path.Combine(OutputDirectory, "column-footer.json"), JsonSerializer.Serialize(new
             {
@@ -3244,12 +3271,12 @@ internal static partial class ParityProbe
                 Alignment = detailStatus.TextAlignment.ToString(),
                 Start = detailStatus.ContentStart.GetCharacterRect(LogicalDirection.Forward),
                 End = detailStatus.ContentEnd.GetCharacterRect(LogicalDirection.Backward),
-                RenderedRight = TextRight(detailStatus),
-                ExpectedRight = FooterTextRight()
+                RenderedLeft = TextLeft(detailStatus),
+                ExpectedLeft = FooterTextLeft()
             }, new JsonSerializerOptions { WriteIndented = true }));
             await WaitFor(() => Task.FromResult(!string.IsNullOrEmpty(detailStatus.Text) && !detailStatus.IsTextTrimmed
-                && Math.Abs(TextRight(detailStatus) - FooterTextRight()) < 1),
-                "Rendered article footer right edge");
+                && Math.Abs(TextLeft(detailStatus) - FooterTextLeft()) < 1),
+                "Rendered article footer left edge");
             Require(Bounds(counts).Right + 11 <= Bounds(detailStatus).Left, "Column footer text lost its separation.");
             var titleButton = columns.Children.OfType<Button>().Single(button => button.Tag as string == "Title");
             var beforePress = Bounds(titleButton);
@@ -3265,8 +3292,8 @@ internal static partial class ParityProbe
             await content.OpenSelectedInWebViewAsync();
             await WaitFor(() => Task.FromResult(content.ProbeWebPageReady && webStatus.Visibility == Visibility.Visible
                 && !string.IsNullOrEmpty(webStatus.Text) && !webStatus.IsTextTrimmed
-                && Math.Abs(TextRight(webStatus) - FooterTextRight()) < 1),
-                "Rendered webpage footer right edge");
+                && Math.Abs(TextLeft(webStatus) - FooterTextLeft()) < 1),
+                "Rendered webpage footer left edge");
             await SaveWindowScreenshotAsync(window, "headers-column-webpage-footer");
             await content.GoBackAsync();
             await WaitFor(() => Task.FromResult(content.ProbeArticleReady && !content.ProbeShowingWebPage),
@@ -3668,6 +3695,12 @@ internal static partial class ParityProbe
         T Element<T>(string name) where T : FrameworkElement => (T)content.FindName(name);
         Rect Bounds(FrameworkElement element) => element.TransformToVisual(content)
             .TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
+        Rect FloatingBounds()
+        {
+            var bounds = Bounds(floating);
+            bounds.X -= (Element<Border>("FloatingToolbarSurface").RenderTransform as TranslateTransform)?.X ?? 0;
+            return bounds;
+        }
         bool HeadersHidden(MainContent target) =>
             new[] { "MainToolbar", "SidebarHeader", "TimelineToolbar", "ArticleToolbarHost", "CombinedToolbarHost" }
                 .All(name => ((FrameworkElement)target.FindName(name)).Visibility == Visibility.Collapsed)
@@ -3694,9 +3727,9 @@ internal static partial class ParityProbe
                 ? Bounds(columns).Bottom : Bounds(content.ProbeWebView).Top;
             await WaitFor(() =>
             {
-                var buttonBounds = Bounds(floating);
+                var buttonBounds = FloatingBounds();
                 double contentTop = ContentTop();
-                return Task.FromResult(Math.Abs(content.ActualWidth - buttonBounds.Right - 32) <= 1
+                return Task.FromResult(Math.Abs(content.ActualWidth - buttonBounds.Right - 28) <= 1
                     && buttonBounds.Top >= contentTop - 1 && buttonBounds.Top <= contentTop + 8);
             }, "Floating toolbar position in " + layout);
             bool column = model.UseColumnLayout && !model.IsUnifiedLayout;
@@ -3721,12 +3754,12 @@ internal static partial class ParityProbe
                 var reader = Bounds(content.ProbeWebView);
                 scrollbarLeft = reader.Left + reader.Width * ratio;
             }
-            double scrollbarGap = scrollbarLeft - Bounds(floating).Right;
+            double scrollbarGap = scrollbarLeft - FloatingBounds().Right;
             Require(scrollbarGap >= 8, "The floating button overlaps the scrollbar in " + layout + ": gap=" + scrollbarGap);
             Require(floating.IsTabStop && AutomationProperties.GetName(floating) == AppStrings.Get("ToolbarOptions"),
                 "The floating options button is inaccessible in " + layout);
             File.WriteAllText(Path.Combine(OutputDirectory, "toolbar-hidden-" + layout + ".json"),
-                JsonSerializer.Serialize(new { Button = Bounds(floating), content.ActualWidth, ContentTop = ContentTop(),
+                JsonSerializer.Serialize(new { Button = FloatingBounds(), content.ActualWidth, ContentTop = ContentTop(),
                     ScrollbarLeft = scrollbarLeft, ScrollbarGap = scrollbarGap,
                     BackgroundSource = column ? "TimelineToolbar" : "ContentContainer" }));
             await SaveWindowScreenshotAsync(window, "toolbar-hidden-" + layout);

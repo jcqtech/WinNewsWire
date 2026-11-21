@@ -34,6 +34,8 @@ public sealed partial class MainContent
         SidebarPanel.SizeChanged += StatusBarLayout_SizeChanged;
         TimelinePanel.SizeChanged += StatusBarLayout_SizeChanged;
         ArticleDetailPanel.SizeChanged += StatusBarLayout_SizeChanged;
+        DetailFooterContent.SizeChanged += StatusBarLayout_SizeChanged;
+        StatusBarThemeButton.SizeChanged += StatusBarLayout_SizeChanged;
         _statusBarMidnightTimer = DispatcherQueue.CreateTimer();
         _statusBarMidnightTimer.IsRepeating = false;
         _statusBarMidnightTimer.Tick += StatusBarMidnight;
@@ -49,6 +51,8 @@ public sealed partial class MainContent
         SidebarPanel.SizeChanged -= StatusBarLayout_SizeChanged;
         TimelinePanel.SizeChanged -= StatusBarLayout_SizeChanged;
         ArticleDetailPanel.SizeChanged -= StatusBarLayout_SizeChanged;
+        DetailFooterContent.SizeChanged -= StatusBarLayout_SizeChanged;
+        StatusBarThemeButton.SizeChanged -= StatusBarLayout_SizeChanged;
         if (_statusBarMidnightTimer is { } timer)
         {
             timer.Stop();
@@ -153,10 +157,17 @@ public sealed partial class MainContent
         bool column = timeline && ViewModel.UseColumnLayout;
         bool separateTimeline = timeline && !column;
         TimelineFooter.Visibility = StatusBarArticleSplitter.Visibility = separateTimeline ? Visibility.Visible : Visibility.Collapsed;
-        CombinedTimelineStatus.Visibility = column ? Visibility.Visible : Visibility.Collapsed;
-        var combinedWidth = column ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        CombinedTimelineStatus.Visibility = CombinedStatusDivider.Visibility = column ? Visibility.Visible : Visibility.Collapsed;
+        var combinedWidth = column ? GridLength.Auto : new GridLength(0);
         if (CombinedTimelineStatusColumn.Width != combinedWidth) CombinedTimelineStatusColumn.Width = combinedWidth;
-        ArticleDetailStatus.TextAlignment = WebPageStatus.TextAlignment = column ? TextAlignment.Right : TextAlignment.Left;
+        double themeWidth = AppDefaults.Shared.ShowStatusBarThemeMenu
+            ? StatusBarThemeButton.ActualWidth + StatusBarThemeButton.Margin.Left + StatusBarThemeButton.Margin.Right : 0;
+        double dividerWidth = CombinedStatusDivider.Width + CombinedStatusDivider.Margin.Left + CombinedStatusDivider.Margin.Right;
+        // Keep the former one-third count budget at narrow widths, without stretching short counts away from the details.
+        double countLimit = column ? Math.Max(0, (DetailFooterContent.ActualWidth - themeWidth - dividerWidth) / 3)
+            : double.PositiveInfinity;
+        if (CombinedTimelineStatus.MaxWidth != countLimit) CombinedTimelineStatus.MaxWidth = countLimit;
+        ArticleDetailStatus.TextAlignment = WebPageStatus.TextAlignment = TextAlignment.Left;
         SetFooterWidth(StatusBarArticleDividerColumn, separateTimeline ? ArticleDividerColumn.ActualWidth : 0);
         if (!separateTimeline)
         {

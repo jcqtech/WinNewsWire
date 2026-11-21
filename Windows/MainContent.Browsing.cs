@@ -35,6 +35,7 @@ public sealed partial class MainContent
         public int Revision { get; set; }
         public ulong NavigationID { get; set; }
         public bool IsLoading { get; set; }
+        public bool IsReload { get; set; }
         public bool DocumentCommitted { get; set; }
         public int? RestoringIndex { get; set; }
         public int? ExpectedEntryID { get; set; }
@@ -220,6 +221,7 @@ public sealed partial class MainContent
         }
         if (_shuttingDown) return;
         var core = WebPageView.CoreWebView2;
+        WebPageReloadButton.Content = AppShared.AppStrings.Get("WebPageReload");
         await AppRuntime.WebViewScrolling.InstallAsync(core);
         if (_shuttingDown) return;
         // Publisher pages have their own browser; they never receive the article reader's host bindings or theme mappings.
@@ -275,6 +277,7 @@ public sealed partial class MainContent
             return;
         }
         session.NavigationID = args.NavigationId;
+        if (!args.IsRedirected) session.IsReload = args.NavigationKind == CoreWebView2NavigationKind.Reload;
         session.IsLoading = true;
         session.DocumentCommitted = false;
         if (_pendingWebPagePresentation is not null)
@@ -325,7 +328,8 @@ public sealed partial class MainContent
                 session.Pages.RemoveRange(existing + 1, session.Pages.Count - existing - 1);
                 session.Pages[existing] = current;
             }
-            else if (session.Pages[^1].EntryID is null) session.Pages[^1] = current;
+            // Reloading an error page can replace its native entry ID without adding a history entry.
+            else if (session.Pages[^1].EntryID is null || session.IsReload) session.Pages[^1] = current;
             else if (first >= 0 && history.Index >= first)
             {
                 session.Pages.Clear();
@@ -333,6 +337,7 @@ public sealed partial class MainContent
             }
             else session.Pages.Add(current);
         }
+        if (!session.IsLoading) session.IsReload = false;
         UpdateWebPageStatus();
         NotifyNavigationHistory();
     }
@@ -540,6 +545,16 @@ public sealed partial class MainContent
             _goingBack = false;
             if (!_shuttingDown) NotifyNavigationHistory();
         }
+    }
+
+    private void WebPageReload_Click(object sender, RoutedEventArgs args)
+    {
+        if (_shuttingDown || !_showingWebPage || !WebPageError.IsOpen) return;
+        try
+        {
+            WebPageView.CoreWebView2.Reload();
+        }
+        catch (Exception error) when (IsBrowsingError(error)) { ReportBrowsingError("Load web page", error); }
     }
 
     private static bool IsBrowsingError(Exception error) => error is System.Runtime.InteropServices.COMException

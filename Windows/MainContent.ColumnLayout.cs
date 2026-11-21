@@ -288,9 +288,10 @@ public sealed partial class MainContent
             Grid.SetRow(ArticleSplitter, column ? 1 : 0);
             ArticleSplitter.Width = column ? double.NaN : 8;
             ArticleSplitter.Height = column ? 8 : double.NaN;
+            ArticleSplitter.Margin = column ? default : new Thickness(0, 0, -7, 0);
             ArticleDividerLine.Width = column ? double.NaN : 1;
             ArticleDividerLine.Height = column ? 1 : double.NaN;
-            ArticleDividerLine.HorizontalAlignment = column ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
+            ArticleDividerLine.HorizontalAlignment = column ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
             ArticleDividerLine.VerticalAlignment = column ? VerticalAlignment.Center : VerticalAlignment.Stretch;
             AutomationProperties.SetName(ArticleSplitter, column ? "Resize timeline height" : "Resize article list");
             AutomationProperties.SetHelpText(ArticleSplitter, column ? "Press up or down arrow to resize" : "Press left or right arrow to resize");
@@ -336,9 +337,15 @@ public sealed partial class MainContent
         double header = TimelineToolbar.Visibility == Visibility.Visible
             ? (TimelineToolbar.ActualHeight > 0 ? TimelineToolbar.ActualHeight : _headerHeight) : 0;
         bool column = ViewModel.UseColumnLayout;
+        double top = header + (column ? TimelineColumnsHeader.ActualHeight : 0);
         TimelineColumnsHeader.Margin = new Thickness(0, column ? header : 0, 0, 0);
-        ArticleListView.Padding = new Thickness(0,
-            header + (column ? TimelineColumnsHeader.ActualHeight : 0), 0, column ? 0 : 4);
+        ArticleListView.Padding = new Thickness(0, top, 0, column ? 0 : 4);
+        if (_articleVerticalScrollBar is { } bar)
+        {
+            var margin = _articleScrollBarBaseMargin;
+            margin.Top += top;
+            if (bar.Margin != margin) bar.Margin = margin;
+        }
     }
 
     private void ApplyColumnTimelineHeight()

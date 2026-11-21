@@ -193,7 +193,7 @@
 
             <!-- Extend the scroll rail into the gutter while preserving the header and feed-row widths. -->
             <Grid Grid.Column="0" x:Name="SidebarPanel"
-                  Background="Transparent" Margin="0,0,-2,0" Padding="0,0,2,0">
+                  Background="Transparent" Margin="0,0,-4,0" Padding="0,0,4,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -222,7 +222,7 @@
                   KeyDown="SidebarListView_KeyDown"
                   SelectionMode="Extended"
                   IsMultiSelectCheckBoxEnabled="False"
-                  Margin="0,0,-2,0" Padding="0,0,6,8"
+                  Margin="0,0,-4,0" Padding="0,0,8,8"
                   AutomationProperties.Name="Feeds"
                   AutomationProperties.LandmarkType="Navigation"
                   CanDragItems="True"
@@ -370,7 +370,7 @@
             </Grid>
 
             <!-- Keep room for the shifted rail without narrowing the resize hit target. -->
-            <ContentControl x:Name="SidebarSplitter" Grid.Column="1" Width="8" Margin="2,0,0,0"
+            <ContentControl x:Name="SidebarSplitter" Grid.Column="1" Width="8" Margin="4,0,-2,0" Canvas.ZIndex="2"
                             IsTabStop="True"
                             HorizontalContentAlignment="Stretch"
                             VerticalContentAlignment="Stretch"
@@ -504,6 +504,9 @@
                                   SelectionChanged="ArticleListView_SelectionChanged"
                                   DoubleTapped="ArticleListView_DoubleTapped"
                                   Padding="0,0,0,4">
+                            <ListView.Resources>
+                                <Thickness x:Key="ScrollViewerScrollBarMargin">1,1,0,1</Thickness>
+                            </ListView.Resources>
                             <ListView.ContextFlyout>
                                 <MenuFlyout x:Name="ArticleContextMenu" Opening="ArticleContextMenu_Opening" />
                             </ListView.ContextFlyout>
@@ -633,7 +636,7 @@
                          Same a11y treatment as SidebarSplitter — focusable
                          ContentControl (not Button) so its custom drag
                          pointer-capture isn't fought by built-in click logic. -->
-                    <ContentControl x:Name="ArticleSplitter" Grid.Column="1" Width="8"
+                    <ContentControl x:Name="ArticleSplitter" Grid.Column="1" Width="8" Margin="0,0,-7,0" Canvas.ZIndex="2"
                             IsTabStop="True"
                             HorizontalContentAlignment="Stretch"
                             VerticalContentAlignment="Stretch"
@@ -646,12 +649,10 @@
                             PointerEntered="Splitter_PointerEntered"
                             PointerExited="Splitter_PointerExited"
                             KeyDown="ArticleSplitter_KeyDown">
-                        <!-- Transparent backdrop fills the full width so the
-                             whole splitter is draggable, not just the 1 px
-                             centered divider Rectangle. -->
+                        <!-- Overlay the resize target on the reader side, away from the list scrollbar. -->
                         <Grid Background="Transparent">
                             <Rectangle x:Name="ArticleDividerLine" Width="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}"
-                                       HorizontalAlignment="Center" />
+                                       HorizontalAlignment="Left" />
                         </Grid>
                     </ContentControl>
 
@@ -721,7 +722,11 @@
                         <ProgressBar x:Name="WebPageProgress" Grid.Row="2" Height="2" VerticalAlignment="Top"
                                      Canvas.ZIndex="2" IsIndeterminate="True" Visibility="Collapsed" IsHitTestVisible="False" />
                         <InfoBar x:Name="WebPageError" Grid.Row="1" Severity="Error" IsOpen="False" IsClosable="True"
-                                 AutomationProperties.LiveSetting="Polite" />
+                                 AutomationProperties.LiveSetting="Polite">
+                            <InfoBar.ActionButton>
+                                <Button x:Name="WebPageReloadButton" Click="WebPageReload_Click" />
+                            </InfoBar.ActionButton>
+                        </InfoBar>
 
                         <!-- Empty state overlay -->
                         <Grid Grid.Row="2" x:Name="EmptyContentState"
@@ -788,7 +793,7 @@
                       SizeChanged="StatusBarLayout_SizeChanged">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition x:Name="StatusBarTimelineColumn" Width="380" />
-                        <ColumnDefinition x:Name="StatusBarArticleDividerColumn" Width="8" />
+                        <ColumnDefinition x:Name="StatusBarArticleDividerColumn" Width="1" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Border x:Name="TimelineFooter" Padding="12,0">
@@ -799,7 +804,8 @@
                                    ToolTipService.ToolTip="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}"
                                    AutomationProperties.LiveSetting="Polite" />
                     </Border>
-                    <ContentControl x:Name="StatusBarArticleSplitter" Grid.Column="1" Width="8" IsTabStop="True"
+                    <ContentControl x:Name="StatusBarArticleSplitter" Grid.Column="1" Width="8" Margin="0,0,-7,0"
+                                    Canvas.ZIndex="2" IsTabStop="True"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                                     PointerPressed="ArticleSplitter_PointerPressed" PointerMoved="ArticleSplitter_PointerMoved"
                                     PointerReleased="Splitter_PointerReleased" PointerEntered="Splitter_PointerEntered"
@@ -807,7 +813,7 @@
                                     AutomationProperties.Name="Resize article list"
                                     AutomationProperties.HelpText="Press left or right arrow to resize">
                         <Grid Background="Transparent">
-                            <Border Width="1" HorizontalAlignment="Center"
+                            <Border Width="1" HorizontalAlignment="Left"
                                     Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         </Grid>
                     </ContentControl>
@@ -815,16 +821,21 @@
                         <Grid x:Name="DetailFooterContent">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition x:Name="CombinedTimelineStatusColumn" Width="0" />
-                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="CombinedTimelineStatus" Visibility="Collapsed" Margin="0,0,12,0"
+                            <TextBlock x:Name="CombinedTimelineStatus" Visibility="Collapsed"
                                        Text="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}" VerticalAlignment="Center"
                                        Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="NoWrap"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
                                        ToolTipService.ToolTip="{x:Bind ViewModel.TimelineStatus, Mode=OneWay}"
                                        AutomationProperties.LiveSetting="Polite" />
-                            <TextBlock x:Name="ArticleDetailStatus" Grid.Column="1" Text="{x:Bind ViewModel.DetailStatus, Mode=OneWay}"
+                            <Border x:Name="CombinedStatusDivider" Grid.Column="1" Width="1" Height="16" Margin="8,0"
+                                    VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False"
+                                    Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                    AutomationProperties.AccessibilityView="Raw" />
+                            <TextBlock x:Name="ArticleDetailStatus" Grid.Column="2" Text="{x:Bind ViewModel.DetailStatus, Mode=OneWay}"
                                        Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"
                                        TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -832,13 +843,13 @@
                                        AutomationProperties.LiveSetting="Polite">
                                 <TextBlock.ContextFlyout><MenuFlyout Opening="StatusBarLinkMenu_Opening" /></TextBlock.ContextFlyout>
                             </TextBlock>
-                            <TextBlock x:Name="WebPageStatus" Grid.Column="1" Visibility="Collapsed" VerticalAlignment="Center"
+                            <TextBlock x:Name="WebPageStatus" Grid.Column="2" Visibility="Collapsed" VerticalAlignment="Center"
                                        Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="NoWrap"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
                                        AutomationProperties.LiveSetting="Polite">
                                 <TextBlock.ContextFlyout><MenuFlyout Opening="StatusBarLinkMenu_Opening" /></TextBlock.ContextFlyout>
                             </TextBlock>
-                            <DropDownButton x:Name="StatusBarThemeButton" Grid.Column="2" Height="28" MinHeight="0"
+                            <DropDownButton x:Name="StatusBarThemeButton" Grid.Column="3" Height="28" MinHeight="0"
                                             Margin="8,0,0,0" Padding="4,0" FontSize="12" VerticalAlignment="Center"
                                             Style="{StaticResource SubtleButtonStyle}">
                                 <DropDownButton.Flyout><MenuFlyout Opening="ToolbarThemes_Opening" /></DropDownButton.Flyout>
@@ -850,10 +861,13 @@
         </Border>
 
         <Border x:Name="FloatingToolbarSurface" Grid.Row="2" Canvas.ZIndex="3"
-                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,32,0"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,28,0" Opacity="0"
                 Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
                 CornerRadius="{ThemeResource ControlCornerRadius}"
                 Visibility="{Binding Visibility, ElementName=FloatingToolbarButton, Mode=OneWay}">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="FloatingToolbarTranslation" X="8" />
+            </Border.RenderTransform>
             <Button x:Name="FloatingToolbarButton" Width="36" Height="36" Padding="0" Visibility="Collapsed">
                 <FontIcon Glyph="&#xE712;" FontSize="20" AutomationProperties.AccessibilityView="Raw" />
                 <Button.Flyout>

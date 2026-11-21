@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Subscribe to Feed - Settings</title>
+    <link rel="stylesheet" href="options.css">
+    <script type="module" src="options.js"></script>
+</head>
+<body>
+    <main>
+        <h1>Subscribe to Feed</h1>
+        <p id="error" role="alert" hidden></p>
+        <form id="settings">
+            <fieldset disabled>
+                <legend>Open subscriptions in</legend>
+                <label><input type="radio" name="reader" value="winnewswire" checked> WinNewsWire</label>
+                <label><input type="radio" name="reader" value="default"> The system's default feed reader</label>
+            </fieldset>
+            <button type="submit" disabled>Save</button>
+            <p id="status" role="status"></p>
+        </form>
+        <h2>Using the toolbar button</h2>
+        <p>Open a website or feed, then click Subscribe to Feed. Approve Edge's request to open
+            the desktop reader. Your original page stays open; Edge may leave a blank handoff tab.</p>
+        <p>WinNewsWire discovers feeds from the page address and opens its subscription dialog.
+            A page does not have to be a direct RSS, Atom, or JSON Feed URL.</p>
+        <h2>If the reader does not open</h2>
+        <p>Install the packaged version of WinNewsWire so Windows registers its
+            <code>x-winnewswire-feed:</code> protocol. For the default-reader option, choose an
+            app for the <code>FEED</code> link type in Windows Settings &gt; Apps &gt; Default apps.</p>
+        <p>Edge or Windows may ask which app to open. Canceling that prompt does not subscribe.
+            The extension cannot detect cancellation, a missing protocol handler, or whether the
+            reader found a feed. Managed-browser policies may also block external applications.</p>
+        <p>Only HTTP and HTTPS pages are supported. Edge settings, local files, and other internal
+            pages are excluded. This extension reads only the address you choose to send, not page
+            content, cookies, or browser history. The reader fetches the page independently, so
+            pages requiring your browser login may not work.</p>
+    </main>
+</body>
+</html>

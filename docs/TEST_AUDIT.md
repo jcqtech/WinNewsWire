@@ -151,6 +151,97 @@ all-shadow-removal fix and its original-source controls remain historical
 evidence in `pane-footer-seam-baseline`, `pane-footer-seam-rendered`,
 `pane-footer-seam-negative` and `pane-footer-restored-*`.
 
+The November 18 `--pane-scrollbar-layout` check passes eight combinations of
+standard/column layout, visible/hidden headers and icon-only/icon-and-text
+toolbar sizes. It verifies native scrollbar top bounds and arrow hit testing,
+flush side-by-side pane/divider edges, footer alignment and full eight-DIP
+resize targets. At the observed 150% scaling, the old divider left about
+3.33 DIP blank on each side; those gaps are now zero. The sidebar rail moves
+two DIP right, reducing its clearance to the pane from eight to six DIP without
+narrowing the resize target. Measurements await the existing sidebar reveal
+animation rather than treating an in-flight translation as padding.
+
+`--floating-toolbar-reveal` passed an owned native mouse run over the real
+WebView2 reader: fading/sliding in both directions, reversal, menu-open
+visibility, keyboard access and no pointer-driven header layout churn.
+`--floating-toolbar-away` also passes using the observed distant cursor without
+injecting input, including no polling with an inactive window or visible
+toolbar. The actual cursor bridge avoids page-level mousemove messages;
+native WinUI pointer callbacks alone did not receive movement over WebView2.
+Windows cursor suppression identifies touch/pen input; physical touch/pen
+hardware was not exercised.
+
+Both regressions fail on the exact original `86440cc` production files, including
+removal of the newly added floating-toolbar partial; restoring all five files
+passes byte-for-byte verification. The restored scrollbar, distant-cursor,
+native article-scrolling, window-chrome and pane/footer-seam checks pass.
+The later broader toolbar and expanded hover runs stop at foreground/input
+ownership guards and are not counted as complete passes. Hidden-toolbar layout
+checks through minimum width and a second window passed before the toolbar
+run reached that guard; no ownership check was relaxed.
+
+Evidence is retained in `pane-scrollbar-layout-baseline`,
+`pane-interaction-original-negative`, `floating-toolbar-original-away-negative`,
+`floating-toolbar-native-cursor` and `pane-interaction-verified-*`. Probe builds
+use a private `PaneGeometryProbe` configuration after an invalid managed
+reference was found in the pre-existing `Probe` intermediates. The normal
+application build also succeeds with zero warnings/errors; no installed
+application or real reading profile was changed.
+
+The column-footer alignment follow-up passes the complete `--status-bar` check:
+left-aligned article and webpage text follows the totals and a short divider,
+in both light and dark appearances. A narrow-window fixture with long totals
+and a long URL verifies truncation, theme-picker space and hiding the picker;
+standard and reading-only layouts do not retain the divider. The text block's
+`MaxWidth`, rather than the Auto column's limit, constrains long count text.
+`--statusbar-invalidation` also passes with no extra header layouts.
+
+The negative control restores only this request's two production-file changes,
+retaining all earlier uncommitted scrollbar and floating-toolbar work. The exact
+pre-request source compiles and fails the left-alignment assertion; both files
+restore byte-for-byte, and the complete footer check passes afterward.
+Evidence and rendered light/dark footer images are retained in
+`column-footer-before`, `column-footer-control`, `column-footer-negative` and
+`column-footer-verified-*`.
+
+`--webpage-reload` exercises the inline Reload action using an isolated
+WebView2 target with local fixtures and target-scoped network failure. It covers
+another failed retry, successful recovery, the protected loading surface, the
+exact requested URL rather than a cached page or article link, and retries
+after navigating from an already displayed page. Reloading an error page can
+replace its native history entry ID without adding an entry; application
+history must replace that page too. The reload marker is cleared after loading
+so later `pushState` navigation still appends normally. Back navigation and the
+previous page's form state are preserved.
+
+The exact pre-request XAML, browsing code and localization resource compile
+but fail because the Reload action is absent. The task-specific reversal
+retains earlier uncommitted changes and restores all three files byte-for-byte.
+Evidence is retained in `webpage-reload-before`, `webpage-reload-history-complete`
+and `webpage-reload-final-*`. No system-wide network setting or real profile
+is modified by the failure fixture.
+
+`--preferences-layout` covers twenty dropdown/toggle cards at wide and narrow
+window sizes. The original layout measured about 62.67 DIP for dropdown rows,
+70.67 DIP for toggle rows, and 87.33 DIP for Unread Counts/Thumbnail Size because
+empty status blocks reserved space. Single-line cards now share a 64-DIP
+minimum with centered native controls. Long descriptions, save errors and
+larger wrapped labels expand naturally; clearing an error restores the compact
+row. The Timeline header uses the same 16-point FontIcon treatment as the other
+settings icons instead of constraining a SymbolIcon to a smaller box.
+
+The exact original preferences XAML and both code-behind files compile but fail
+the new sizing/empty-message/icon checks. Their restored bytes pass, including
+light/dark rendering, live feed-icon explanations and advanced rows.
+Card images use a solid theme-colored backing for transparent pixels.
+`--appearance-palette` and `--grayscale-setting` also pass, preserving preference
+persistence and cross-window synchronization. Native measurements and card
+images are retained in `preferences-layout-baseline`, `preferences-layout-sized`
+and `preferences-layout-restored-*`, with final captures in
+`preferences-layout-capture-verified`; the original-source failure is retained
+in `preferences-layout-original-negative`. The normal application build also
+passes with zero warnings/errors.
+
 The suite mapping and dated results below describe the older baseline and
 subsequent historical runs, not a current claim of exact test parity or complete
 runtime verification. Counts of source test functions and expanded xUnit cases

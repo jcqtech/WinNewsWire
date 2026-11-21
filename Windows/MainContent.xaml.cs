@@ -70,6 +70,8 @@ public sealed partial class MainContent : UserControl
     private bool _isSidebarDragging;
     private bool _isArticleDragging;
     private ScrollViewer? _articleScrollViewer;
+    private Microsoft.UI.Xaml.Controls.Primitives.ScrollBar? _articleVerticalScrollBar;
+    private Thickness _articleScrollBarBaseMargin;
     private WinNewsWire.Input.WheelScrollingBehavior? _sidebarWheelScrolling;
     private double _dragStartX;
     private double _dragStartWidth;
@@ -284,6 +286,12 @@ public sealed partial class MainContent : UserControl
             // Leave article-list input handling and inertia at WinUI's native defaults.
             _articleScrollViewer = FindDescendantByName(ArticleListView, "ScrollViewer") as ScrollViewer
                 ?? throw new InvalidOperationException("The article list scroll viewer was not created.");
+            _articleScrollViewer.ApplyTemplate();
+            _articleVerticalScrollBar = FindDescendantByName(_articleScrollViewer, "VerticalScrollBar")
+                as Microsoft.UI.Xaml.Controls.Primitives.ScrollBar
+                ?? throw new InvalidOperationException("The article list vertical scrollbar was not created.");
+            _articleScrollBarBaseMargin = _articleVerticalScrollBar.Margin;
+            UpdateTimelineHeaderInsets();
             SidebarListView.ApplyTemplate();
             var sidebarScroll = FindDescendantByName(SidebarListView, "ScrollViewer") as ScrollViewer
                 ?? throw new InvalidOperationException("The sidebar scroll viewer was not created.");
@@ -426,6 +434,7 @@ public sealed partial class MainContent : UserControl
             _sidebarWheelScrolling?.Dispose();
             _sidebarWheelScrolling = null;
             _articleScrollViewer = null;
+            _articleVerticalScrollBar = null;
             StopSidebarReveals();
             ++_browsingVersion;
             await WinNewsWire.AppRuntime.AppService.Shared.Speech.StopAsync(this);

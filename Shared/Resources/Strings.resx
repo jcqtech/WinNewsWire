@@ -227,6 +227,7 @@
   <data name="Toolbar_openInWebView" xml:space="preserve"><value>Open in Web View</value></data>
   <data name="WebPageLoading" xml:space="preserve"><value>Loading webpage...</value></data>
   <data name="WebPageLoadFailed" xml:space="preserve"><value>The webpage could not be loaded.</value></data>
+  <data name="WebPageReload" xml:space="preserve"><value>Reload</value></data>
   <data name="ToolbarHideReadArticlesHelp" xml:space="preserve"><value>Hide read articles, keeping the current article visible.</value></data>
   <data name="ToolbarReadFilterUnavailable" xml:space="preserve"><value>Read filtering is fixed for this selection. Select one feed, folder, Today or Starred without an all-accounts search to change it.</value></data>
   <data name="NavigateBack" xml:space="preserve"><value>Back</value></data>

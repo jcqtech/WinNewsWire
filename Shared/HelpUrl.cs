@@ -15,13 +15,13 @@ namespace WinNewsWire.AppShared;
 /// </remarks>
 public static class HelpUrl
 {
-    public const string HelpHome      = "https://winnewswire.com/help/";
-    public const string Website       = "https://winnewswire.com/";
+    public const string HelpHome      = "https://www.winnewswire.com/help/";
+    public const string Website       = "https://www.winnewswire.com/";
     public const string ReleaseNotes  = "https://github.com/jcqtech/WinNewsWire/releases/";
     public const string HowToSupport  = "https://github.com/jcqtech/WinNewsWire";
     public const string GithubRepo    = "https://github.com/jcqtech/WinNewsWire";
     public const string BugTracker    = "https://github.com/jcqtech/WinNewsWire/issues";
-    public const string PrivacyPolicy = "https://winnewswire.com/privacy/";
+    public const string PrivacyPolicy = "https://www.winnewswire.com/privacy/";
 }
 
 

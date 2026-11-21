@@ -109,11 +109,12 @@ public sealed partial class PreferencesWindow
     {
         string label = AppStrings.Get(labelKey);
         AutomationProperties.SetName(input, label);
-        var grid = new Grid { ColumnSpacing = 12 };
+        var grid = new Grid { ColumnSpacing = 12, Style = (Style)((FrameworkElement)Content).Resources["SettingsRowStyle"] };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap });
         Grid.SetColumn(input, 1);
+        input.VerticalAlignment = VerticalAlignment.Center;
         grid.Children.Add(input);
         panel.Children.Add(new Border { Style = (Style)((FrameworkElement)Content).Resources["SettingsCardStyle"], Child = grid });
     }

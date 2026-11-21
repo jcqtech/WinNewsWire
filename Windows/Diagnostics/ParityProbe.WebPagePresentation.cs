@@ -1,6 +1,7 @@
 #if PARITY_PROBE
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -8,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.Web.WebView2.Core;
 using WinNewsWire.Account;
 using WinNewsWire.Articles;
 using WinNewsWire.Core;
@@ -17,6 +19,130 @@ namespace WinNewsWire.Diagnostics;
 
 internal static partial class ParityProbe
 {
+    private static async Task<object?> CheckWebPageReloadAsync(MainWindow window)
+    {
+        await using var server = new FixtureServer(holdWebPage: true);
+        var content = window.ProbeContent;
+        var model = content.ViewModel;
+        var original = window.CaptureState();
+        var error = (InfoBar)content.FindName("WebPageError");
+        var loading = (Border)content.FindName("WebPageLoadingState");
+        var progress = (ProgressBar)content.FindName("WebPageProgress");
+        var requested = new List<string>();
+        CoreWebView2? core = null;
+        void Starting(CoreWebView2 sender, CoreWebView2NavigationStartingEventArgs args) => requested.Add(args.Uri);
+        async Task Offline(bool offline) => await core!.CallDevToolsProtocolMethodAsync("Network.emulateNetworkConditions",
+            JsonSerializer.Serialize(new { offline, latency = 0, downloadThroughput = -1, uploadThroughput = -1 }));
+        try
+        {
+            await content.Initialization.WaitAsync(TimeSpan.FromSeconds(30));
+            var account = AccountManager.Shared.DefaultAccount;
+            var feed = account.FlattenedFeeds().Single();
+            model.SelectedSidebarItem = model.FindSidebarItemForFeed(account.AccountID, feed.FeedID);
+            await model.FilterArticlesAsync();
+            await model.WaitForCurrentTimelineAsync(CancellationToken.None);
+            model.SelectedArticle = model.ArticleItems.Single(item => item.Id == "probe-article");
+            await WaitFor(() => Task.FromResult(content.ProbeArticleReady), "Retry fixture reader");
+            string selectedLink = model.SelectedArticle.Link;
+            await content.ProbeOpenWebPageAsync(server.Url + "/navigation-old");
+            await WaitFor(() => Task.FromResult(content.ProbeWebPageReady), "Previous webpage before the failed request");
+            await content.GoBackAsync();
+            await WaitFor(() => Task.FromResult(content.ProbeArticleReady && !content.ProbeShowingWebPage),
+                "Reader before failed webpage");
+            core = content.ProbeWebPageView.CoreWebView2;
+            core.NavigationStarting += Starting;
+            await core.CallDevToolsProtocolMethodAsync("Network.enable", "{}");
+            await Offline(true);
+            string target = server.Url + "/navigation-held";
+            await content.ProbeOpenWebPageAsync(target);
+            await WaitFor(() => Task.FromResult(error.IsOpen), "Failed webpage offers recovery");
+            File.WriteAllText(Path.Combine(OutputDirectory, "failed-navigation-history.json"),
+                await core.CallDevToolsProtocolMethodAsync("Page.getNavigationHistory", "{}"));
+            var reload = content.FindName("WebPageReloadButton") as Button
+                ?? throw new InvalidOperationException("The failed webpage has no Reload action.");
+            await WaitFor(() => Task.FromResult(reload.IsLoaded && reload.ActualWidth > 0 && reload.ActualHeight > 0),
+                "Visible inline Reload action");
+            Require(ReferenceEquals(error.ActionButton, reload) && reload.IsEnabled && reload.Content as string == "Reload",
+                "The web-page error does not expose an enabled Reload button.");
+            int history = content.ProbeBackHistoryCount;
+            int attempts = requested.Count;
+            InvokeButton(reload);
+            await WaitFor(() => Task.FromResult(requested.Count > attempts && error.IsOpen), "Reload can fail and remain retryable");
+            Require(requested[^1] == target && content.ProbeBackHistoryCount == history
+                && model.SelectedArticle.Link == selectedLink && reload.IsEnabled,
+                "Reload requested an old page/article or added a reader history entry.");
+
+            await Offline(false);
+            InvokeButton(reload);
+            await server.WebPageRequested.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            await WaitFor(() => Task.FromResult(!error.IsOpen && progress.Visibility == Visibility.Visible
+                && loading.Visibility == Visibility.Visible && content.ProbeWebPageView.Opacity == 0),
+                "Retry clears the error and restores the protected loading state");
+            Require(((TextBlock)content.FindName("WebPageLoadingText")).Text == AppShared.AppStrings.Get("WebPageLoading"),
+                "A retried request still displays the failed-loading message.");
+            server.ReleaseWebPage.TrySetResult();
+            await WaitFor(() => Task.FromResult(content.ProbeWebPageReady && core.Source == target
+                && !error.IsOpen && loading.Visibility == Visibility.Collapsed && progress.Visibility == Visibility.Collapsed),
+                "Reload reveals the recovered requested page");
+            File.WriteAllText(Path.Combine(OutputDirectory, "recovered-navigation-history.json"),
+                await core.CallDevToolsProtocolMethodAsync("Page.getNavigationHistory", "{}"));
+            Require(content.ProbeBackHistoryCount == history && content.ProbeWebPageHistoryCount == 1,
+                $"Reload duplicated history: reader={content.ProbeBackHistoryCount}/{history}, pages={content.ProbeWebPageHistoryCount}.");
+            await content.GoBackAsync();
+            try
+            {
+                await WaitFor(() => Task.FromResult(content.ProbeArticleReady && !content.ProbeShowingWebPage),
+                    "A single Back returns to the original reader");
+            }
+            catch (TimeoutException failure)
+            {
+                throw new InvalidOperationException($"Retry Back: webpage={content.ProbeShowingWebPage}, "
+                    + $"readerReady={content.ProbeArticleReady}, back={content.ProbeBackHistoryCount}, "
+                    + $"pages={content.ProbeWebPageHistoryCount}, source={core.Source}, status={model.StatusMessage}, "
+                    + $"native={await core.CallDevToolsProtocolMethodAsync("Page.getNavigationHistory", "{}")}", failure);
+            }
+
+            await content.ProbeOpenWebPageAsync(server.Url + "/navigation-old");
+            await WaitFor(() => Task.FromResult(content.ProbeWebPageReady), "Visible page before an in-place navigation failure");
+            await core.ExecuteScriptAsync("document.getElementById('page-input').value='preserved after retry';");
+            await Offline(true);
+            string next = server.Url + "/navigation-new";
+            await content.ProbeOpenWebPageAsync(next);
+            await WaitFor(() => Task.FromResult(error.IsOpen), "Failed navigation from an existing webpage");
+            await Offline(false);
+            InvokeButton(reload);
+            await WaitFor(() => Task.FromResult(content.ProbeWebPageReady && !error.IsOpen && core.Source == next),
+                "Reload retries a failed in-place navigation");
+            Require(requested[^1] == next, "An in-place retry reloaded the previous webpage.");
+            await core.ExecuteScriptAsync("history.pushState({}, '', '/navigation-new?after-retry=1');");
+            await WaitFor(() => Task.FromResult(core.Source == next + "?after-retry=1" && content.ProbeWebPageHistoryCount == 3),
+                "Same-document navigation after reload adds its own history entry");
+            await content.GoBackAsync();
+            await WaitFor(() => Task.FromResult(content.ProbeWebPageReady && core.Source == next),
+                "Back preserves same-document history after retry");
+            await content.GoBackAsync();
+            await WaitFor(() => Task.FromResult(content.ProbeWebPageReady && core.Source == server.Url + "/navigation-old"),
+                "Back after in-place retry restores the previous webpage");
+            Require(JsonSerializer.Deserialize<string>(await core.ExecuteScriptAsync(
+                "document.getElementById('page-input').value")) == "preserved after retry",
+                "Reload recovery discarded the previous page's native form state.");
+            return new { InlineReload = true, RepeatedFailureRetryable = true, FailedUrlRetried = true,
+                LoadingStateRestored = true, NoStalePageExposure = true, Recovered = true, HistoryPreserved = true,
+                InPlaceNavigationRetry = true, NativeActionInvoked = true };
+        }
+        finally
+        {
+            server.ReleaseWebPage.TrySetResult();
+            if (core is not null)
+            {
+                await Offline(false);
+                await core.CallDevToolsProtocolMethodAsync("Network.disable", "{}");
+                core.NavigationStarting -= Starting;
+            }
+            await content.RestoreStateAsync(original);
+        }
+    }
+
     private static async Task<object?> CheckWebPagePresentationAsync(MainWindow window)
     {
         await using var slow = new FixtureServer(holdWebPage: true);

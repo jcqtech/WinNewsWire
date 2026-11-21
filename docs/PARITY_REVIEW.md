@@ -214,9 +214,20 @@ not inferred solely from current code. Confirmed choices include:
   timeline totals and article/webpage information, and the far-right theme picker.
   The gear uses its original subscription commands but lives at the right end
   of the main menu bar, independently of footer visibility.
+- Column-view footer counts and article/webpage information are adjacent and
+  left-aligned, separated by a short vertical rule. Long text still truncates
+  within its allocation instead of pushing out the theme picker.
 - The combined article-list/reader pane has no outer margins and only its
-  top-left corner rounded. Its sidebar gutter is ten DIP: a two-DIP scroll-rail
-  extension followed by the unchanged eight-DIP resize target.
+  top-left corner rounded. Its sidebar gutter remains ten DIP; the scrollbar
+  extends four DIP into it, with the eight-DIP resize target overlapping the
+  pane edge by two DIP rather than covering the scrollbar.
+- The article-list scrollbar starts below visible toolbar and column headings.
+  Rows still scroll under the acrylic headers, using unmodified native input.
+  In side-by-side layout, both panes meet the single divider without blank
+  gutters; its eight-DIP resize target overlays the reader side.
+- With headers hidden, the floating options button sits four DIP farther right
+  and fades/slides with mouse proximity. Keyboard focus, touch/pen input and an
+  open options menu keep it available; reduced-motion settings are respected.
 - The pane/footer boundary is flat, with no pane bottom border and one
   footer-owned separator. The original subtle left shadow lives in a separate
   non-interactive layer clipped to the pane's left edge and the content row.

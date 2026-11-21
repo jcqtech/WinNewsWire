@@ -86,6 +86,7 @@ public sealed partial class MainContent
         ToolTipService.SetToolTip(ToolbarOverflowButton, AppStrings.Get("ToolbarMore"));
         AutomationProperties.SetName(FloatingToolbarButton, AppStrings.Get("ToolbarOptions"));
         ToolTipService.SetToolTip(FloatingToolbarButton, AppStrings.Get("ToolbarOptions"));
+        InitializeFloatingToolbar();
         var addItems = ((MenuFlyout)AddDropdown.Flyout).Items.OfType<MenuFlyoutItem>().ToArray();
         addItems[0].Text = AppStrings.Get("ToolbarNewFeed");
         addItems[1].Text = AppStrings.Get("ToolbarNewFolder");
@@ -127,6 +128,7 @@ public sealed partial class MainContent
     private void ShutdownToolbar()
     {
         AppDefaults.Shared.Changed -= ToolbarDefaultsChanged;
+        ShutdownFloatingToolbar();
         try
         {
             _toolbarDialog?.Hide();
@@ -413,7 +415,8 @@ public sealed partial class MainContent
             double contentInset = column ? TimelineColumnsHeader.ActualHeight
                 : Math.Max(ArticleFindBar.Visibility == Visibility.Visible ? ArticleFindBar.ActualHeight : 0,
                     WebPageError.IsOpen ? WebPageError.ActualHeight : 0);
-            FloatingToolbarSurface.Margin = new Thickness(0, contentInset + 8, 32, 0);
+            FloatingToolbarSurface.Margin = new Thickness(0, contentInset + 8, 28, 0);
+            UpdateFloatingToolbarPlacement();
             double Desired(ToolbarSection section) => !_toolbarConfiguration.IsVisible ? 0
                 : ToolbarLayout.HeaderItems(_toolbarConfiguration, section).Sum(id => _toolbarWidths.GetValueOrDefault(id, 36));
             double titleBudget = Math.Max(0, TimelineToolbar.ActualWidth - 24 - 92);

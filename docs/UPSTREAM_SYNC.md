@@ -4,6 +4,10 @@ Source repository: `https://github.com/Ranchero-Software/NetNewsWire`
 
 Original port baseline: `fb086eb7684e9fdb90855c4e033a6beba4325c5e`.
 
+For the user-facing changes since the November 11 Store package, see
+[Changes since Store 1.2.0.0](CHANGES_SINCE_STORE_1.2.md) and its complete
+Windows commit catalog.
+
 Synchronized source tip: `7908c801bf7c97fa7cca9ef78cf51b33fb853e6a` (2026-11-12).
 All 505 inventoried descendant commits have been processed, with corresponding
 Windows commits or explicit coverage/exclusion reasons.
@@ -1003,6 +1007,28 @@ non-interactive layer is clipped to the pane's left edge and the content row,
 keeping shadow out of both the translucent bottom fill and the footer.
 Native child corners were already square; this does not restyle the article
 list or change its native scrolling.
+
+The November 18 follow-up places the article-list scrollbar below visible
+toolbar and column headings without changing native scrolling or removing the
+acrylic content underlay. The side-by-side divider occupies only its one-DIP
+line; its eight-DIP resize target overlays the reader, away from the list
+scrollbar. The footer divider follows the same geometry. The sidebar rail moves
+two DIP farther right while retaining feed-row/header widths and the ten-DIP
+gutter; the resize target overlaps the pane edge instead of the scrollbar.
+
+The hidden-toolbar options button moves four DIP right and uses a 48-DIP
+proximity area, fading and sliding eight DIP right when dismissed and left
+when revealed. Keyboard focus, touch/pen input and an open menu preserve access.
+Because WebView2 pointer movement does not bubble through XAML, an active window
+with hidden headers samples native cursor state every 50 ms; inactive windows
+and visible toolbars do not poll. This adds no page scripts, input interception
+or pointer-driven header layout, and honors the system reduced-motion setting.
+
+The column-view footer follow-up places article/webpage information immediately
+after the timeline totals, left-aligned and separated by a short themed vertical
+rule. Short totals use their natural width; long totals retain the former
+one-third text-space limit so narrow windows still reserve room for article
+information and the far-right theme picker. Other layouts do not show this rule.
 
 These are explicit Windows UX exceptions, not newly processed upstream commits.
 They do not change the `7908c801bf7c97fa7cca9ef78cf51b33fb853e6a` watermark or the

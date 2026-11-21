@@ -16,14 +16,23 @@
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="4" />
-                <Setter Property="Padding" Value="16,14" />
-                <Setter Property="MinHeight" Value="56" />
+                <Setter Property="Padding" Value="16,10" />
+                <Setter Property="MinHeight" Value="64" />
+            </Style>
+            <Style x:Key="SettingsRowStyle" TargetType="Grid">
+                <Setter Property="MinHeight" Value="40" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="SettingsMessageStyle" TargetType="TextBlock">
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Margin" Value="0,6,0,0" />
             </Style>
             <!-- Match the closed-state Expander header height to a regular card. -->
             <Style x:Key="SettingsExpanderStyle" TargetType="Expander">
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                <Setter Property="MinHeight" Value="56" />
+                <Setter Property="MinHeight" Value="64" />
             </Style>
             <Style x:Key="SectionHeadingStyle" TargetType="TextBlock"
                    BasedOn="{StaticResource BodyStrongTextBlockStyle}">
@@ -39,8 +48,8 @@
             <!-- A single row inside the "Advanced" continuous box: icon + label + toggle.
                  No surrounding Border so consecutive rows visually flow as one panel. -->
             <Style x:Key="AdvancedRowStyle" TargetType="Grid">
-                <Setter Property="Padding" Value="16,12" />
-                <Setter Property="MinHeight" Value="48" />
+                <Setter Property="Padding" Value="16,10" />
+                <Setter Property="MinHeight" Value="64" />
             </Style>
         </Grid.Resources>
 
@@ -97,32 +106,34 @@
                                Margin="2,0,0,4" />
 
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel Spacing="6">
-                            <Grid ColumnSpacing="12">
+                        <StackPanel VerticalAlignment="Center">
+                            <Grid ColumnSpacing="12" Style="{StaticResource SettingsRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="UnreadCountsLabel" VerticalAlignment="Center" />
+                                <TextBlock x:Name="UnreadCountsLabel" VerticalAlignment="Center" TextWrapping="Wrap" />
                                 <ComboBox Grid.Column="1" x:Name="UnreadCountDisplayCombo" MinWidth="180"
+                                          VerticalAlignment="Center"
                                           SelectionChanged="UnreadCountDisplayCombo_SelectionChanged" />
                             </Grid>
-                            <TextBlock x:Name="UnreadCountsStatus" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            <TextBlock x:Name="UnreadCountsStatus" Style="{StaticResource SettingsMessageStyle}"
+                                       Visibility="{x:Bind OptionalTextVisibility(UnreadCountsStatus.Text), Mode=OneWay}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </StackPanel>
                     </Border>
 
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <Grid>
+                        <Grid Style="{StaticResource SettingsRowStyle}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <FontIcon Grid.Column="0" Glyph="&#xE72C;" Style="{StaticResource OptionIconStyle}" />
-                            <TextBlock Grid.Column="1" Text="Refresh feeds" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="Refresh feeds" VerticalAlignment="Center" TextWrapping="Wrap" />
                             <ComboBox Grid.Column="2" x:Name="RefreshIntervalCombo" MinWidth="180"
+                                      VerticalAlignment="Center"
                                       SelectionChanged="RefreshIntervalCombo_SelectionChanged" />
                         </Grid>
                     </Border>
@@ -130,42 +141,45 @@
                     <Expander x:Name="TimelinePane" Style="{StaticResource SettingsExpanderStyle}" IsExpanded="True" Margin="0,12,0,0">
                         <Expander.Header>
                             <StackPanel Orientation="Horizontal">
-                                <SymbolIcon Symbol="List" Width="16" Height="16" Margin="0,0,12,0" />
+                                <FontIcon x:Name="TimelineSettingsIcon" Glyph="&#xE8FD;" Style="{StaticResource OptionIconStyle}"
+                                          AutomationProperties.AccessibilityView="Raw" />
                                 <TextBlock x:Name="TimelineHeading" Style="{StaticResource SectionHeadingStyle}" />
                             </StackPanel>
                         </Expander.Header>
                         <StackPanel Spacing="8">
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel Spacing="6">
-                            <Grid ColumnSpacing="12">
+                        <StackPanel VerticalAlignment="Center">
+                            <Grid ColumnSpacing="12" Style="{StaticResource SettingsRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="TimelineFeedIconsLabel" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TimelineFeedIconsLabel" VerticalAlignment="Center" TextWrapping="Wrap" />
                                 <ComboBox Grid.Column="1" x:Name="TimelineFeedIconsCombo" MinWidth="180"
+                                          VerticalAlignment="Center"
                                           SelectionChanged="TimelineFeedIconsCombo_SelectionChanged" />
                             </Grid>
-                            <TextBlock x:Name="TimelineFeedIconsDescription" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock x:Name="TimelineFeedIconsStatus" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            <TextBlock x:Name="TimelineFeedIconsDescription" Style="{StaticResource SettingsMessageStyle}"
+                                       Visibility="{x:Bind OptionalTextVisibility(TimelineFeedIconsDescription.Text), Mode=OneWay}" />
+                            <TextBlock x:Name="TimelineFeedIconsStatus" Style="{StaticResource SettingsMessageStyle}"
+                                       Visibility="{x:Bind OptionalTextVisibility(TimelineFeedIconsStatus.Text), Mode=OneWay}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel Spacing="6">
-                            <Grid ColumnSpacing="12">
+                        <StackPanel VerticalAlignment="Center">
+                            <Grid ColumnSpacing="12" Style="{StaticResource SettingsRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="TimelineThumbnailsLabel" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TimelineThumbnailsLabel" VerticalAlignment="Center" TextWrapping="Wrap" />
                                 <ComboBox Grid.Column="1" x:Name="TimelineThumbnailsCombo" MinWidth="180"
+                                          VerticalAlignment="Center"
                                           SelectionChanged="TimelineThumbnailsCombo_SelectionChanged" />
                             </Grid>
-                            <TextBlock x:Name="TimelineThumbnailsStatus" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            <TextBlock x:Name="TimelineThumbnailsStatus" Style="{StaticResource SettingsMessageStyle}"
+                                       Visibility="{x:Bind OptionalTextVisibility(TimelineThumbnailsStatus.Text), Mode=OneWay}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </StackPanel>
                     </Border>
@@ -179,35 +193,37 @@
                                Margin="2,12,0,4" />
 
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel Spacing="6">
-                            <Grid>
+                        <StackPanel VerticalAlignment="Center">
+                            <Grid Style="{StaticResource SettingsRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <FontIcon Grid.Column="0" Glyph="&#xE774;" Style="{StaticResource OptionIconStyle}" />
-                                <TextBlock Grid.Column="1" Text="Open links with" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="Open links with" VerticalAlignment="Center" TextWrapping="Wrap" />
                                 <ComboBox Grid.Column="2" x:Name="BrowserCombo" MinWidth="220" MaxWidth="320"
+                                          VerticalAlignment="Center"
                                           AutomationProperties.Name="Web browser"
                                           SelectionChanged="BrowserCombo_SelectionChanged"
                                           DropDownOpened="BrowserCombo_DropDownOpened" />
                             </Grid>
-                            <TextBlock x:Name="BrowserStatus" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            <TextBlock x:Name="BrowserStatus" Style="{StaticResource SettingsMessageStyle}"
+                                       Visibility="{x:Bind OptionalTextVisibility(BrowserStatus.Text), Mode=OneWay}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </StackPanel>
                     </Border>
 
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <Grid>
+                        <Grid Style="{StaticResource SettingsRowStyle}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <FontIcon Grid.Column="0" Glyph="&#xE774;" Style="{StaticResource OptionIconStyle}" />
-                            <TextBlock Grid.Column="1" Text="Open links in browser in background" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="Open links in browser in background"
+                                       VerticalAlignment="Center" TextWrapping="Wrap" />
                             <ToggleSwitch Grid.Column="2" x:Name="OpenBackgroundToggle"
                                           ToolTipService.ToolTip="Requests background opening; some browsers bring existing windows forward."
                                           MinWidth="0" Margin="0"
@@ -224,34 +240,37 @@
                         </Expander.Header>
                         <StackPanel Spacing="8">
                             <StackPanel x:Name="AppearanceOptions" Spacing="8" />
-                            <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                            <TextBlock x:Name="AppearanceStatus" Style="{StaticResource SettingsMessageStyle}" Margin="0"
+                                       Visibility="{x:Bind OptionalTextVisibility(AppearanceStatus.Text), Mode=OneWay}"
+                                       AutomationProperties.LiveSetting="Polite" />
                             <Border Style="{StaticResource SettingsCardStyle}">
-                                <Grid>
+                                <Grid Style="{StaticResource SettingsRowStyle}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <FontIcon Grid.Column="0" Glyph="&#xE7C3;" Style="{StaticResource OptionIconStyle}" />
-                                    <TextBlock Grid.Column="1" Text="Article text size" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="Article text size" VerticalAlignment="Center" TextWrapping="Wrap" />
                                     <ComboBox Grid.Column="2" x:Name="TextSizeCombo" MinWidth="180"
+                                              VerticalAlignment="Center"
                                               SelectionChanged="TextSizeCombo_SelectionChanged" />
                                 </Grid>
                             </Border>
                             <Border Style="{StaticResource SettingsCardStyle}">
-                                <Grid>
+                                <Grid Style="{StaticResource SettingsRowStyle}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" MinHeight="40" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <FontIcon Grid.Column="0" Glyph="&#xE790;" Style="{StaticResource OptionIconStyle}" />
-                                    <TextBlock Grid.Column="1" Text="Article theme" VerticalAlignment="Center" />
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Grid.Column="1" Text="Article theme" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                         <ComboBox x:Name="ThemeCombo" MinWidth="160"
                                                   SelectionChanged="ThemeCombo_SelectionChanged" />
                                         <Button x:Name="OpenThemesFolderButton" Click="OpenThemesFolder_Click"
@@ -274,27 +293,26 @@
                                Margin="2,12,0,4" />
 
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel Spacing="6">
-                            <Grid>
+                        <StackPanel VerticalAlignment="Center">
+                            <Grid Style="{StaticResource SettingsRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <FontIcon Grid.Column="0" Glyph="&#xEA8F;" Style="{StaticResource OptionIconStyle}" />
-                                <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" TextWrapping="Wrap"
                                            Text="Show toasts for new articles" />
                                 <ToggleSwitch Grid.Column="2" x:Name="NotificationsEnabledToggle"
                                               MinWidth="0" Margin="0"
                                               Toggled="NotificationsEnabled_Changed" />
                             </Grid>
-                            <TextBlock TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            <TextBlock Style="{StaticResource SettingsMessageStyle}"
                                        Text="Per-feed notification toggles live in each feed's right-click menu in the sidebar. Toast delivery also depends on Windows notification permissions for this app." />
                             <HyperlinkButton x:Name="OpenNotificationSettingsLink"
                                              Content="Open Windows notification settings…"
                                              Click="OpenNotificationSettings_Click"
-                                             Padding="0" />
+                                             Padding="0" Margin="0,6,0,0" />
                         </StackPanel>
                     </Border>
 
@@ -310,28 +328,28 @@
                              with no spacing and no per-row borders, so they read as one
                              panel rather than discrete cards. -->
                         <StackPanel Spacing="0" Padding="0,4,0,0">
-                            <StackPanel Padding="16,12" Spacing="6">
+                            <StackPanel Padding="16,12">
                                 <ToggleSwitch x:Name="CompatibilityRenderingToggle"
                                               Toggled="CompatibilityRenderingToggle_Toggled" />
-                                <TextBlock x:Name="CompatibilityRenderingDescription"
-                                           TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBlock x:Name="CompatibilityRenderingStatus" TextWrapping="Wrap"
+                                <TextBlock x:Name="CompatibilityRenderingDescription" Style="{StaticResource SettingsMessageStyle}" />
+                                <TextBlock x:Name="CompatibilityRenderingStatus" Style="{StaticResource SettingsMessageStyle}"
+                                           Visibility="{x:Bind OptionalTextVisibility(CompatibilityRenderingStatus.Text), Mode=OneWay}"
                                            AutomationProperties.LiveSetting="Polite" />
                             </StackPanel>
-                            <StackPanel Padding="16,12" Spacing="6">
+                            <StackPanel Padding="16,12">
                                 <ToggleSwitch x:Name="WheelInertiaToggle"
                                               Toggled="WheelInertiaToggle_Toggled" />
-                                <TextBlock x:Name="WheelInertiaDescription"
-                                           TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBlock x:Name="WheelInertiaStatus" TextWrapping="Wrap"
+                                <TextBlock x:Name="WheelInertiaDescription" Style="{StaticResource SettingsMessageStyle}" />
+                                <TextBlock x:Name="WheelInertiaStatus" Style="{StaticResource SettingsMessageStyle}"
+                                           Visibility="{x:Bind OptionalTextVisibility(WheelInertiaStatus.Text), Mode=OneWay}"
                                            AutomationProperties.LiveSetting="Polite" />
                             </StackPanel>
-                            <StackPanel Padding="16,12" Spacing="6">
+                            <StackPanel Padding="16,12">
                                 <ToggleSwitch x:Name="AutomationToggle"
                                               Toggled="AutomationToggle_Toggled" />
-                                <TextBlock x:Name="AutomationDescription"
-                                           TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBlock x:Name="AutomationStatusText" TextWrapping="Wrap"
+                                <TextBlock x:Name="AutomationDescription" Style="{StaticResource SettingsMessageStyle}" />
+                                <TextBlock x:Name="AutomationStatusText" Style="{StaticResource SettingsMessageStyle}"
+                                           Visibility="{x:Bind OptionalTextVisibility(AutomationStatusText.Text), Mode=OneWay}"
                                            AutomationProperties.LiveSetting="Polite" />
                             </StackPanel>
                             <Grid Style="{StaticResource AdvancedRowStyle}">
@@ -341,7 +359,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <FontIcon Grid.Column="0" Glyph="&#xE9F1;" Style="{StaticResource OptionIconStyle}" />
-                                <TextBlock Grid.Column="1" Text="Use reader view by default" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="Use reader view by default" VerticalAlignment="Center" TextWrapping="Wrap" />
                                 <ToggleSwitch Grid.Column="2" x:Name="ReaderModeDefaultToggle"
                                               MinWidth="0" Margin="0" Toggled="Advanced_Changed" />
                             </Grid>
@@ -353,7 +371,7 @@
                                 </Grid.ColumnDefinitions>
                                 <FontIcon Grid.Column="0" Glyph="&#xE943;" Style="{StaticResource OptionIconStyle}" />
                                 <TextBlock Grid.Column="1" Text="Allow JavaScript in article content (may affect layout)"
-                                           VerticalAlignment="Center" />
+                                           VerticalAlignment="Center" TextWrapping="Wrap" />
                                 <ToggleSwitch Grid.Column="2" x:Name="JavascriptToggle"
                                               MinWidth="0" Margin="0" Toggled="Advanced_Changed" />
                             </Grid>
@@ -364,7 +382,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <FontIcon Grid.Column="0" Glyph="&#xE7BA;" Style="{StaticResource OptionIconStyle}" />
-                                <TextBlock Grid.Column="1" Text="Show debug menu" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="Show debug menu" VerticalAlignment="Center" TextWrapping="Wrap" />
                                 <ToggleSwitch Grid.Column="2" x:Name="DebugMenuToggle"
                                               MinWidth="0" Margin="0" Toggled="Advanced_Changed" />
                             </Grid>

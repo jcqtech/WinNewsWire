@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using WinNewsWire.Account;
@@ -319,6 +320,47 @@ internal static partial class ParityProbe
         }
     }
 
+    private static void VerifyCombinedFooterLayout(MainContent content, bool column)
+    {
+        var divider = content.FindName("CombinedStatusDivider") as Border;
+        var counts = (TextBlock)content.FindName("CombinedTimelineStatus");
+        var article = (TextBlock)content.FindName("ArticleDetailStatus");
+        var webpage = (TextBlock)content.FindName("WebPageStatus");
+        Require(article.TextAlignment == TextAlignment.Left && webpage.TextAlignment == TextAlignment.Left,
+            "Article and webpage footer information must stay left-aligned.");
+        if (!column)
+        {
+            Require(divider is null || divider.Visibility == Visibility.Collapsed,
+                "The compact footer divider must appear only with the combined column-layout status.");
+            return;
+        }
+        if (divider is null)
+            throw new InvalidOperationException("The column footer has no divider between counts and article information.");
+        Require(divider.Visibility == Visibility.Visible, "The column footer divider is not visible.");
+        var status = webpage.Visibility == Visibility.Visible ? webpage : article;
+        global::Windows.Foundation.Rect Bounds(FrameworkElement element)
+            => element.TransformToVisual(content).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
+        var line = Bounds(divider);
+        var footer = Bounds((Grid)content.FindName("DetailFooterContent"));
+        Require(divider.ActualWidth is > 0 and <= 2 && divider.ActualHeight > 0 && divider.ActualHeight < footer.Height
+            && Math.Abs(line.Top + line.Height / 2 - footer.Top - footer.Height / 2) < 1 && !divider.IsHitTestVisible,
+            "The column footer divider must be a short, centered, non-interactive line.");
+        if (!counts.IsTextTrimmed)
+        {
+            double right = counts.TransformToVisual(content)
+                .TransformPoint(new(counts.ContentEnd.GetCharacterRect(LogicalDirection.Backward).Right, 0)).X;
+            Require(Math.Abs(line.Left - right - divider.Margin.Left) < 1,
+                "The column footer leaves empty space between its counts and divider.");
+        }
+        if (!string.IsNullOrEmpty(status.Text))
+        {
+            double left = status.TransformToVisual(content)
+                .TransformPoint(new(status.ContentStart.GetCharacterRect(LogicalDirection.Forward).Left, 0)).X;
+            Require(Math.Abs(left - line.Right - divider.Margin.Right) < 1,
+                "Article information does not begin immediately to the right of the column-footer divider.");
+        }
+    }
+
     private static async Task<object?> CheckStatusBarAsync(MainWindow window)
     {
         var content = window.ProbeContent;
@@ -371,6 +413,7 @@ internal static partial class ParityProbe
                 && Math.Abs(Bounds(detailFooter).Right - Bounds(detail).Right) < 1
                 && combined.Visibility == (column ? Visibility.Visible : Visibility.Collapsed)),
                 "One aligned footer in " + layout);
+            await WaitForRenderedFramesAsync();
             Require(InFooter(Element<Border>("SidebarFooter")) && InFooter(timelineFooter) && InFooter(detailFooter),
                 "Legacy pane footers remain stacked above the new footer.");
             Require(Element<TextBlock>("TimelineFooterStatus").Text == model.TimelineStatus && combined.Text == model.TimelineStatus
@@ -383,9 +426,21 @@ internal static partial class ParityProbe
                     "A footer control occupies a second row in " + layout);
             }
             if (theme.Visibility == Visibility.Visible)
-                Require(Bounds(status).Right + 7 <= Bounds(theme).Left
-                    && Math.Abs(Bounds(theme).Right - (Bounds(detailFooter).Right - 12)) < 1,
-                    "Article text overlaps the far-right theme picker in " + layout);
+            {
+                try
+                {
+                    await WaitFor(() => Task.FromResult(Bounds(status).Right + 7 <= Bounds(theme).Left
+                        && Math.Abs(Bounds(theme).Right - (Bounds(detailFooter).Right - 12)) < 1),
+                        "Article text and far-right theme picker in " + layout);
+                }
+                catch (TimeoutException error)
+                {
+                    throw new InvalidOperationException($"Footer {layout}: text={Bounds(status)}, theme={Bounds(theme)}, "
+                        + $"footer={Bounds(detailFooter)}, columns={string.Join(",", Element<Grid>("DetailFooterContent")
+                            .ColumnDefinitions.Select(item => item.ActualWidth))}.", error);
+                }
+            }
+            VerifyCombinedFooterLayout(content, column);
             await VerifyWindowChromeAsync(window);
             layouts.Add(new
             {
@@ -568,6 +623,52 @@ internal static partial class ParityProbe
             defaults.UseColumnLayout = true;
             await VerifyFooterAsync("column");
             await CaptureFooterAsync("footer-column");
+            foreach (var appearance in new[] { ElementTheme.Light, ElementTheme.Dark })
+            {
+                surface.RequestedTheme = appearance;
+                await WaitForRenderedFramesAsync();
+                await VerifyFooterAsync("column-" + appearance);
+                await CaptureFooterAsync("footer-column-" + appearance.ToString().ToLowerInvariant());
+            }
+            surface.RequestedTheme = oldFooterTheme;
+            var combinedCounts = Element<TextBlock>("CombinedTimelineStatus");
+            string originalCounts = model.TimelineStatus;
+            try
+            {
+                window.AppWindow.Resize(new((int)Math.Ceiling(360 * content.XamlRoot.RasterizationScale),
+                    window.AppWindow.Size.Height));
+                model.TimelineStatus = string.Concat(Enumerable.Repeat(originalCounts + " ", 20));
+                model.SetHoveredLink("https://example.com/" + new string('w', 400));
+                try
+                {
+                    await WaitFor(() => Task.FromResult(combinedCounts.IsTextTrimmed && link.IsTextTrimmed
+                        && Element<Grid>("DetailFooterContent").ActualWidth <= content.ActualWidth
+                        && Math.Abs(Element<Grid>("DetailFooterContent").ColumnDefinitions.Sum(item => item.ActualWidth)
+                            - Element<Grid>("DetailFooterContent").ActualWidth) < 1), "Compact column footer truncation");
+                }
+                catch (TimeoutException error)
+                {
+                    var row = Element<Grid>("DetailFooterContent");
+                    throw new InvalidOperationException($"Compact footer: row={row.ActualWidth}, "
+                        + $"counts={combinedCounts.Text.Length}/{combinedCounts.ActualWidth}/{combinedCounts.IsTextTrimmed}, "
+                        + $"details={link.Text.Length}/{link.ActualWidth}/{link.IsTextTrimmed}, "
+                        + $"columns={string.Join(",", row.ColumnDefinitions.Select(item => item.ActualWidth))}, "
+                        + $"countLimit={combinedCounts.MaxWidth}.", error);
+                }
+                await VerifyFooterAsync("column-long-narrow");
+                defaults.ShowStatusBarThemeMenu = false;
+                await WaitFor(() => Task.FromResult(theme.Visibility == Visibility.Collapsed), "Column theme picker hidden");
+                await VerifyFooterAsync("column-theme-hidden");
+            }
+            finally
+            {
+                model.TimelineStatus = originalCounts;
+                model.SetHoveredLink(null);
+                defaults.ShowStatusBarThemeMenu = true;
+                window.AppWindow.MoveAndResize(MainWindow.ClampToDisplay(original.Bounds with
+                    { Width = (int)Math.Ceiling(1400 * content.XamlRoot.RasterizationScale) }));
+                model.IsSidebarVisible = true;
+            }
             await content.OpenSelectedInWebViewAsync();
             await WaitFor(() => Task.FromResult(content.ProbeWebPageReady
                 && Element<TextBlock>("WebPageStatus").Visibility == Visibility.Visible), "Webpage footer");

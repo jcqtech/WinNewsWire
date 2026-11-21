@@ -1678,6 +1678,65 @@ Probe code is excluded from normal builds; a build alone is not runtime verifica
 Execution requires an approved execution environment/signing path;
 do not use another configuration, renamed assembly or loader to evade the block.
 
+### Microsoft Store upload package
+
+The Store release uses the existing `JCQTechnology.WinNewsWire` identity and
+publisher from `Packaging\Package.StoreAssociation.xml`. Before a new release,
+choose an unused `major.minor.build.0` version above every version already
+published or submitted in Partner Center, and update
+`Packaging\Package.appxmanifest`. Do not reuse `1.2.0.0`: the Store-signed package
+installed on the review host on November 17, 2026 already has that version and
+identifies the older `106603d` baseline. Rebuilding current sources with the same
+package version does not provide those users an update.
+
+The guard below rejects the known distributed version and older versions; it
+does not check Partner Center for higher versions that may already be reserved.
+After confirming the new version, build all three configured architectures
+from the repository root:
+
+```powershell
+[xml]$manifest = Get-Content -LiteralPath 'Packaging\Package.appxmanifest'
+$packageVersion = [version]$manifest.Package.Identity.Version
+if ($packageVersion -le [version]'1.2.0.0') {
+  throw 'Choose an unused Store version newer than 1.2.0.0 and all versions already submitted in Partner Center.'
+}
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+$output = Join-Path $PWD.Path ("Packaging\AppPackages\Store-{0}\" -f $packageVersion)
+$previousRuntimeIdentifiers = $env:RuntimeIdentifiers
+try {
+  $env:RuntimeIdentifiers = 'win-x86;win-x64;win-arm64'
+  & $msbuild 'Packaging\WinNewsWire (Package).wapproj' /restore /t:Rebuild /m:2 /nr:false /nologo `
+    /p:Configuration=Release /p:Platform=x64 /p:SelfContained=true /p:ParityProbe=false `
+    /p:AppxBundle=Always '/p:AppxBundlePlatforms=x86|x64|arm64' `
+    /p:UapAppxPackageBuildMode=StoreUpload "/p:AppxPackageDir=$output" `
+    /p:AppxPackageSigningEnabled=false /p:AppxAutoIncrementPackageRevision=false `
+    /p:GenerateTemporaryStoreCertificate=false /p:GenerateAppInstallerFile=false `
+    /p:AppxSymbolPackageEnabled=true /p:PublishReadyToRun=true /p:PublishTrimmed=false
+  if ($LASTEXITCODE -ne 0) { throw 'Store package build failed.' }
+}
+finally {
+  $env:RuntimeIdentifiers = $previousRuntimeIdentifiers
+}
+```
+
+The restore must include all runtime identifiers for the backend libraries and
+refresh worker, not only the WinUI project. Rebuild packaging intermediates when
+changing versions: an incremental build can retain an older inner MSIX manifest
+even when the bundle and upload filenames have the new version. Verify the
+identity, version and native architecture inside each application package.
+
+Upload the newly generated `.msixupload` from
+`Packaging\AppPackages\Store-<version>\` to the existing app's Partner Center
+submission, not an older upload left in another version's directory. It contains
+the architecture bundle and three symbol packages. Both the reader and its private refresh worker
+include their .NET runtime; Windows App Runtime and VC runtime framework
+dependencies remain declared for Store deployment. No test certificate is needed
+for this upload: Microsoft signs the distributed packages. Store certification
+still happens in Partner Center; a local build is not certification.
+
+### Unsigned single-architecture package
+
 Unsigned x64 Release packaging uses Visual Studio MSBuild:
 
 ```powershell
@@ -1700,7 +1759,7 @@ serialization metadata and separate runtime coverage. The resulting MSIX contain
 manifest, and upstream MIT notice. It was not installed over a user's application.
 
 Output:
-`Packaging\AppPackages\WinNewsWire (Package)_1.0.1.0_x64_Test\WinNewsWire (Package)_1.0.1.0_x64.msix`
+`Packaging\AppPackages\WinNewsWire (Package)_1.2.0.0_x64_Test\WinNewsWire (Package)_1.2.0.0_x64.msix`
 The archive is inspected for the executable, main assembly, manifest and MIT
 notice, and for exclusion of test assemblies and the probe type. A successful package build is
 not a substitute for the blocked tests or an installed-app runtime check.

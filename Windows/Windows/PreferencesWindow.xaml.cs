@@ -51,6 +51,9 @@ public sealed partial class PreferencesWindow : Window
         _loaded = true;
     }
 
+    internal Visibility OptionalTextVisibility(string? text)
+        => string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
+
     private void PopulateCombos()
     {
         UnreadCountsLabel.Text = AppStrings.Get("UnreadCounts");
@@ -560,5 +563,5 @@ public sealed partial class PreferencesWindow : Window
         => _ = Windows.System.Launcher.LaunchUriAsync(new Uri("mailto:feedback@winnewswire.com?subject=WinNewsWire%20Feedback"));
 
     private void Help_Click(object sender, RoutedEventArgs e)
-        => _ = Windows.System.Launcher.LaunchUriAsync(new Uri("https://winnewswire.com/help/"));
+        => _ = Windows.System.Launcher.LaunchUriAsync(new Uri(HelpUrl.HelpHome));
 }

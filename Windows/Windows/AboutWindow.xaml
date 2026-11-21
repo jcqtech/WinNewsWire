@@ -24,7 +24,7 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <TextBlock HorizontalAlignment="Center" TextAlignment="Center" MaxWidth="380" TextWrapping="Wrap"
                        Text="A Windows port of NetNewsWire — the open-source RSS reader." />
-            <HyperlinkButton NavigateUri="https://winnewswire.com/" Content="winnewswire.com" HorizontalAlignment="Center" />
+            <HyperlinkButton NavigateUri="https://www.winnewswire.com/" Content="www.winnewswire.com" HorizontalAlignment="Center" />
         </StackPanel>
 
         <!-- Scrollable credits panel mirrors Mac NetNewsWire's About > Credits screen -->
