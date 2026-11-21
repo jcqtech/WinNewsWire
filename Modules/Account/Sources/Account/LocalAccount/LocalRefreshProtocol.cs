@@ -9,7 +9,7 @@ namespace WinNewsWire.Account;
 
 internal static class LocalRefreshProtocol
 {
-    internal const int Version = 1;
+    internal const int Version = 2;
     internal const int MaximumMessageCharacters = 16 * 1024 * 1024;
     internal const string OpenRssRefreshKey = "lastOpenRSSOrgFeedRefresh";
 
@@ -57,12 +57,13 @@ internal static class LocalRefreshProtocol
 internal sealed record LocalRefreshCommand(string Command, Guid ID, LocalRefreshBatch? Batch = null);
 
 internal sealed record LocalRefreshBatch(string AccountID, string Name, string DatabasePath, string Workspace,
-    LocalFeedState[] Feeds, DateTime? LastOpenRssRefresh);
+    LocalFeedState[] Feeds, DateTime? LastOpenRssRefresh, bool DeleteOlderArticles = false);
 
 internal sealed record LocalRefreshMessage(string Kind, Guid ID, int Version = LocalRefreshProtocol.Version,
     int ProcessID = 0, LocalFeedState? Feed = null, string[]? ChangedIDs = null, string[]? NewIDs = null,
     LocalFeedState[]? Feeds = null, WorkerActivity? Activity = null, ProgressInfo? Progress = null,
-    DateTime? LastOpenRssRefresh = null, string? Error = null, LocalRefreshStatistics? Statistics = null);
+    DateTime? LastOpenRssRefresh = null, string? Error = null, LocalRefreshStatistics? Statistics = null,
+    string[]? DeletedIDs = null);
 
 internal sealed record WorkerActivity(int ID, string Url, string? Detail, ActivityState State, bool Started,
     string? Message, string? Error, bool ReturnedFromCache, bool DurationIsSignificant);

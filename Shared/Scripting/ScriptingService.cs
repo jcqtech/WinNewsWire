@@ -354,7 +354,7 @@ public sealed class ScriptingService
 
     private static string AccountTypeCode(AccountType type) => type switch
     {
-        AccountType.OnMyMac => "Locl", AccountType.CloudKit => "Clkt", AccountType.Feedly => "Fdly",
+        AccountType.OnMyMac => "Locl", AccountType.CloudKit => "Clkt", AccountType.OneDrive => "ODrv", AccountType.Feedly => "Fdly",
         AccountType.Feedbin => "Fdbn", AccountType.NewsBlur => "NBlr", AccountType.FreshRSS => "Frsh",
         AccountType.Inoreader => "Inrd", AccountType.BazQux => "Bzqx", AccountType.TheOldReader => "Tord",
         _ => throw new NotSupportedException("The account type has no scripting representation.")

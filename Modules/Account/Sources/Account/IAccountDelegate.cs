@@ -10,6 +10,8 @@ public interface IAccountDelegate : IDisposable, IAsyncDisposable
     string? Server => null;
     void CredentialsChanged(Secrets.Credentials credentials) { }
     void ArticleStatusesQueued() { }
+    void PrepareToSaveStructure(Account account) { }
+    void StructureSaved(Account account) { }
     bool CanDisposeSynchronously => true;
     Task WaitForPendingWorkAsync(CancellationToken ct = default) => Task.CompletedTask;
     void IDisposable.Dispose() { }
@@ -21,6 +23,10 @@ public interface IAccountDelegate : IDisposable, IAsyncDisposable
     /// <summary>When true, <see cref="Account.MarkAsync"/> also queues changes in the account's
     /// SyncDatabase so <see cref="SendArticleStatusAsync"/> can flush them to the remote service.</summary>
     bool SupportsRemoteSync => false;
+    bool RequiresContinuousStatusPolling => false;
+    bool UsesFeedBasedRetention => false;
+    Task PublisherArticlesDeletedAsync(Account account, IReadOnlyCollection<string> ids, CancellationToken ct)
+        => Task.CompletedTask;
     bool SupportsOpmlImport => false;
     Task ImportOpmlAsync(Account account, Parsers.ParserData data, CancellationToken ct = default)
         => Task.FromException(new NotSupportedException("This account does not support OPML imports."));

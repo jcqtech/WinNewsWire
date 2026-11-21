@@ -73,6 +73,13 @@ public sealed partial class ArticlesDatabaseStore
                 : new HashSet<Article>();
             foreach (var batch in deleted.Select(a => a.ArticleID).Chunk(500))
             {
+                foreach (var id in batch)
+                {
+                    using var journal = connection.CreateCommand();
+                    journal.CommandText = "INSERT OR IGNORE INTO syncArticleDeletions (articleID) VALUES (@id);";
+                    journal.Parameters.AddWithValue("@id", id);
+                    journal.ExecuteNonQuery();
+                }
                 using var command = connection.CreateCommand();
                 var placeholders = string.Join(",", batch.Select((_, i) => $"@id{i}"));
                 command.CommandText = $@"DELETE FROM articles WHERE articleID IN ({placeholders});

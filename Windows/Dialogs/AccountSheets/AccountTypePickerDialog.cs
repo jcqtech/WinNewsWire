@@ -15,6 +15,7 @@ public static class AccountTypePickerDialog
 {
     public static Task<Account.Account?> ReauthorizeAsync(XamlRoot root, Account.Account account) => account.Type switch
     {
+        AccountType.OneDrive => OneDriveAccountSheet.ShowAsync(root, account),
         AccountType.Feedbin => AddFeedbinAccountSheet.ShowAsync(root, account),
         AccountType.NewsBlur => AddNewsBlurAccountSheet.ShowAsync(root, account),
         AccountType.Feedly => AddFeedlyAccountSheet.ShowAsync(root, account),
@@ -30,6 +31,7 @@ public static class AccountTypePickerDialog
     public static readonly IReadOnlyList<AccountOption> AllOptions = new[]
     {
         new AccountOption(AccountType.OnMyMac, "On My PC", "Local account; feeds stored on this computer.", "\uE7C4"),
+        new AccountOption(AccountType.OneDrive, "OneDrive", "Sync between PCs using your Windows OneDrive account.", "\uE753"),
         new AccountOption(AccountType.Feedbin, "Feedbin", "Sync subscriptions and read state with Feedbin.", "\uE7C3"),
         new AccountOption(AccountType.Feedly, "Feedly", "Sign in to Feedly via your browser (OAuth).", "\uE7C3"),
         new AccountOption(AccountType.NewsBlur, "NewsBlur", "Sync with NewsBlur using your account credentials.", "\uE7C3"),
@@ -81,6 +83,7 @@ public static class AccountTypePickerDialog
         return choice.Type switch
         {
             AccountType.OnMyMac => await AddLocalAccountSheet.ShowAsync(root),
+            AccountType.OneDrive => await OneDriveAccountSheet.ShowAsync(root),
             AccountType.Feedbin => await AddFeedbinAccountSheet.ShowAsync(root),
             AccountType.NewsBlur => await AddNewsBlurAccountSheet.ShowAsync(root),
             AccountType.Feedly => await AddFeedlyAccountSheet.ShowAsync(root),

@@ -95,6 +95,8 @@ public sealed partial class Account : IDisplayNameProvider, IOpmlRepresentable, 
     /// Mirrors NetNewsWire's <c>StatusesDidChange</c> notification — used to dismiss
     /// pending toasts for articles that have just been marked read.</summary>
     public event EventHandler<StatusesChangedEventArgs>? StatusesChanged;
+    public event EventHandler? ArticlesDeleted;
+    internal void RaiseArticlesDeleted() => ArticlesDeleted?.Invoke(this, EventArgs.Empty);
     public event EventHandler? ArticleStatusesQueued;
 
     public void RaiseNewArticlesDownloaded(IReadOnlyCollection<Articles.Article> newArticles)
@@ -490,6 +492,7 @@ public sealed partial class Account : IDisplayNameProvider, IOpmlRepresentable, 
 
     private void SaveToDisk()
     {
+        Delegate.PrepareToSaveStructure(this);
         FeedDto F(Feed f) => new(f.FeedID, f.Url, f.Name, f.EditedName, f.HomePageUrl, f.IconUrl, f.FaviconUrl, f.ExternalID, f.ETag, f.LastModified, f.LastCheckDate, f.ContentHash, f.ConditionalGetInfoDate, f.NewArticleNotificationsEnabled, f.ReaderViewAlwaysEnabled, f.FolderRelationship);
         var dto = new AccountDto(Name,
             TopLevelFeeds.Select(F).ToList(),
@@ -503,6 +506,7 @@ public sealed partial class Account : IDisplayNameProvider, IOpmlRepresentable, 
             feed.Settings.Flush();
             _feedSettingsByUrl[feed.Url] = feed.Settings;
         }
+        Delegate.StructureSaved(this);
     }
 
     /// <summary>Public hook for UI code (e.g. the Inspector) to persist mutations made directly

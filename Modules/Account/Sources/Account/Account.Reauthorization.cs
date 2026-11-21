@@ -36,7 +36,7 @@ public sealed partial class Account
     internal static string ValidateAuthentication(AccountType type, IAccountDelegate replacement, IReadOnlyCollection<Credentials> credentials)
     {
         ArgumentNullException.ThrowIfNull(replacement);
-        if (replacement.Type != type || type is AccountType.OnMyMac or AccountType.CloudKit)
+        if (replacement.Type != type || type is AccountType.OnMyMac or AccountType.CloudKit or AccountType.OneDrive)
             throw new ArgumentException("Authentication must use the expected remote account type.", nameof(replacement));
         var username = replacement.CredentialUsername;
         if (string.IsNullOrWhiteSpace(username) || credentials.Count == 0 || credentials.Any(value => value.Username != username))

@@ -331,6 +331,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         foreach (var account in accounts.Except(_observedAccounts))
         {
             account.AccountStructureChanged += OnAccountChanged;
+            account.ArticlesDeleted += OnAccountChanged;
             account.UnreadCountChanged += OnUnreadCountChanged;
             account.NewArticlesDownloaded += OnNewArticlesDownloaded;
             account.StatusesChanged += OnArticleStatusesChanged;
@@ -497,6 +498,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void UnobserveAccount(AccountNs.Account account)
     {
         account.AccountStructureChanged -= OnAccountChanged;
+        account.ArticlesDeleted -= OnAccountChanged;
         account.UnreadCountChanged -= OnUnreadCountChanged;
         account.NewArticlesDownloaded -= OnNewArticlesDownloaded;
         account.StatusesChanged -= OnArticleStatusesChanged;
