@@ -59,7 +59,42 @@
             <com:ExeServer Executable="WinNewsWire\WinNewsWire.exe" DisplayName="WinNewsWire" Arguments="----AppNotificationActivated:">
               <com:Class Id="263e45c0-db51-4abc-b82c-47a5a518b381" />
             </com:ExeServer>
+            <com:ExeServer Executable="WinNewsWire\Automation\WinNewsWire.ComServer.exe" DisplayName="WinNewsWire scripting" Arguments="-Embedding">
+              <com:Class Id="4B97D46F-41B4-4689-9466-04B87EC7A2B0" />
+            </com:ExeServer>
+            <com:ProgId Id="WinNewsWire.Application" Clsid="4B97D46F-41B4-4689-9466-04B87EC7A2B0" />
           </com:ComServer>
+        </com:Extension>
+        <com:Extension Category="windows.comInterface">
+          <com:ComInterface>
+            <com:Interface Id="89804C8C-193C-4A22-9595-B23C0719F241" UseUniversalMarshaler="true">
+              <com:TypeLib Id="163CB58F-AB4C-43E3-9458-89744B418B14" VersionNumber="1.0" />
+            </com:Interface>
+            <com:Interface Id="EC7DCDA1-4D0A-4378-A50C-699FFB452382" UseUniversalMarshaler="true">
+              <com:TypeLib Id="163CB58F-AB4C-43E3-9458-89744B418B14" VersionNumber="1.0" />
+            </com:Interface>
+            <com:Interface Id="F5D8412C-6F1B-44E4-BE19-751B303A0C32" UseUniversalMarshaler="true">
+              <com:TypeLib Id="163CB58F-AB4C-43E3-9458-89744B418B14" VersionNumber="1.0" />
+            </com:Interface>
+            <com:Interface Id="86D94E30-36A6-4666-85D8-B912CC59FE75" UseUniversalMarshaler="true">
+              <com:TypeLib Id="163CB58F-AB4C-43E3-9458-89744B418B14" VersionNumber="1.0" />
+            </com:Interface>
+            <com:Interface Id="8A33D395-5F62-4439-9869-A52FB74A2426" UseUniversalMarshaler="true">
+              <com:TypeLib Id="163CB58F-AB4C-43E3-9458-89744B418B14" VersionNumber="1.0" />
+            </com:Interface>
+            <com:Interface Id="E85FF4FD-CA3E-48E3-84D0-BF5B7DF58D08" UseUniversalMarshaler="true">
+              <com:TypeLib Id="163CB58F-AB4C-43E3-9458-89744B418B14" VersionNumber="1.0" />
+            </com:Interface>
+            <com:Interface Id="BB8A1DF7-A44C-43E3-8437-4B722A704902" UseUniversalMarshaler="true">
+              <com:TypeLib Id="163CB58F-AB4C-43E3-9458-89744B418B14" VersionNumber="1.0" />
+            </com:Interface>
+            <com:TypeLib Id="163CB58F-AB4C-43E3-9458-89744B418B14">
+              <com:Version VersionNumber="1.0" DisplayName="WinNewsWire scripting">
+                <com:Win32Path Path="WinNewsWire\Automation\WinNewsWire.Automation.tlb" />
+                <com:Win64Path Path="WinNewsWire\Automation\WinNewsWire.Automation.tlb" />
+              </com:Version>
+            </com:TypeLib>
+          </com:ComInterface>
         </com:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="feed"><uap:DisplayName>Subscribe in WinNewsWire</uap:DisplayName></uap:Protocol>

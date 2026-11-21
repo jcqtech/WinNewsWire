@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="WinNewsWire.Automation" />
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false" /></requestedPrivileges></security>
+  </trustInfo>
+  <file name="WinNewsWire.Automation.tlb">
+    <typelib tlbid="{163CB58F-AB4C-43E3-9458-89744B418B14}" version="1.0" helpdir="" flags="HASDISKIMAGE" />
+  </file>
+  <comInterfaceExternalProxyStub iid="{89804C8C-193C-4A22-9595-B23C0719F241}" name="IApplication"
+    tlbid="{163CB58F-AB4C-43E3-9458-89744B418B14}" proxyStubClsid32="{00020424-0000-0000-C000-000000000046}" />
+  <comInterfaceExternalProxyStub iid="{EC7DCDA1-4D0A-4378-A50C-699FFB452382}" name="IAccount"
+    tlbid="{163CB58F-AB4C-43E3-9458-89744B418B14}" proxyStubClsid32="{00020424-0000-0000-C000-000000000046}" />
+  <comInterfaceExternalProxyStub iid="{F5D8412C-6F1B-44E4-BE19-751B303A0C32}" name="IFolder"
+    tlbid="{163CB58F-AB4C-43E3-9458-89744B418B14}" proxyStubClsid32="{00020424-0000-0000-C000-000000000046}" />
+  <comInterfaceExternalProxyStub iid="{86D94E30-36A6-4666-85D8-B912CC59FE75}" name="IFeed"
+    tlbid="{163CB58F-AB4C-43E3-9458-89744B418B14}" proxyStubClsid32="{00020424-0000-0000-C000-000000000046}" />
+  <comInterfaceExternalProxyStub iid="{8A33D395-5F62-4439-9869-A52FB74A2426}" name="IArticle"
+    tlbid="{163CB58F-AB4C-43E3-9458-89744B418B14}" proxyStubClsid32="{00020424-0000-0000-C000-000000000046}" />
+  <comInterfaceExternalProxyStub iid="{E85FF4FD-CA3E-48E3-84D0-BF5B7DF58D08}" name="IAuthor"
+    tlbid="{163CB58F-AB4C-43E3-9458-89744B418B14}" proxyStubClsid32="{00020424-0000-0000-C000-000000000046}" />
+  <comInterfaceExternalProxyStub iid="{BB8A1DF7-A44C-43E3-8437-4B722A704902}" name="IObjectCollection"
+    tlbid="{163CB58F-AB4C-43E3-9458-89744B418B14}" proxyStubClsid32="{00020424-0000-0000-C000-000000000046}" />
+</assembly>

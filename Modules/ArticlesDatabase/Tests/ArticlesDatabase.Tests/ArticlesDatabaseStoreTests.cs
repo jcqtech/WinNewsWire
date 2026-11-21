@@ -53,6 +53,39 @@ public class ArticlesDatabaseStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task UniqueIdQueriesAreFeedScopedBatchedAndKeepAmbiguityVisible()
+    {
+        var articles = Enumerable.Range(0, 1001).Select(index => MakeArticle("id-" + index, "feed", "unique-" + index));
+        await _store.UpdateArticlesAsync(articles.Append(MakeArticle("other-feed", "other", "unique-0"))
+            .Append(MakeArticle("duplicate", "feed", "unique-0")));
+        int previous = _store.Queue.Run(connection =>
+            SQLitePCL.raw.sqlite3_limit(connection.Handle, SQLitePCL.raw.SQLITE_LIMIT_VARIABLE_NUMBER, 500));
+        try
+        {
+            var result = await _store.FetchArticlesByUniqueIDsAsync("feed", Enumerable.Range(0, 1001).Select(index => "unique-" + index));
+            Assert.Equal(1002, result.Count);
+            Assert.Equal(2, result.Count(item => item.UniqueID == "unique-0"));
+            Assert.DoesNotContain(result, item => item.FeedID == "other");
+            var identities = await _store.FetchArticleIdentitiesAsync(Enumerable.Range(0, 1001)
+                .Select(index => "empty-" + index).Append("feed"));
+            Assert.Equal(1002, identities.Count);
+            _store.Queue.Run(connection =>
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = "EXPLAIN QUERY PLAN SELECT articleID FROM articles WHERE feedID='feed' AND uniqueID='unique-1';";
+                using var reader = command.ExecuteReader();
+                Assert.True(reader.Read());
+                Assert.Contains("articles_feedID_uniqueID", reader.GetString(3));
+            });
+        }
+        finally
+        {
+            _store.Queue.Run(connection =>
+                SQLitePCL.raw.sqlite3_limit(connection.Handle, SQLitePCL.raw.SQLITE_LIMIT_VARIABLE_NUMBER, previous));
+        }
+    }
+
+    [Fact]
     public async Task AccountCountsScopeArticlesButIncludeAllStatusRows()
     {
         await _store.UpdateArticlesAsync([

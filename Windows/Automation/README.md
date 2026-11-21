@@ -1,5 +1,9 @@
 # Local Windows automation
 
+For an object-oriented COM interface usable directly from PowerShell 5.1/7,
+VBScript, JScript and VBA, see [COM Automation](COM.md). COM uses the same
+permission and service described below; it does not bypass the opt-in.
+
 WinNewsWire exposes a local, current-user named-pipe API as the Windows
 counterpart of the pinned NetNewsWire scripting dictionary. It is **disabled by
 default**. Enable **Allow local automation** in Preferences to permit other

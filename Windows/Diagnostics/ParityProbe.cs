@@ -57,6 +57,11 @@ internal static partial class ParityProbe
         var server = new FixtureServer();
         try
         {
+            if (Environment.GetCommandLineArgs().Contains("--com-automation"))
+            {
+                await CheckAsync("Installed COM automation, live UI and provider scenarios", () => CheckComAutomationAsync(window));
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--window-resources"))
             {
                 await CheckAsync("Pure WinUI and application window resource comparison", () => CheckWindowResourcesAsync(window));
