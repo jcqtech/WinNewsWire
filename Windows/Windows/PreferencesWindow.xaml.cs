@@ -470,6 +470,8 @@ public sealed partial class PreferencesWindow : Window
 
     private void UpdateSelectedAccountText()
     {
+        ReconnectAccountButton.Content = AccountsList.SelectedItem is AccountRow { Account.Type: AccountType.OneDrive }
+            ? "OneDrive Settings..." : "Reconnect";
         ReconnectAccountButton.IsEnabled = AccountsList.SelectedItem is AccountRow
             { Account.Type: not (AccountType.OnMyMac or AccountType.CloudKit) };
         RemoveAccountButton.IsEnabled = AccountsList.SelectedItem is AccountRow selected

@@ -41,6 +41,9 @@ public sealed class AccountSettings
     public DateTime? LastArticleFetchStartTime { get => Get<DateTime?>("lastArticleFetchStartTime"); set => Set("lastArticleFetchStartTime", value); }
     public DateTime? LastRefreshCompletedDate { get => Get<DateTime?>("lastRefreshCompletedDate"); set => Set("lastRefreshCompletedDate", value); }
     public string? ExternalID { get => Get<string?>("externalID"); set => Set("externalID", value); }
+    internal bool HasOneDriveUnreadContentPreference => _defaults.ContainsKey(Key("oneDriveSyncUnreadContent"));
+    public bool OneDriveSyncUnreadContent { get => Get("oneDriveSyncUnreadContent", false); set => Set("oneDriveSyncUnreadContent", value); }
+    internal DateTime? OneDriveLastContentCleanupUtc { get => Get<DateTime?>("oneDriveLastContentCleanupUtc"); set => Set("oneDriveLastContentCleanupUtc", value); }
     internal IReadOnlyList<string> PendingArticleRefreshIDs
     {
         get => Get<string[]?>("pendingArticleRefreshIDs") ?? [];

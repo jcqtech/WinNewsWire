@@ -13,6 +13,7 @@ internal static class Constants
     public const string CreateStatements = """
     CREATE TABLE IF NOT EXISTS articles (articleID TEXT NOT NULL PRIMARY KEY, feedID TEXT NOT NULL, uniqueID TEXT NOT NULL, title TEXT, contentHTML TEXT, contentText TEXT, markdown TEXT, url TEXT, externalURL TEXT, summary TEXT, imageURL TEXT, bannerImageURL TEXT, datePublished INTEGER, dateModified INTEGER, searchRowID INTEGER, thumbnailURL TEXT);
     CREATE TABLE IF NOT EXISTS statuses (articleID TEXT NOT NULL PRIMARY KEY, read INTEGER NOT NULL DEFAULT 0, starred INTEGER NOT NULL DEFAULT 0, dateArrived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS syncArticleDeletions (articleID TEXT NOT NULL PRIMARY KEY);
     CREATE TABLE IF NOT EXISTS authors (authorID TEXT NOT NULL PRIMARY KEY, name TEXT, url TEXT, avatarURL TEXT, emailAddress TEXT);
     CREATE TABLE IF NOT EXISTS authorsLookup (authorID TEXT NOT NULL, articleID TEXT NOT NULL, PRIMARY KEY(authorID, articleID));
     CREATE TABLE IF NOT EXISTS attachments (attachmentID TEXT NOT NULL PRIMARY KEY, url TEXT, mimeType TEXT, title TEXT, sizeInBytes INTEGER, durationInSeconds INTEGER);

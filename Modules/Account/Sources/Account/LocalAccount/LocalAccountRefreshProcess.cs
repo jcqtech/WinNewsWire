@@ -62,7 +62,7 @@ public sealed class LocalAccountRefreshProcess(Account account, string executabl
             var id = Guid.NewGuid();
             var batch = new LocalRefreshBatch(account.AccountID, account.NameForDisplay,
                 Path.Combine(account.AccountDirectory, "DB.sqlite3"), workspace, before.Values.ToArray(),
-                AppDefaults.Shared.GetValue<DateTime?>(LocalRefreshProtocol.OpenRssRefreshKey));
+                AppDefaults.Shared.GetValue<DateTime?>(LocalRefreshProtocol.OpenRssRefreshKey), account.Delegate.UsesFeedBasedRetention);
             await process.StandardInput.WriteLineAsync(LocalRefreshProtocol.Write(new LocalRefreshCommand("refresh", id, batch)))
                 .ConfigureAwait(false);
             using var cancelWait = new CancellationTokenSource();
@@ -102,6 +102,8 @@ public sealed class LocalAccountRefreshProcess(Account account, string executabl
                             var ids = message.ChangedIDs ?? throw new InvalidDataException("Missing changed article identities.");
                             var newIDs = (message.NewIDs ?? throw new InvalidDataException("Missing new article identities."))
                                 .ToHashSet(StringComparer.Ordinal);
+                            if (message.DeletedIDs is { Length: > 0 } deleted)
+                                await account.Delegate.PublisherArticlesDeletedAsync(account, deleted, token).ConfigureAwait(false);
                             if (ids.Length > 0)
                             {
                                 var changed = await account.Database.ApplyExternalChangesAsync(ids).ConfigureAwait(false);

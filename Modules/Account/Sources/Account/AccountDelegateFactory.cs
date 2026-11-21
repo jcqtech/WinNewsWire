@@ -12,6 +12,8 @@ public static class AccountDelegateFactory
     {
         if (Resolver is not null) return Resolver(type, accountID);
         if (type == AccountType.OnMyMac) return new LocalAccountDelegate();
+        if (type == AccountType.OneDrive) return new OneDrive.OneDriveAccountDelegate(
+            server is null ? null : new Uri(server).LocalPath);
         if (type == AccountType.CloudKit || !Enum.IsDefined(type))
             throw new NotSupportedException($"Account type {type} is not supported on Windows.");
 
