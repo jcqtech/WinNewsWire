@@ -8,6 +8,8 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Scripting\ScriptingProtocol.cs" />
+    <ProjectReference Include="..\Modules\ScriptingProtocol\ScriptingProtocol.csproj" />
     <ProjectReference Include="..\Modules\Core\Core.csproj" />
     <ProjectReference Include="..\Modules\Parsers\Parsers.csproj" />
     <ProjectReference Include="..\Modules\Web\Web.csproj" />
@@ -36,5 +38,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="WinNewsWire.Tests" />
+    <InternalsVisibleTo Include="WinNewsWire.ComServer.Tests" />
   </ItemGroup>
 </Project>

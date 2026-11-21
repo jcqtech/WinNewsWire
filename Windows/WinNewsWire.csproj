@@ -35,7 +35,8 @@
     <Content Include="Assets\wnw-flat.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="BrowserExtension\manifest.json;BrowserExtension\popup.html;BrowserExtension\popup.css;BrowserExtension\popup.js;BrowserExtension\subscription-url.js;BrowserExtension\icon.png;BrowserExtension\README.md;BrowserExtension\THIRD-PARTY-NOTICES.txt"
              CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Automation\Invoke-WinNewsWire.ps1;Automation\README.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Automation\Invoke-WinNewsWire.ps1;Automation\README.md;Automation\COM.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Automation\Samples\*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\wnw-flat.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
@@ -71,6 +72,7 @@
   </ItemGroup>
 
   <Import Project="..\Tools\RefreshWorker\RefreshWorker.targets" />
+  <Import Project="..\Tools\ComServer\ComServer.targets" />
 
     <!-- Publish Properties -->
   <PropertyGroup>

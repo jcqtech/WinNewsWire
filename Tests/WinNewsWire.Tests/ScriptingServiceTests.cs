@@ -162,6 +162,48 @@ public sealed class ScriptingServiceTests : IDisposable
         Assert.Throws<JsonException>(() => ScriptingProtocol.Parse("""{"command":"get","target":{"kind":1}}"""));
     }
 
+    [Fact]
+    public async Task LargeArticleCollectionsUseMetadataAndIndexedLiveBatches()
+    {
+        var date = DateTime.UtcNow;
+        var articles = Enumerable.Range(0, 300).Select(index => new Article(_account.AccountID, "db-" + index,
+            _feed.FeedID, "unique-" + index, "Title " + index, new string('x', 4096), null, null, null, null, null,
+            null, date.AddMinutes(index), null, null, null, new ArticleStatus("db-" + index, false, false, date))).ToArray();
+        await _account.Database.UpdateArticlesAsync(articles);
+        var feed = new ScriptingReference(ScriptingObjectKind.Feed, _account.AccountID, FeedID: _feed.FeedID);
+        var statements = new List<string>();
+        SQLitePCL.strdelegate_trace trace = (_, sql) => statements.Add(sql);
+        _account.Database.Queue.Run(connection => SQLitePCL.raw.sqlite3_trace(connection.Handle, trace, null));
+        try
+        {
+            var count = await _service.HandleAsync(new("count", feed, "articles"));
+            Assert.Equal(300, count.Value!.Value.GetInt32());
+            var page = await References(new("get", feed, "articles", Offset: 128, Limit: 128));
+            Assert.Equal(128, page.Length);
+            Assert.Equal("unique-171", page[0].ArticleID);
+            Assert.DoesNotContain(statements, sql => sql.Contains("contentHTML", StringComparison.OrdinalIgnoreCase));
+            statements.Clear();
+            var titles = await _service.HandleAsync(new("getMany", Property: "title", Targets: page));
+            Assert.True(titles.Success, titles.Error?.Message);
+            Assert.Equal("Title 171", titles.Value!.Value[0].GetString());
+            Assert.Single(statements, sql => sql.Contains("SELECT a.articleID,", StringComparison.OrdinalIgnoreCase));
+            statements.Clear();
+            Assert.Equal("Title 171", await Text(new("get", page[0], "title")));
+            var select = Assert.Single(statements, sql => sql.Contains("SELECT a.articleID,", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains("a.uniqueID IN", select);
+            Assert.True((await _service.HandleAsync(new("set", page[0], "starred", JsonSerializer.SerializeToElement(true)))).Success);
+            Assert.True((await _service.HandleAsync(new("getMany", Property: "starred", Targets: [page[0]]))).Value!.Value[0].GetBoolean());
+            Assert.False((await _service.HandleAsync(new("getMany", Property: "title", Targets: Enumerable.Repeat(feed, 129).ToArray()))).Success);
+            Assert.False((await _service.HandleAsync(new("get", feed, "articles", Offset: -1, Limit: 10))).Success);
+            Assert.False((await _service.HandleAsync(new("getMany", Property: "title",
+                Targets: [page[0] with { FolderID = _folder.FolderID }]))).Success);
+        }
+        finally
+        {
+            _account.Database.Queue.Run(connection => SQLitePCL.raw.sqlite3_trace(connection.Handle, (SQLitePCL.strdelegate_trace?)null, null));
+        }
+    }
+
     private async Task<ScriptingReference[]> References(ScriptingRequest request)
     {
         var result = await _service.HandleAsync(request);

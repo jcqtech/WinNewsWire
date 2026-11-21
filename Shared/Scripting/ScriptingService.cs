@@ -43,8 +43,25 @@ public sealed class ScriptingService
             switch (request.Command)
             {
                 case "get":
-                    return ScriptingProtocol.Result(request.ID, await GetAsync(target, request.Property ?? "properties", ct));
+                    var result = await GetAsync(target, request.Property ?? "properties", ct);
+                    if (request.Offset is not null || request.Limit is not null)
+                    {
+                        if (request.Offset is < 0 || request.Limit is not (>= 1 and <= 4096)
+                            || result is not IReadOnlyList<ScriptingReference> members)
+                            throw new ArgumentException("Paging requires an object collection, a nonnegative offset and a limit of 1 through 4096.");
+                        result = members.Skip(request.Offset ?? 0).Take(request.Limit.Value).ToArray();
+                    }
+                    return ScriptingProtocol.Result(request.ID, result);
+                case "getMany":
+                    return ScriptingProtocol.Result(request.ID, await GetManyAsync(request, ct));
                 case "count":
+                    if (request.Property == "articles" && target.Kind is ScriptingObjectKind.Feed or ScriptingObjectKind.Folder)
+                    {
+                        var parent = await ResolveAsync(target, ct);
+                        var feeds = parent is Feed feed ? new[] { feed } : ((Folder)parent).Feeds.ToArray();
+                        var counts = await AccountFor(target).Database.FetchArticleCountsAsync(feeds.Select(item => item.FeedID), ct);
+                        return ScriptingProtocol.Result(request.ID, checked((int)counts.TotalCount));
+                    }
                     var values = await GetAsync(target, request.Property ?? throw new ArgumentException("Count requires a collection property."), ct);
                     return values is IReadOnlyCollection<ScriptingReference> collection
                         ? ScriptingProtocol.Result(request.ID, collection.Count)
@@ -95,7 +112,8 @@ public sealed class ScriptingService
         => account.Folders.FirstOrDefault(folder => folder.FolderID == reference.FolderID)
             ?? throw new KeyNotFoundException("The folder was not found.");
 
-    private async Task<object> ResolveAsync(ScriptingReference reference, CancellationToken ct)
+    private async Task<object> ResolveAsync(ScriptingReference reference, CancellationToken ct,
+        IReadOnlyDictionary<(string Account, string Feed, string Article), Article[]>? batch = null)
     {
         ct.ThrowIfCancellationRequested();
         if (reference.Kind == ScriptingObjectKind.Application) return this;
@@ -109,8 +127,9 @@ public sealed class ScriptingService
         Article? article = null;
         if (reference.ArticleID is not null)
         {
-            var matches = (await account.Database.FetchArticlesAsync(feed.FeedID))
-                .Where(article => article.UniqueID == reference.ArticleID).Take(2).ToArray();
+            var matches = batch is not null
+                ? batch.GetValueOrDefault((account.AccountID, feed.FeedID, reference.ArticleID)) ?? []
+                : (await account.Database.FetchArticlesByUniqueIDsAsync(feed.FeedID, [reference.ArticleID], ct)).ToArray();
             if (matches.Length == 0) throw new KeyNotFoundException("The feed's article was not found.");
             if (matches.Length != 1) throw new InvalidOperationException("The article's feed-supplied ID is ambiguous.");
             article = matches[0];
@@ -124,9 +143,35 @@ public sealed class ScriptingService
         throw new ArgumentException("The object kind is not supported.");
     }
 
-    private async Task<object?> GetAsync(ScriptingReference reference, string property, CancellationToken ct)
+    private async Task<object?[]> GetManyAsync(ScriptingRequest request, CancellationToken ct)
     {
-        var value = await ResolveAsync(reference, ct);
+        var targets = request.Targets ?? throw new ArgumentException("Get Many requires object references.");
+        if (targets.Length > 128) throw new ArgumentException("Get Many accepts at most 128 objects per request.");
+        var property = request.Property ?? throw new ArgumentException("Get Many requires a property.");
+        foreach (var reference in targets) ValidateReference(reference);
+        var batch = new Dictionary<(string Account, string Feed, string Article), Article[]>();
+        foreach (var group in targets.Where(item => item.ArticleID is not null)
+            .GroupBy(item => (Account: item.AccountID!, Feed: item.FeedID!)))
+        {
+            var account = AccountFor(group.First());
+            var articles = await account.Database.FetchArticlesByUniqueIDsAsync(group.Key.Feed,
+                group.Select(item => item.ArticleID!), ct);
+            foreach (var matches in articles.GroupBy(article => article.UniqueID))
+                batch.Add((group.Key.Account, group.Key.Feed, matches.Key), matches.ToArray());
+        }
+        var values = new object?[targets.Length];
+        for (int i = 0; i < targets.Length; ++i)
+        {
+            ct.ThrowIfCancellationRequested();
+            values[i] = await GetAsync(targets[i], property, ct, batch);
+        }
+        return values;
+    }
+
+    private async Task<object?> GetAsync(ScriptingReference reference, string property, CancellationToken ct,
+        IReadOnlyDictionary<(string Account, string Feed, string Article), Article[]>? batch = null)
+    {
+        var value = await ResolveAsync(reference, ct, batch);
         if (value is ScriptingService)
         {
             var selection = _selection();
@@ -165,13 +210,9 @@ public sealed class ScriptingService
             if (property == "articles")
             {
                 var account = AccountFor(reference);
-                var articles = new List<Article>();
-                foreach (var feed in folderValue.Feeds)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    articles.AddRange(await account.Database.FetchArticlesAsync(feed.FeedID));
-                }
-                return OrderedArticles(articles).Select(article => ArticleReference(article, folderValue.FolderID)).ToArray();
+                var identities = await account.Database.FetchArticleIdentitiesAsync(folderValue.Feeds.Select(feed => feed.FeedID), ct);
+                return identities.Select(item => new ScriptingReference(ScriptingObjectKind.Article, account.AccountID,
+                    folderValue.FolderID, item.FeedID, item.UniqueID)).ToArray();
             }
             return property switch
             {
@@ -186,8 +227,10 @@ public sealed class ScriptingService
         if (value is Feed feedValue)
         {
             if (property == "articles")
-                return OrderedArticles(await AccountFor(reference).Database.FetchArticlesAsync(feedValue.FeedID))
-                    .Select(article => ArticleReference(article, reference.FolderID)).ToArray();
+            {
+                var identities = await AccountFor(reference).Database.FetchArticleIdentitiesAsync([feedValue.FeedID], ct);
+                return identities.Select(item => reference with { Kind = ScriptingObjectKind.Article, ArticleID = item.UniqueID }).ToArray();
+            }
             return property switch
             {
                 "id" => feedValue.FeedID,
@@ -317,8 +360,6 @@ public sealed class ScriptingService
     private ScriptingReference? ArticleReference(Article article, int? folderID = null)
         => ParentFeedReference(article) is { } parent
             ? parent with { Kind = ScriptingObjectKind.Article, FolderID = folderID ?? parent.FolderID, ArticleID = article.UniqueID } : null;
-    private static IEnumerable<Article> OrderedArticles(IEnumerable<Article> articles)
-        => articles.OrderByDescending(article => article.DatePublished ?? article.DateModified ?? article.Status.DateArrived);
     private static ArgumentException UnknownProperty(string property) => new("Unknown scripting property: " + property);
     private static void ValidateReference(ScriptingReference reference)
     {

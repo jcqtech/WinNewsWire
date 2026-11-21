@@ -18,6 +18,7 @@ internal static class Constants
     CREATE TABLE IF NOT EXISTS attachments (attachmentID TEXT NOT NULL PRIMARY KEY, url TEXT, mimeType TEXT, title TEXT, sizeInBytes INTEGER, durationInSeconds INTEGER);
     CREATE TABLE IF NOT EXISTS attachmentsLookup (attachmentID TEXT NOT NULL, articleID TEXT NOT NULL, PRIMARY KEY(attachmentID, articleID));
     CREATE INDEX IF NOT EXISTS articles_feedID_datePublished_articleID ON articles (feedID, datePublished, articleID);
+    CREATE INDEX IF NOT EXISTS articles_feedID_uniqueID ON articles (feedID, uniqueID);
     CREATE INDEX IF NOT EXISTS statuses_starred_index ON statuses (starred);
     CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts4(title, body);
     CREATE TRIGGER IF NOT EXISTS articles_after_delete_trigger_delete_search_text AFTER DELETE ON articles BEGIN DELETE FROM search WHERE rowid = OLD.searchRowID; END;
